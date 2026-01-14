@@ -74,9 +74,26 @@ async def list_workers(
     return WorkerListResponse(items=items, total=total or 0)
 
 
+def _get_client_ip(request: Request) -> str:
+    """Get real client IP from request headers or connection."""
+    # Check X-Forwarded-For first (from proxy)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    # Check X-Real-IP (from nginx)
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    # Fall back to direct connection IP
+    if request.client:
+        return request.client.host
+    return "127.0.0.1"
+
+
 @router.post("", response_model=WorkerResponse, status_code=201)
 async def create_worker(
     worker_in: WorkerCreate | WorkerRegisterWithToken,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Register a new worker (requires registration token)"""
@@ -110,8 +127,12 @@ async def create_worker(
         original_worker = original_worker_result.scalar_one_or_none()
 
         if existing_worker and token.used_by_worker_id == existing_worker.id:
-            # Allow reconnection - update existing worker
-            existing_worker.address = worker_in.address
+            # Allow reconnection - update existing worker with real IP
+            client_ip = _get_client_ip(request)
+            reported_port = "8080"
+            if ":" in worker_in.address:
+                reported_port = worker_in.address.split(":")[-1]
+            existing_worker.address = f"{client_ip}:{reported_port}"
             existing_worker.gpu_info = (
                 [gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None
             )
@@ -155,9 +176,17 @@ async def create_worker(
     if existing_worker:
         raise HTTPException(status_code=400, detail="Worker with this name already exists")
 
+    # Use real client IP instead of reported address (which might be Docker internal IP)
+    client_ip = _get_client_ip(request)
+    # Extract port from reported address
+    reported_port = "8080"
+    if ":" in worker_in.address:
+        reported_port = worker_in.address.split(":")[-1]
+    real_address = f"{client_ip}:{reported_port}"
+
     worker = Worker(
         name=worker_in.name,
-        address=worker_in.address,
+        address=real_address,
         description=worker_in.description,
         labels=worker_in.labels,
         gpu_info=([gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None),
@@ -405,6 +434,7 @@ def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
   --privileged \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
   -v ~/.cache/huggingface:/root/.cache/huggingface \\
+  -v /:/host:ro \\
   -e BACKEND_URL={backend_url} \\
   -e WORKER_NAME={name} \\
   -e REGISTRATION_TOKEN={token} \\

@@ -57,6 +57,7 @@ docker run -d \
   --privileged \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
+  -v /:/host:ro \
   -e BACKEND_URL=http://你的伺服器IP:8088 \
   -e WORKER_NAME=gpu-worker-01 \
   infinirc/lmstack-worker:latest
@@ -102,6 +103,7 @@ docker run -d \
   --privileged \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
+  -v /:/host:ro \
   -e BACKEND_URL=http://你的伺服器IP:8088 \
   -e WORKER_NAME=gpu-worker-01 \
   infinirc/lmstack-worker:local
