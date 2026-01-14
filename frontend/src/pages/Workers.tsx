@@ -116,10 +116,32 @@ export default function Workers() {
     }
   };
 
-  const handleCopyCommand = () => {
-    if (generatedToken?.docker_command) {
-      navigator.clipboard.writeText(generatedToken.docker_command);
-      message.success("Command copied to clipboard");
+  const handleCopyCommand = async () => {
+    if (!generatedToken?.docker_command) return;
+    const text = generatedToken.docker_command;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        message.success("Command copied to clipboard");
+        return;
+      }
+      // Fallback for non-secure contexts (HTTP)
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textArea);
+      if (successful) {
+        message.success("Command copied to clipboard");
+      } else {
+        message.error("Failed to copy");
+      }
+    } catch (err) {
+      message.error("Failed to copy");
     }
   };
 

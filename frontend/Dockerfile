@@ -39,9 +39,9 @@ RUN chown -R appuser:appuser /usr/share/nginx/html && \
     touch /var/run/nginx.pid && \
     chown -R appuser:appuser /var/run/nginx.pid
 
-# Health check
+# Health check (use 127.0.0.1 to force IPv4, wget tries IPv6 first with localhost)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:80/ || exit 1
 
 EXPOSE 80
 
