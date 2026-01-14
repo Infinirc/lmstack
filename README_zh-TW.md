@@ -1,22 +1,22 @@
 # LMStack
 
-[中文文檔](README_zh-TW.md)
+[English](README.md)
 
-LLM Deployment Management Platform - Deploy and manage Large Language Models on distributed GPU workers.
+LLM 部署管理平台 - 在分散式 GPU 節點上部署和管理大型語言模型。
 
-## Features
+## 功能特色
 
-- Web UI for managing workers, models, and deployments
-- Support for **vLLM** and **Ollama** inference backends
-- Docker-based worker agents for GPU nodes
-- Real-time deployment status monitoring
-- OpenAI-compatible API gateway
+- 管理 Workers、模型和部署的 Web UI
+- 支援 **vLLM** 和 **Ollama** 推論後端
+- 基於 Docker 的 GPU Worker Agent
+- 即時部署狀態監控
+- OpenAI 相容 API 閘道
 
-## Architecture
+## 架構
 
 ```
 ┌─────────────────┐     ┌─────────────────┐
-│   Web Frontend  │────▶│   API Server    │
+│   Web 前端      │────▶│   API 伺服器    │
 │   (React)       │     │   (FastAPI)     │
 └─────────────────┘     └────────┬────────┘
                                 │
@@ -24,29 +24,29 @@ LLM Deployment Management Platform - Deploy and manage Large Language Models on 
                    ▼                         ▼
            ┌──────────────┐          ┌──────────────┐
            │ Worker Agent │          │ Worker Agent │
-           │  (GPU Node)  │          │  (GPU Node)  │
+           │  (GPU 節點)  │          │  (GPU 節點)  │
            └──────────────┘          └──────────────┘
 ```
 
-## Quick Start
+## 快速開始
 
-### Prerequisites
+### 前置需求
 
 - Docker
-- NVIDIA GPU with CUDA support
-- NVIDIA Container Toolkit (install with `./scripts/install-nvidia-toolkit.sh`)
+- 支援 CUDA 的 NVIDIA GPU
+- NVIDIA Container Toolkit（使用 `./scripts/install-nvidia-toolkit.sh` 安裝）
 
-### Deploy with Docker Compose
+### Docker Compose 部署
 
 ```bash
-# Deploy Backend + Frontend
+# 部署 Backend + Frontend
 docker compose -f docker-compose.deploy.yml up -d
 ```
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8088
+- 前端: http://localhost:3000
+- 後端 API: http://localhost:8088
 
-### Start Worker (on GPU machine)
+### 啟動 Worker（在 GPU 機器上）
 
 ```bash
 docker run -d \
@@ -55,52 +55,52 @@ docker run -d \
   --privileged \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
-  -e BACKEND_URL=http://YOUR_SERVER_IP:8088 \
+  -e BACKEND_URL=http://你的伺服器IP:8088 \
   -e WORKER_NAME=gpu-worker-01 \
   infinirc/lmstack-worker:latest
 ```
 
-### Usage
+### 使用方式
 
-1. Login with `admin` / `admin` (change password after first login)
-2. Check **Workers** page - workers auto-register
-3. Add model in **Models** page
-4. Create deployment in **Deployments** page
-5. Use OpenAI-compatible API:
+1. 使用 `admin` / `admin` 登入（首次登入後請更改密碼）
+2. 查看 **Workers** 頁面 - Workers 會自動註冊
+3. 在 **Models** 頁面新增模型
+4. 在 **Deployments** 頁面建立部署
+5. 使用 OpenAI 相容 API：
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"model": "llama3.2:3b", "messages": [{"role": "user", "content": "Hello!"}]}'
+  -d '{"model": "llama3.2:3b", "messages": [{"role": "user", "content": "你好！"}]}'
 ```
 
-## Development
+## 開發環境
 
-For local development without Docker:
+不使用 Docker 的本地開發：
 
 ```bash
-# Terminal 1 - Frontend
+# 終端機 1 - 前端
 cd frontend
 npm install
 npm run dev
 
-# Terminal 2 - Backend
+# 終端機 2 - 後端
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Terminal 3 - Worker (on GPU machine)
+# 終端機 3 - Worker（在 GPU 機器上）
 cd worker
 pip install -r requirements.txt
-python agent.py --name gpu-worker-01 --server-url http://YOUR_SERVER_IP:8000
+python agent.py --name gpu-worker-01 --server-url http://你的伺服器IP:8000
 ```
 
-## API Docs
+## API 文件
 
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-## License
+## 授權條款
 
 Apache-2.0

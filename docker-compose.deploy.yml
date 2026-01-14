@@ -1,0 +1,35 @@
+# LMStack Server Deployment
+# Backend + Frontend only (no database, uses SQLite)
+# Usage: docker compose -f docker-compose.deploy.yml up -d
+
+services:
+  backend:
+    image: infinirc/lmstack-backend:latest
+    container_name: lmstack-backend
+    ports:
+      - "8088:8000"
+    volumes:
+      - lmstack-data:/app/data
+    environment:
+      - LMSTACK_SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: infinirc/lmstack-frontend:latest
+    container_name: lmstack-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8088
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  lmstack-data:
+    driver: local
