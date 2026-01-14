@@ -1,4 +1,5 @@
 """Worker Pydantic schemas"""
+
 from datetime import datetime
 from typing import Optional
 
@@ -9,6 +10,7 @@ from app.models.worker import WorkerStatus, ConnectionType
 
 class GPUInfo(BaseModel):
     """GPU information schema"""
+
     index: int
     name: str
     memory_total: int  # bytes
@@ -20,6 +22,7 @@ class GPUInfo(BaseModel):
 
 class CPUInfo(BaseModel):
     """CPU information schema"""
+
     percent: float = 0  # CPU usage percentage
     count: int = 0  # Number of CPU cores
     freq_mhz: float = 0  # CPU frequency in MHz
@@ -27,6 +30,7 @@ class CPUInfo(BaseModel):
 
 class MemoryInfo(BaseModel):
     """Memory information schema"""
+
     total: int = 0  # bytes
     used: int = 0  # bytes
     free: int = 0  # bytes
@@ -35,6 +39,7 @@ class MemoryInfo(BaseModel):
 
 class DiskInfo(BaseModel):
     """Disk information schema"""
+
     total: int = 0  # bytes
     used: int = 0  # bytes
     free: int = 0  # bytes
@@ -43,6 +48,7 @@ class DiskInfo(BaseModel):
 
 class SystemInfo(BaseModel):
     """System information schema (CPU, Memory, Disk)"""
+
     cpu: Optional[CPUInfo] = None
     memory: Optional[MemoryInfo] = None
     disk: Optional[DiskInfo] = None
@@ -50,15 +56,19 @@ class SystemInfo(BaseModel):
 
 class WorkerBase(BaseModel):
     """Base worker schema"""
+
     name: str = Field(..., min_length=1, max_length=255)
     address: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     labels: Optional[dict] = None
-    connection_type: str = Field(default=ConnectionType.DIRECT.value, description="Connection type: direct or tailscale")
+    connection_type: str = Field(
+        default=ConnectionType.DIRECT.value, description="Connection type: direct or tailscale"
+    )
 
 
 class WorkerCreate(WorkerBase):
     """Schema for creating a worker"""
+
     gpu_info: Optional[list[GPUInfo]] = None
     system_info: Optional[SystemInfo] = None
     tailscale_ip: Optional[str] = Field(None, description="IP address in Tailscale network")
@@ -67,6 +77,7 @@ class WorkerCreate(WorkerBase):
 
 class WorkerUpdate(BaseModel):
     """Schema for updating a worker"""
+
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     address: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
@@ -81,6 +92,7 @@ class WorkerUpdate(BaseModel):
 
 class WorkerResponse(WorkerBase):
     """Schema for worker response"""
+
     id: int
     status: str
     gpu_info: Optional[list[dict]] = None
@@ -99,12 +111,14 @@ class WorkerResponse(WorkerBase):
 
 class WorkerListResponse(BaseModel):
     """Schema for worker list response"""
+
     items: list[WorkerResponse]
     total: int
 
 
 class WorkerHeartbeat(BaseModel):
     """Schema for worker heartbeat"""
+
     worker_id: int
     gpu_info: Optional[list[GPUInfo]] = None
     system_info: Optional[SystemInfo] = None

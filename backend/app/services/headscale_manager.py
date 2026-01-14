@@ -3,6 +3,7 @@
 Manages Headscale VPN server for connecting remote workers.
 Headscale is a self-hosted implementation of the Tailscale control server.
 """
+
 import asyncio
 import json
 import logging
@@ -50,6 +51,7 @@ def _parse_timestamp(value) -> Optional[str]:
 
 class HeadscaleNode:
     """Represents a node in Headscale."""
+
     def __init__(self, data: dict):
         self.id = data.get("id")
         self.name = data.get("name") or data.get("givenName") or data.get("given_name")
@@ -111,48 +113,31 @@ class HeadscaleManager:
             "grpc_listen_addr": f"0.0.0.0:{grpc_port}",
             "grpc_allow_insecure": True,
             "private_key_path": "/etc/headscale/private.key",
-            "noise": {
-                "private_key_path": "/etc/headscale/noise_private.key"
-            },
-            "prefixes": {
-                "v4": "100.64.0.0/10",
-                "v6": "fd7a:115c:a1e0::/48"
-            },
+            "noise": {"private_key_path": "/etc/headscale/noise_private.key"},
+            "prefixes": {"v4": "100.64.0.0/10", "v6": "fd7a:115c:a1e0::/48"},
             "derp": {
-                "server": {
-                    "enabled": False
-                },
+                "server": {"enabled": False},
                 "urls": ["https://controlplane.tailscale.com/derpmap/default"],
                 "auto_update_enabled": True,
-                "update_frequency": "24h"
+                "update_frequency": "24h",
             },
             "disable_check_updates": True,
             "ephemeral_node_inactivity_timeout": "30m",
-            "database": {
-                "type": "sqlite3",
-                "sqlite": {
-                    "path": "/etc/headscale/db.sqlite"
-                }
-            },
-            "log": {
-                "format": "text",
-                "level": "info"
-            },
+            "database": {"type": "sqlite3", "sqlite": {"path": "/etc/headscale/db.sqlite"}},
+            "log": {"format": "text", "level": "info"},
             "dns": {
                 "magic_dns": True,
                 "base_domain": "lmstack.local",
-                "nameservers": {
-                    "global": ["1.1.1.1", "8.8.8.8"]
-                }
+                "nameservers": {"global": ["1.1.1.1", "8.8.8.8"]},
             },
             "unix_socket": "/var/run/headscale/headscale.sock",
-            "unix_socket_permission": "0770"
+            "unix_socket_permission": "0770",
         }
 
     def _write_config(self, server_url: str, http_port: int, grpc_port: int):
         """Write Headscale configuration file."""
         config = self._generate_config(server_url, http_port, grpc_port)
-        with open(HEADSCALE_CONFIG_PATH, 'w') as f:
+        with open(HEADSCALE_CONFIG_PATH, "w") as f:
             yaml.dump(config, f, default_flow_style=False)
         logger.info(f"Headscale config written to {HEADSCALE_CONFIG_PATH}")
 
@@ -361,7 +346,9 @@ class HeadscaleManager:
 
     async def delete_node(self, node_id: int) -> bool:
         """Delete a node from Headscale."""
-        exit_code, output = await self._exec_command("nodes", "delete", "--identifier", str(node_id), "--force")
+        exit_code, output = await self._exec_command(
+            "nodes", "delete", "--identifier", str(node_id), "--force"
+        )
         if exit_code == 0:
             logger.info(f"Node {node_id} deleted")
             return True
@@ -370,7 +357,9 @@ class HeadscaleManager:
 
     async def rename_node(self, node_id: int, new_name: str) -> bool:
         """Rename a node."""
-        exit_code, output = await self._exec_command("nodes", "rename", "--identifier", str(node_id), new_name)
+        exit_code, output = await self._exec_command(
+            "nodes", "rename", "--identifier", str(node_id), new_name
+        )
         if exit_code == 0:
             logger.info(f"Node {node_id} renamed to {new_name}")
             return True

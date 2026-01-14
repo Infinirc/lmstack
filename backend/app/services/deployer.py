@@ -1,4 +1,5 @@
 """Deployment service - handles model deployment on workers"""
+
 import asyncio
 import logging
 import socket
@@ -148,7 +149,9 @@ class DeployerService:
 
             except httpx.ConnectError:
                 deployment.status = DeploymentStatus.ERROR.value
-                deployment.status_message = f"Cannot connect to worker at {deployment.worker.address}"
+                deployment.status_message = (
+                    f"Cannot connect to worker at {deployment.worker.address}"
+                )
             except Exception as e:
                 logger.exception(f"Error deploying {deployment_id}")
                 deployment.status = DeploymentStatus.ERROR.value
@@ -189,6 +192,7 @@ class DeployerService:
                         if line:
                             try:
                                 import json
+
                                 data = json.loads(line)
                                 status = data.get("status", "")
 
@@ -292,9 +296,7 @@ class DeployerService:
                                 )
                                 return True
 
-                    logger.debug(
-                        f"Health check {check_count}: status={response.status_code}"
-                    )
+                    logger.debug(f"Health check {check_count}: status={response.status_code}")
 
                 except httpx.ConnectError:
                     # Container not ready yet, this is expected during startup
@@ -325,9 +327,7 @@ class DeployerService:
                 await asyncio.sleep(self.HEALTH_CHECK_INTERVAL)
                 elapsed += self.HEALTH_CHECK_INTERVAL
 
-        logger.warning(
-            f"API health check timed out after {elapsed}s ({check_count} checks)"
-        )
+        logger.warning(f"API health check timed out after {elapsed}s ({check_count} checks)")
         return False
 
     def _is_local_worker(self, address: str) -> bool:
@@ -466,9 +466,7 @@ class DeployerService:
         # Determine docker image based on backend
         # Priority: deployment extra_params > model docker_image > backend default
         deployment_image = (
-            deployment.extra_params.get("docker_image")
-            if deployment.extra_params
-            else None
+            deployment.extra_params.get("docker_image") if deployment.extra_params else None
         )
 
         backend = deployment.backend
@@ -517,9 +515,12 @@ class DeployerService:
     ) -> tuple[list[str], dict[str, str]]:
         """Build vLLM container command and environment."""
         cmd = [
-            "--model", model.model_id,
-            "--host", "0.0.0.0",
-            "--port", "8000",
+            "--model",
+            model.model_id,
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8000",
         ]
 
         # Add default params if any
@@ -568,9 +569,12 @@ class DeployerService:
         differences in parameter names.
         """
         cmd = [
-            "--model-path", model.model_id,
-            "--host", "0.0.0.0",
-            "--port", "8000",
+            "--model-path",
+            model.model_id,
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8000",
         ]
 
         # Add default params if any
@@ -630,18 +634,16 @@ class DeployerService:
             "OLLAMA_HOST": "0.0.0.0:8000",  # Bind to container port 8000
             "OLLAMA_ORIGINS": "*",  # Allow CORS from all origins (required for web UI)
             "OLLAMA_NUM_PARALLEL": str(
-                deployment.extra_params.get("num_parallel", 4)
-                if deployment.extra_params else "4"
+                deployment.extra_params.get("num_parallel", 4) if deployment.extra_params else "4"
             ),
             "OLLAMA_MAX_LOADED_MODELS": str(
                 deployment.extra_params.get("max_loaded_models", 1)
-                if deployment.extra_params else "1"
+                if deployment.extra_params
+                else "1"
             ),
             # GPU settings
             "OLLAMA_GPU_OVERHEAD": "0",
-            "CUDA_VISIBLE_DEVICES": ",".join(
-                str(i) for i in (deployment.gpu_indexes or [0])
-            ),
+            "CUDA_VISIBLE_DEVICES": ",".join(str(i) for i in (deployment.gpu_indexes or [0])),
         }
 
         # Add any custom environment variables from extra_params
@@ -686,8 +688,7 @@ class DeployerService:
 
                     async with httpx.AsyncClient(timeout=60.0) as client:
                         await client.post(
-                            worker_url,
-                            json={"container_id": deployment.container_id}
+                            worker_url, json={"container_id": deployment.container_id}
                         )
 
             except Exception as e:
@@ -725,7 +726,7 @@ class DeployerService:
                         params={
                             "container_id": deployment.container_id,
                             "tail": tail,
-                        }
+                        },
                     )
 
                     if response.status_code == 200:

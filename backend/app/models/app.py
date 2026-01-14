@@ -1,4 +1,5 @@
 """App database model for deployable applications like Open WebUI"""
+
 from datetime import datetime
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 
 class AppType(str, Enum):
     """Available app types"""
+
     OPEN_WEBUI = "open-webui"
     N8N = "n8n"
     FLOWISE = "flowise"
@@ -24,6 +26,7 @@ class AppType(str, Enum):
 
 class AppStatus(str, Enum):
     """App deployment status"""
+
     PENDING = "pending"
     PULLING = "pulling"
     STARTING = "starting"
@@ -47,9 +50,7 @@ APP_DEFINITIONS = {
             "WEBUI_SECRET_KEY": "",
             "ENABLE_OLLAMA_API": "false",
         },
-        "volumes": [
-            {"name": "open-webui-data", "destination": "/app/backend/data"}
-        ],
+        "volumes": [{"name": "open-webui-data", "destination": "/app/backend/data"}],
     },
     AppType.N8N: {
         "name": "n8n",
@@ -64,9 +65,7 @@ APP_DEFINITIONS = {
             "N8N_PROXY_HOPS": "1",  # Trust proxy headers (nginx)
             "GENERIC_TIMEZONE": "UTC",
         },
-        "volumes": [
-            {"name": "n8n-data", "destination": "/home/node/.n8n"}
-        ],
+        "volumes": [{"name": "n8n-data", "destination": "/home/node/.n8n"}],
     },
     AppType.FLOWISE: {
         "name": "Flowise",
@@ -76,9 +75,7 @@ APP_DEFINITIONS = {
         "env_template": {
             "FLOWISE_SECRETKEY_OVERWRITE": "{secret_key}",  # Consistent encryption key for credentials
         },
-        "volumes": [
-            {"name": "flowise-data", "destination": "/root/.flowise"}
-        ],
+        "volumes": [{"name": "flowise-data", "destination": "/root/.flowise"}],
     },
     AppType.ANYTHINGLLM: {
         "name": "AnythingLLM",
@@ -93,9 +90,7 @@ APP_DEFINITIONS = {
             "GENERIC_OPEN_AI_MODEL_PREF": "default",
             "GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT": "8192",
         },
-        "volumes": [
-            {"name": "anythingllm-data", "destination": "/app/server/storage"}
-        ],
+        "volumes": [{"name": "anythingllm-data", "destination": "/app/server/storage"}],
         "cap_add": ["SYS_ADMIN"],  # Required for AnythingLLM
     },
     AppType.LOBECHAT: {
@@ -130,9 +125,7 @@ class App(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Worker where app is deployed
-    worker_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("workers.id"), nullable=False
-    )
+    worker_id: Mapped[int] = mapped_column(Integer, ForeignKey("workers.id"), nullable=False)
 
     # Associated API key (auto-created for the app)
     api_key_id: Mapped[Optional[int]] = mapped_column(
@@ -140,9 +133,7 @@ class App(Base):
     )
 
     # Status
-    status: Mapped[str] = mapped_column(
-        String(50), default=AppStatus.PENDING.value
-    )
+    status: Mapped[str] = mapped_column(String(50), default=AppStatus.PENDING.value)
     status_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Container info
@@ -159,9 +150,7 @@ class App(Base):
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

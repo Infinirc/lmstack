@@ -1,4 +1,5 @@
 """LLM Model database model"""
+
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -11,6 +12,7 @@ from app.database import Base
 
 class BackendType(str, Enum):
     """Inference backend type"""
+
     VLLM = "vllm"
     SGLANG = "sglang"
     OLLAMA = "ollama"
@@ -18,6 +20,7 @@ class BackendType(str, Enum):
 
 class ModelSource(str, Enum):
     """Model source type"""
+
     HUGGINGFACE = "huggingface"
     OLLAMA = "ollama"
 
@@ -47,9 +50,7 @@ class LLMModel(Base):
     # Docker image for this model (optional override)
     docker_image: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -58,9 +59,7 @@ class LLMModel(Base):
     deployments: Mapped[list["Deployment"]] = relationship(
         "Deployment", back_populates="model", cascade="all, delete-orphan"
     )
-    usages: Mapped[list["Usage"]] = relationship(
-        "Usage", back_populates="model"
-    )
+    usages: Mapped[list["Usage"]] = relationship("Usage", back_populates="model")
 
     def __repr__(self) -> str:
         return f"<LLMModel(id={self.id}, name='{self.name}', source='{self.source}')>"

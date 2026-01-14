@@ -1,4 +1,5 @@
 """Authentication service for user login and JWT management"""
+
 import logging
 import hashlib
 import secrets
@@ -29,10 +30,7 @@ class AuthService:
         """Hash a password using PBKDF2-SHA256."""
         salt = secrets.token_hex(16)
         pwd_hash = hashlib.pbkdf2_hmac(
-            'sha256',
-            password.encode('utf-8'),
-            salt.encode('utf-8'),
-            100000
+            "sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000
         ).hex()
         return f"{salt}${pwd_hash}"
 
@@ -40,12 +38,9 @@ class AuthService:
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash."""
         try:
-            salt, pwd_hash = hashed_password.split('$')
+            salt, pwd_hash = hashed_password.split("$")
             new_hash = hashlib.pbkdf2_hmac(
-                'sha256',
-                plain_password.encode('utf-8'),
-                salt.encode('utf-8'),
-                100000
+                "sha256", plain_password.encode("utf-8"), salt.encode("utf-8"), 100000
             ).hex()
             return secrets.compare_digest(pwd_hash, new_hash)
         except (ValueError, AttributeError) as e:
@@ -92,9 +87,7 @@ class AuthService:
         password: str,
     ) -> Optional[User]:
         """Authenticate a user with username and password."""
-        result = await db.execute(
-            select(User).where(User.username == username)
-        )
+        result = await db.execute(select(User).where(User.username == username))
         user = result.scalar_one_or_none()
 
         if not user:
@@ -115,17 +108,13 @@ class AuthService:
     @staticmethod
     async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
         """Get a user by ID."""
-        result = await db.execute(
-            select(User).where(User.id == user_id)
-        )
+        result = await db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
     @staticmethod
     async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
         """Get a user by username."""
-        result = await db.execute(
-            select(User).where(User.username == username)
-        )
+        result = await db.execute(select(User).where(User.username == username))
         return result.scalar_one_or_none()
 
     @staticmethod

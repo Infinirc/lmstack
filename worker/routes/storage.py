@@ -44,8 +44,7 @@ async def get_disk_usage():
         containers_count = len(df.get("Containers", []))
 
         volumes_size = sum(
-            v.get("UsageData", {}).get("Size", 0) or 0
-            for v in df.get("Volumes", [])
+            v.get("UsageData", {}).get("Size", 0) or 0 for v in df.get("Volumes", [])
         )
         volumes_count = len(df.get("Volumes", []))
 
@@ -54,11 +53,13 @@ async def get_disk_usage():
 
         # Calculate reclaimable
         images_reclaimable = sum(
-            img.get("Size", 0) for img in df.get("Images", [])
+            img.get("Size", 0)
+            for img in df.get("Images", [])
             if img.get("Containers", 0) == 0
         )
         containers_reclaimable = sum(
-            c.get("SizeRw", 0) or 0 for c in df.get("Containers", [])
+            c.get("SizeRw", 0) or 0
+            for c in df.get("Containers", [])
             if c.get("State") != "running"
         )
         volumes_reclaimable = sum(
@@ -67,7 +68,8 @@ async def get_disk_usage():
             if v.get("UsageData", {}).get("RefCount", 0) == 0
         )
         build_cache_reclaimable = sum(
-            bc.get("Size", 0) for bc in df.get("BuildCache", [])
+            bc.get("Size", 0)
+            for bc in df.get("BuildCache", [])
             if not bc.get("InUse", False)
         )
 
@@ -92,10 +94,15 @@ async def get_disk_usage():
                 "size": build_cache_size,
                 "reclaimable": build_cache_reclaimable,
             },
-            "total_size": images_size + containers_size + volumes_size + build_cache_size,
+            "total_size": images_size
+            + containers_size
+            + volumes_size
+            + build_cache_size,
             "total_reclaimable": (
-                images_reclaimable + containers_reclaimable +
-                volumes_reclaimable + build_cache_reclaimable
+                images_reclaimable
+                + containers_reclaimable
+                + volumes_reclaimable
+                + build_cache_reclaimable
             ),
         }
     except Exception as e:
@@ -113,15 +120,17 @@ async def list_volumes():
         result = []
         for vol in volumes:
             attrs = vol.attrs
-            result.append({
-                "name": vol.name,
-                "driver": attrs.get("Driver") or "local",
-                "mountpoint": attrs.get("Mountpoint") or "",
-                "created_at": attrs.get("CreatedAt") or "",
-                "labels": attrs.get("Labels") or {},
-                "scope": attrs.get("Scope") or "local",
-                "options": attrs.get("Options") or {},
-            })
+            result.append(
+                {
+                    "name": vol.name,
+                    "driver": attrs.get("Driver") or "local",
+                    "mountpoint": attrs.get("Mountpoint") or "",
+                    "created_at": attrs.get("CreatedAt") or "",
+                    "labels": attrs.get("Labels") or {},
+                    "scope": attrs.get("Scope") or "local",
+                    "options": attrs.get("Options") or {},
+                }
+            )
         logger.info(f"Found {len(result)} volumes")
         return {"items": result, "total": len(result)}
     except Exception as e:
@@ -184,7 +193,9 @@ async def prune_storage(
             # Build cache prune via API
             try:
                 prune_result = agent.docker.client.api.prune_builds()
-                result["build_cache_deleted"] = prune_result.get("CachesDeleted", 0) or 0
+                result["build_cache_deleted"] = (
+                    prune_result.get("CachesDeleted", 0) or 0
+                )
                 result["space_reclaimed"] += prune_result.get("SpaceReclaimed", 0)
             except AttributeError:
                 # Build cache prune may not be available in older Docker versions

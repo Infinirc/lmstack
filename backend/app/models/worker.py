@@ -1,4 +1,5 @@
 """Worker database model"""
+
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -11,6 +12,7 @@ from app.database import Base
 
 class WorkerStatus(str, Enum):
     """Worker status enum"""
+
     ONLINE = "online"
     OFFLINE = "offline"
     ERROR = "error"
@@ -18,8 +20,9 @@ class WorkerStatus(str, Enum):
 
 class ConnectionType(str, Enum):
     """Worker connection type"""
-    DIRECT = "direct"       # Direct IP connection (internal network)
-    TAILSCALE = "tailscale" # Via Tailscale/Headscale VPN
+
+    DIRECT = "direct"  # Direct IP connection (internal network)
+    TAILSCALE = "tailscale"  # Via Tailscale/Headscale VPN
 
 
 class Worker(Base):
@@ -30,25 +33,23 @@ class Worker(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     address: Mapped[str] = mapped_column(String(255), nullable=False)  # IP:Port (direct connection)
-    status: Mapped[str] = mapped_column(
-        String(50), default=WorkerStatus.OFFLINE.value
-    )
+    status: Mapped[str] = mapped_column(String(50), default=WorkerStatus.OFFLINE.value)
 
     # Connection type and Tailscale support
-    connection_type: Mapped[str] = mapped_column(
-        String(50), default=ConnectionType.DIRECT.value
-    )
-    tailscale_ip: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # IP in Tailscale network
-    headscale_node_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Node ID in Headscale
+    connection_type: Mapped[str] = mapped_column(String(50), default=ConnectionType.DIRECT.value)
+    tailscale_ip: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )  # IP in Tailscale network
+    headscale_node_id: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )  # Node ID in Headscale
 
     gpu_info: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     system_info: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     labels: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

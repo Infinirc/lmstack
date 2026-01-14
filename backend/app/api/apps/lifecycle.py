@@ -2,6 +2,7 @@
 
 Contains endpoints for starting, stopping, and managing app state.
 """
+
 import logging
 from typing import Optional
 

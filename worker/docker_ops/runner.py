@@ -39,16 +39,18 @@ def _cleanup_old_progress() -> None:
     if len(_pull_progress) > _MAX_PROGRESS_ENTRIES:
         # Remove completed or errored entries first
         completed_keys = [
-            key for key, val in _pull_progress.items()
+            key
+            for key, val in _pull_progress.items()
             if val.get("status") in ("completed", "error")
         ]
-        for key in completed_keys[:len(_pull_progress) - _MAX_PROGRESS_ENTRIES // 2]:
+        for key in completed_keys[: len(_pull_progress) - _MAX_PROGRESS_ENTRIES // 2]:
             _pull_progress.pop(key, None)
 
 
 # =============================================================================
 # Docker Runner
 # =============================================================================
+
 
 class DockerRunner:
     """Manage Docker containers for model inference."""
@@ -117,12 +119,15 @@ class DockerRunner:
         """Pull image with progress tracking."""
         _cleanup_old_progress()
 
-        _set_pull_progress(deployment_id, {
-            "status": "pulling",
-            "image": image,
-            "progress": 0,
-            "layers": {},
-        })
+        _set_pull_progress(
+            deployment_id,
+            {
+                "status": "pulling",
+                "image": image,
+                "progress": 0,
+                "layers": {},
+            },
+        )
 
         try:
             for line in self.client.api.pull(image, stream=True, decode=True):
@@ -143,31 +148,44 @@ class DockerRunner:
                     # Calculate overall progress
                     total_size = sum(l.get("total", 0) for l in layers.values())
                     downloaded = sum(l.get("current", 0) for l in layers.values())
-                    overall_progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
+                    overall_progress = (
+                        int((downloaded / total_size) * 100) if total_size > 0 else 0
+                    )
 
-                    _set_pull_progress(deployment_id, {
-                        "status": "pulling",
-                        "image": image,
-                        "progress": overall_progress,
-                        "layers": layers,
-                    })
+                    _set_pull_progress(
+                        deployment_id,
+                        {
+                            "status": "pulling",
+                            "image": image,
+                            "progress": overall_progress,
+                            "layers": layers,
+                        },
+                    )
 
                 elif "status" in line:
                     logger.info(f"Pull: {line.get('status')}")
 
-            _set_pull_progress(deployment_id, {
-                "status": "completed",
-                "image": image,
-                "progress": 100,
-                "layers": _pull_progress.get(str(deployment_id), {}).get("layers", {}),
-            })
+            _set_pull_progress(
+                deployment_id,
+                {
+                    "status": "completed",
+                    "image": image,
+                    "progress": 100,
+                    "layers": _pull_progress.get(str(deployment_id), {}).get(
+                        "layers", {}
+                    ),
+                },
+            )
 
         except APIError as e:
-            _set_pull_progress(deployment_id, {
-                "status": "error",
-                "image": image,
-                "error": str(e),
-            })
+            _set_pull_progress(
+                deployment_id,
+                {
+                    "status": "error",
+                    "image": image,
+                    "error": str(e),
+                },
+            )
             raise
 
     async def run(
@@ -300,11 +318,17 @@ class DockerRunner:
 
         for container in self.client.containers.list(all=True):
             if container.name.startswith(prefix):
-                containers.append({
-                    "id": container.id,
-                    "name": container.name,
-                    "status": container.status,
-                    "image": container.image.tags[0] if container.image.tags else "unknown",
-                })
+                containers.append(
+                    {
+                        "id": container.id,
+                        "name": container.name,
+                        "status": container.status,
+                        "image": (
+                            container.image.tags[0]
+                            if container.image.tags
+                            else "unknown"
+                        ),
+                    }
+                )
 
         return containers

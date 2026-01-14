@@ -1,4 +1,5 @@
 """Application configuration"""
+
 import secrets
 from functools import lru_cache
 from pathlib import Path

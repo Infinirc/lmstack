@@ -1,4 +1,5 @@
 """LMStack API Server"""
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -38,13 +39,15 @@ async def check_worker_status():
 
             async with async_session_maker() as db:
                 # Find workers that haven't sent heartbeat within timeout
-                timeout_threshold = datetime.now(timezone.utc) - timedelta(seconds=settings.worker_timeout)
+                timeout_threshold = datetime.now(timezone.utc) - timedelta(
+                    seconds=settings.worker_timeout
+                )
 
                 # Get workers that are online but haven't sent heartbeat
                 result = await db.execute(
                     select(Worker).where(
                         Worker.status == WorkerStatus.ONLINE.value,
-                        Worker.last_heartbeat < timeout_threshold
+                        Worker.last_heartbeat < timeout_threshold,
                     )
                 )
                 stale_workers = result.scalars().all()

@@ -1,4 +1,5 @@
 """Conversation API routes"""
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -233,7 +234,5 @@ async def clear_all_conversations(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete all conversations for the current user"""
-    await db.execute(
-        delete(Conversation).where(Conversation.user_id == current_user.id)
-    )
+    await db.execute(delete(Conversation).where(Conversation.user_id == current_user.id))
     await db.commit()

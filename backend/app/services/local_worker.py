@@ -2,6 +2,7 @@
 
 Utilities for registering the local machine as a worker.
 """
+
 import logging
 import platform
 import socket
@@ -41,11 +42,11 @@ def get_gpu_info() -> list[dict]:
             [
                 "nvidia-smi",
                 "--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu",
-                "--format=csv,noheader,nounits"
+                "--format=csv,noheader,nounits",
             ],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         if result.returncode == 0:
@@ -54,15 +55,17 @@ def get_gpu_info() -> list[dict]:
                     continue
                 parts = [p.strip() for p in line.split(",")]
                 if len(parts) >= 7:
-                    gpus.append({
-                        "index": int(parts[0]),
-                        "name": parts[1],
-                        "memory_total": int(float(parts[2]) * 1024 * 1024),  # MB to bytes
-                        "memory_used": int(float(parts[3]) * 1024 * 1024),
-                        "memory_free": int(float(parts[4]) * 1024 * 1024),
-                        "utilization": int(parts[5]) if parts[5] != "[N/A]" else 0,
-                        "temperature": int(parts[6]) if parts[6] != "[N/A]" else 0,
-                    })
+                    gpus.append(
+                        {
+                            "index": int(parts[0]),
+                            "name": parts[1],
+                            "memory_total": int(float(parts[2]) * 1024 * 1024),  # MB to bytes
+                            "memory_used": int(float(parts[3]) * 1024 * 1024),
+                            "memory_free": int(float(parts[4]) * 1024 * 1024),
+                            "utilization": int(parts[5]) if parts[5] != "[N/A]" else 0,
+                            "temperature": int(parts[6]) if parts[6] != "[N/A]" else 0,
+                        }
+                    )
     except FileNotFoundError:
         logger.info("nvidia-smi not found, no NVIDIA GPU detected")
     except subprocess.TimeoutExpired:

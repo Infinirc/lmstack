@@ -1,4 +1,5 @@
 """API Gateway routes - OpenAI-compatible proxy endpoints"""
+
 import logging
 import json
 import re
@@ -33,7 +34,12 @@ async def get_api_key_from_header(
     if not authorization:
         raise HTTPException(
             status_code=401,
-            detail={"error": {"message": "Missing Authorization header", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "Missing Authorization header",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     access_key, secret_key = gateway_service.parse_api_key(authorization)
@@ -41,7 +47,9 @@ async def get_api_key_from_header(
     if not access_key or not secret_key:
         raise HTTPException(
             status_code=401,
-            detail={"error": {"message": "Invalid API key format", "type": "invalid_request_error"}},
+            detail={
+                "error": {"message": "Invalid API key format", "type": "invalid_request_error"}
+            },
         )
 
     api_key = await gateway_service.validate_api_key(db, access_key, secret_key)
@@ -49,7 +57,9 @@ async def get_api_key_from_header(
     if not api_key:
         raise HTTPException(
             status_code=401,
-            detail={"error": {"message": "Invalid or expired API key", "type": "invalid_request_error"}},
+            detail={
+                "error": {"message": "Invalid or expired API key", "type": "invalid_request_error"}
+            },
         )
 
     return api_key
@@ -89,7 +99,9 @@ async def get_model(
     if not result:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"message": f"Model '{model_id}' not found", "type": "model_not_found"}},
+            detail={
+                "error": {"message": f"Model '{model_id}' not found", "type": "model_not_found"}
+            },
         )
 
     deployment, model = result
@@ -151,7 +163,12 @@ async def chat_completions(
     if not result:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"message": f"Model '{model_name}' not found or not available", "type": "model_not_found"}},
+            detail={
+                "error": {
+                    "message": f"Model '{model_name}' not found or not available",
+                    "type": "model_not_found",
+                }
+            },
         )
 
     deployment, model = result
@@ -160,7 +177,12 @@ async def chat_completions(
     if not await gateway_service.check_model_access(api_key, model.id):
         raise HTTPException(
             status_code=403,
-            detail={"error": {"message": f"API key does not have access to model '{model_name}'", "type": "permission_error"}},
+            detail={
+                "error": {
+                    "message": f"API key does not have access to model '{model_name}'",
+                    "type": "permission_error",
+                }
+            },
         )
 
     # Get worker address
@@ -233,7 +255,12 @@ async def completions(
     if not result:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"message": f"Model '{model_name}' not found or not available", "type": "model_not_found"}},
+            detail={
+                "error": {
+                    "message": f"Model '{model_name}' not found or not available",
+                    "type": "model_not_found",
+                }
+            },
         )
 
     deployment, model = result
@@ -242,7 +269,12 @@ async def completions(
     if not await gateway_service.check_model_access(api_key, model.id):
         raise HTTPException(
             status_code=403,
-            detail={"error": {"message": f"API key does not have access to model '{model_name}'", "type": "permission_error"}},
+            detail={
+                "error": {
+                    "message": f"API key does not have access to model '{model_name}'",
+                    "type": "permission_error",
+                }
+            },
         )
 
     # Get worker address
@@ -382,18 +414,26 @@ async def proxy_streaming_request(
                                 if line.startswith("data: ") and line != "data: [DONE]":
                                     data = json.loads(line[6:])
                                     if "usage" in data:
-                                        usage_info["prompt_tokens"] = data["usage"].get("prompt_tokens", 0)
-                                        usage_info["completion_tokens"] = data["usage"].get("completion_tokens", 0)
+                                        usage_info["prompt_tokens"] = data["usage"].get(
+                                            "prompt_tokens", 0
+                                        )
+                                        usage_info["completion_tokens"] = data["usage"].get(
+                                            "completion_tokens", 0
+                                        )
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             pass  # Expected for binary chunks or incomplete JSON
 
         except httpx.TimeoutException:
             logger.error(f"Streaming timeout for {upstream_url}")
-            error_data = {"error": {"message": "Request to model timed out", "type": "timeout_error"}}
+            error_data = {
+                "error": {"message": "Request to model timed out", "type": "timeout_error"}
+            }
             yield f"data: {json.dumps(error_data)}\n\n".encode()
         except httpx.RequestError as e:
             logger.error(f"Streaming connection error: {e}")
-            error_data = {"error": {"message": f"Connection error: {e}", "type": "connection_error"}}
+            error_data = {
+                "error": {"message": f"Connection error: {e}", "type": "connection_error"}
+            }
             yield f"data: {json.dumps(error_data)}\n\n".encode()
         except Exception as e:
             logger.exception(f"Unexpected streaming error: {e}")
@@ -459,7 +499,12 @@ async def embeddings(
     if not result:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"message": f"Model '{model_name}' not found or not available", "type": "model_not_found"}},
+            detail={
+                "error": {
+                    "message": f"Model '{model_name}' not found or not available",
+                    "type": "model_not_found",
+                }
+            },
         )
 
     deployment, model = result
@@ -468,7 +513,12 @@ async def embeddings(
     if not await gateway_service.check_model_access(api_key, model.id):
         raise HTTPException(
             status_code=403,
-            detail={"error": {"message": f"API key does not have access to model '{model_name}'", "type": "permission_error"}},
+            detail={
+                "error": {
+                    "message": f"API key does not have access to model '{model_name}'",
+                    "type": "permission_error",
+                }
+            },
         )
 
     # Get worker address
@@ -497,7 +547,9 @@ async def embeddings(
     )
 
 
-def convert_responses_input_to_messages(input_items: list[dict], instructions: str = None) -> list[dict]:
+def convert_responses_input_to_messages(
+    input_items: list[dict], instructions: str = None
+) -> list[dict]:
     """Convert OpenAI Responses API input format to Chat Completions messages format.
 
     Responses API: input = [{role: "user", content: [{type: "input_text", text: "..."}]}]
@@ -541,7 +593,7 @@ def strip_thinking_tags(content: str) -> str:
     if not content:
         return ""
     # Remove <think>...</think> blocks (including multiline)
-    cleaned = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
+    cleaned = re.sub(r"<think>.*?</think>\s*", "", content, flags=re.DOTALL)
     return cleaned.strip()
 
 
@@ -571,16 +623,18 @@ def convert_chat_response_to_responses_format(
         # Strip <think>...</think> tags from Qwen3 and similar models
         content = strip_thinking_tags(content)
 
-        output.append({
-            "type": "message",
-            "role": role,
-            "content": [
-                {
-                    "type": "output_text",
-                    "text": content,
-                }
-            ],
-        })
+        output.append(
+            {
+                "type": "message",
+                "role": role,
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": content,
+                    }
+                ],
+            }
+        )
 
     usage = chat_response.get("usage", {})
 
@@ -626,7 +680,7 @@ async def proxy_responses_streaming(
                             "model": model_name,
                             "status": "in_progress",
                             "output": [],
-                        }
+                        },
                     }
                     yield f"event: response.created\ndata: {json.dumps(created_event)}\n\n".encode()
 
@@ -638,7 +692,7 @@ async def proxy_responses_streaming(
                             "type": "message",
                             "role": "assistant",
                             "content": [],
-                        }
+                        },
                     }
                     yield f"event: response.output_item.added\ndata: {json.dumps(item_added_event)}\n\n".encode()
 
@@ -650,7 +704,7 @@ async def proxy_responses_streaming(
                         "part": {
                             "type": "output_text",
                             "text": "",
-                        }
+                        },
                     }
                     yield f"event: response.content_part.added\ndata: {json.dumps(content_added_event)}\n\n".encode()
 
@@ -688,7 +742,7 @@ async def proxy_responses_streaming(
                         "part": {
                             "type": "output_text",
                             "text": full_content,
-                        }
+                        },
                     }
                     yield f"event: response.content_part.done\ndata: {json.dumps(content_done_event)}\n\n".encode()
 
@@ -699,10 +753,8 @@ async def proxy_responses_streaming(
                         "item": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [
-                                {"type": "output_text", "text": full_content}
-                            ],
-                        }
+                            "content": [{"type": "output_text", "text": full_content}],
+                        },
                     }
                     yield f"event: response.output_item.done\ndata: {json.dumps(item_done_event)}\n\n".encode()
 
@@ -722,16 +774,13 @@ async def proxy_responses_streaming(
                                     "content": [{"type": "output_text", "text": full_content}],
                                 }
                             ],
-                        }
+                        },
                     }
                     yield f"event: response.completed\ndata: {json.dumps(completed_event)}\n\n".encode()
 
         except Exception as e:
             logger.error(f"Responses streaming error: {e}")
-            error_event = {
-                "type": "error",
-                "error": {"message": str(e), "type": "stream_error"}
-            }
+            error_event = {"type": "error", "error": {"message": str(e), "type": "stream_error"}}
             yield f"event: error\ndata: {json.dumps(error_event)}\n\n".encode()
 
     return StreamingResponse(
@@ -780,7 +829,12 @@ async def responses(
     if not result:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"message": f"Model '{model_name}' not found or not available", "type": "model_not_found"}},
+            detail={
+                "error": {
+                    "message": f"Model '{model_name}' not found or not available",
+                    "type": "model_not_found",
+                }
+            },
         )
 
     deployment, model = result
@@ -789,7 +843,12 @@ async def responses(
     if not await gateway_service.check_model_access(api_key, model.id):
         raise HTTPException(
             status_code=403,
-            detail={"error": {"message": f"API key does not have access to model '{model_name}'", "type": "permission_error"}},
+            detail={
+                "error": {
+                    "message": f"API key does not have access to model '{model_name}'",
+                    "type": "permission_error",
+                }
+            },
         )
 
     # Get worker address
@@ -849,7 +908,12 @@ async def responses(
                 logger.error(f"Backend error: {response.status_code} - {response.text}")
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail={"error": {"message": f"Backend error: {response.text}", "type": "backend_error"}},
+                    detail={
+                        "error": {
+                            "message": f"Backend error: {response.text}",
+                            "type": "backend_error",
+                        }
+                    },
                 )
 
             chat_response = response.json()
@@ -858,7 +922,9 @@ async def responses(
         logger.error(f"Request error to backend: {e}")
         raise HTTPException(
             status_code=502,
-            detail={"error": {"message": f"Backend connection error: {str(e)}", "type": "backend_error"}},
+            detail={
+                "error": {"message": f"Backend connection error: {str(e)}", "type": "backend_error"}
+            },
         )
 
     # Convert response to Responses API format

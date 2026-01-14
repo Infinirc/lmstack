@@ -36,49 +36,55 @@ async def migrate():
 
     async with engine.begin() as conn:
         # Get current columns
-        llm_model_columns = await get_table_columns(conn, 'llm_models')
-        deployment_columns = await get_table_columns(conn, 'deployments')
+        llm_model_columns = await get_table_columns(conn, "llm_models")
+        deployment_columns = await get_table_columns(conn, "deployments")
 
         print(f"Current llm_models columns: {llm_model_columns}")
         print(f"Current deployments columns: {deployment_columns}")
 
         # Step 1: Add 'source' column to llm_models if not exists
-        if 'source' not in llm_model_columns:
+        if "source" not in llm_model_columns:
             print("Adding 'source' column to llm_models...")
-            await conn.execute(text(
-                "ALTER TABLE llm_models ADD COLUMN source VARCHAR(50) DEFAULT 'huggingface'"
-            ))
+            await conn.execute(
+                text("ALTER TABLE llm_models ADD COLUMN source VARCHAR(50) DEFAULT 'huggingface'")
+            )
 
             # Migrate backend values to source
-            if 'backend' in llm_model_columns:
+            if "backend" in llm_model_columns:
                 print("Migrating backend values to source...")
-                await conn.execute(text(
-                    "UPDATE llm_models SET source = 'ollama' WHERE backend = 'ollama'"
-                ))
-                await conn.execute(text(
-                    "UPDATE llm_models SET source = 'huggingface' WHERE backend IN ('vllm', 'sglang') OR backend IS NULL"
-                ))
+                await conn.execute(
+                    text("UPDATE llm_models SET source = 'ollama' WHERE backend = 'ollama'")
+                )
+                await conn.execute(
+                    text(
+                        "UPDATE llm_models SET source = 'huggingface' WHERE backend IN ('vllm', 'sglang') OR backend IS NULL"
+                    )
+                )
         else:
             print("'source' column already exists in llm_models")
 
         # Step 2: Add 'backend' column to deployments if not exists
-        if 'backend' not in deployment_columns:
+        if "backend" not in deployment_columns:
             print("Adding 'backend' column to deployments...")
-            await conn.execute(text(
-                "ALTER TABLE deployments ADD COLUMN backend VARCHAR(50) DEFAULT 'vllm'"
-            ))
+            await conn.execute(
+                text("ALTER TABLE deployments ADD COLUMN backend VARCHAR(50) DEFAULT 'vllm'")
+            )
 
             # Copy backend values from models to deployments
-            if 'backend' in llm_model_columns:
+            if "backend" in llm_model_columns:
                 print("Copying backend values from models to deployments...")
-                await conn.execute(text("""
+                await conn.execute(
+                    text(
+                        """
                     UPDATE deployments
                     SET backend = (
                         SELECT llm_models.backend
                         FROM llm_models
                         WHERE llm_models.id = deployments.model_id
                     )
-                """))
+                """
+                    )
+                )
         else:
             print("'backend' column already exists in deployments")
 
@@ -86,9 +92,9 @@ async def migrate():
         # The 'backend' column in llm_models will be ignored by the application
         # It can be removed manually later or by recreating the table
 
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print("Migration completed successfully!")
-        print("="*50)
+        print("=" * 50)
         print("\nNote: The old 'backend' column in llm_models is kept for safety.")
         print("It will be ignored by the application.")
 

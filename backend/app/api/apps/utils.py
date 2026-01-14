@@ -3,6 +3,7 @@
 Contains helper functions, constants, and common utilities used across
 the apps module.
 """
+
 import hashlib
 import logging
 import secrets
@@ -36,6 +37,7 @@ API_KEY_PREFIX = "lmsk"
 # Cryptographic Utilities
 # =============================================================================
 
+
 def generate_access_key() -> str:
     """Generate a random access key (16 hex chars)."""
     return secrets.token_hex(8)
@@ -58,6 +60,7 @@ def hash_secret(secret: str) -> str:
 # Database Helpers
 # =============================================================================
 
+
 async def get_worker_or_404(worker_id: int, db: AsyncSession) -> Worker:
     """Get worker by ID or raise 404 if not found or offline."""
     result = await db.execute(select(Worker).where(Worker.id == worker_id))
@@ -68,8 +71,7 @@ async def get_worker_or_404(worker_id: int, db: AsyncSession) -> Worker:
 
     if worker.status != "online":
         raise HTTPException(
-            status_code=400,
-            detail=f"Worker {worker.name} is not online (status: {worker.status})"
+            status_code=400, detail=f"Worker {worker.name} is not online (status: {worker.status})"
         )
 
     return worker
@@ -78,6 +80,7 @@ async def get_worker_or_404(worker_id: int, db: AsyncSession) -> Worker:
 # =============================================================================
 # Worker Communication
 # =============================================================================
+
 
 async def call_worker_api(
     worker: Worker,
@@ -118,14 +121,10 @@ async def call_worker_api(
 
     except httpx.ConnectError:
         raise HTTPException(
-            status_code=503,
-            detail=f"Cannot connect to worker {worker.name} at {worker.address}"
+            status_code=503, detail=f"Cannot connect to worker {worker.name} at {worker.address}"
         )
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Worker {worker.name} request timed out"
-        )
+        raise HTTPException(status_code=504, detail=f"Worker {worker.name} request timed out")
     except HTTPException:
         raise
     except Exception as e:
@@ -136,6 +135,7 @@ async def call_worker_api(
 # =============================================================================
 # Response Conversion
 # =============================================================================
+
 
 def get_host_ip(request: Request, worker: Worker) -> str:
     """Determine the host IP that the container can use to reach LMStack.
@@ -188,7 +188,7 @@ def app_to_response(app: App, request: Request) -> AppResponse:
     # Build proxy URL (legacy)
     proxy_url = None
     if app.status == AppStatus.RUNNING.value and app.proxy_path:
-        proxy_url = str(request.base_url).rstrip('/') + app.proxy_path
+        proxy_url = str(request.base_url).rstrip("/") + app.proxy_path
 
     # Build access URL based on proxy setting
     access_url = None

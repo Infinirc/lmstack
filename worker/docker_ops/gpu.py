@@ -26,6 +26,7 @@ class GPUDetector:
         """
         try:
             import pynvml
+
             pynvml.nvmlInit()
 
             device_count = pynvml.nvmlDeviceGetCount()
@@ -37,7 +38,7 @@ class GPUDetector:
                 # Get GPU name
                 name = pynvml.nvmlDeviceGetName(handle)
                 if isinstance(name, bytes):
-                    name = name.decode('utf-8')
+                    name = name.decode("utf-8")
 
                 # Get memory info
                 mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
@@ -57,15 +58,17 @@ class GPUDetector:
                 except pynvml.NVMLError:
                     temp = 0
 
-                gpus.append({
-                    "index": i,
-                    "name": name,
-                    "memory_total": mem_info.total,
-                    "memory_used": mem_info.used,
-                    "memory_free": mem_info.free,
-                    "utilization": gpu_util,
-                    "temperature": temp,
-                })
+                gpus.append(
+                    {
+                        "index": i,
+                        "name": name,
+                        "memory_total": mem_info.total,
+                        "memory_used": mem_info.used,
+                        "memory_free": mem_info.free,
+                        "utilization": gpu_util,
+                        "temperature": temp,
+                    }
+                )
 
             pynvml.nvmlShutdown()
             return gpus

@@ -5,6 +5,7 @@ Contains the background task logic for deploying apps including:
 - Container creation and health checking
 - Nginx proxy setup
 """
+
 import asyncio
 import logging
 from typing import Optional
@@ -52,16 +53,18 @@ def cleanup_old_progress_entries() -> None:
     if len(_deployment_progress) > _MAX_PROGRESS_ENTRIES:
         # Remove completed or errored entries first
         to_remove = [
-            app_id for app_id, progress in _deployment_progress.items()
+            app_id
+            for app_id, progress in _deployment_progress.items()
             if progress.get("stage") in ("completed", "error", "running")
         ]
-        for app_id in to_remove[:len(_deployment_progress) - _MAX_PROGRESS_ENTRIES // 2]:
+        for app_id in to_remove[: len(_deployment_progress) - _MAX_PROGRESS_ENTRIES // 2]:
             _deployment_progress.pop(app_id, None)
 
 
 # =============================================================================
 # Image Pulling
 # =============================================================================
+
 
 async def pull_image_with_progress(
     worker: Worker,
@@ -102,6 +105,7 @@ async def pull_image_with_progress(
 # Container Health Checking
 # =============================================================================
 
+
 async def wait_for_container_healthy(
     worker_address: str,
     container_id: str,
@@ -133,9 +137,7 @@ async def wait_for_container_healthy(
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         while waited < max_wait:
             try:
-                response = await client.get(
-                    f"http://{worker_address}/containers/{container_id}"
-                )
+                response = await client.get(f"http://{worker_address}/containers/{container_id}")
 
                 # Reset failure counter on successful connection
                 consecutive_failures = 0
@@ -159,8 +161,7 @@ async def wait_for_container_healthy(
                         elif "healthy)" in status:
                             # Container reports healthy, verify HTTP access
                             set_deployment_progress(
-                                app_id, "starting", 95,
-                                "Almost ready, verifying accessibility..."
+                                app_id, "starting", 95, "Almost ready, verifying accessibility..."
                             )
                             if await _verify_http_access(client, app_url, app_id):
                                 return True
@@ -169,23 +170,26 @@ async def wait_for_container_healthy(
                             # Health check still running
                             progress_pct = min(50 + int(waited / max_wait * 40), 90)
                             set_deployment_progress(
-                                app_id, "starting", progress_pct,
-                                f"App is initializing ({waited}s, please wait)..."
+                                app_id,
+                                "starting",
+                                progress_pct,
+                                f"App is initializing ({waited}s, please wait)...",
                             )
 
                         elif "health" not in status:
                             # No health check defined, verify HTTP access directly
                             if waited >= 10:
                                 set_deployment_progress(
-                                    app_id, "starting", 90,
-                                    "Almost ready, verifying accessibility..."
+                                    app_id,
+                                    "starting",
+                                    90,
+                                    "Almost ready, verifying accessibility...",
                                 )
                                 if await _verify_http_access(client, app_url, app_id):
                                     return True
                             else:
                                 set_deployment_progress(
-                                    app_id, "starting", 70,
-                                    "Container starting..."
+                                    app_id, "starting", 70, "Container starting..."
                                 )
 
                     elif state in ["exited", "dead"]:
@@ -226,6 +230,7 @@ async def _verify_http_access(
 # =============================================================================
 # Main Deployment Task
 # =============================================================================
+
 
 async def deploy_app_background(
     app_id: int,
@@ -314,8 +319,7 @@ async def deploy_app_background(
 
             # Phase 3: Wait for health
             set_deployment_progress(
-                app_id, "starting", 50,
-                "Waiting for app to start (this may take 1-3 minutes)..."
+                app_id, "starting", 50, "Waiting for app to start (this may take 1-3 minutes)..."
             )
 
             is_healthy = await wait_for_container_healthy(
@@ -329,10 +333,7 @@ async def deploy_app_background(
                 app.status = AppStatus.ERROR.value
                 app.status_message = "Container health check timed out after 10 minutes"
                 await db.commit()
-                set_deployment_progress(
-                    app_id, "error", 0,
-                    "Container health check timed out"
-                )
+                set_deployment_progress(app_id, "error", 0, "Container health check timed out")
                 return
 
             # Phase 4: Setup proxy
@@ -384,21 +385,25 @@ async def _create_container(
     # Build volumes
     volumes = []
     for vol in app_def.get("volumes", []):
-        volumes.append({
-            "source": f"{container_name}-{vol['name']}",
-            "destination": vol["destination"],
-            "mode": "rw",
-        })
+        volumes.append(
+            {
+                "source": f"{container_name}-{vol['name']}",
+                "destination": vol["destination"],
+                "mode": "rw",
+            }
+        )
 
     payload = {
         "name": container_name,
         "image": app_def["image"],
         "env": env_vars,
-        "ports": [{
-            "container_port": app_def["internal_port"],
-            "host_port": port,
-            "protocol": "tcp",
-        }],
+        "ports": [
+            {
+                "container_port": app_def["internal_port"],
+                "host_port": port,
+                "protocol": "tcp",
+            }
+        ],
         "volumes": volumes,
         "restart_policy": "unless-stopped",
         "labels": {

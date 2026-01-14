@@ -32,23 +32,21 @@ async def migrate():
 
     async with engine.begin() as conn:
         # Get current columns
-        api_key_columns = await get_table_columns(conn, 'api_keys')
+        api_key_columns = await get_table_columns(conn, "api_keys")
 
         print(f"Current api_keys columns: {api_key_columns}")
 
         # Add 'monthly_token_limit' column if not exists
-        if 'monthly_token_limit' not in api_key_columns:
+        if "monthly_token_limit" not in api_key_columns:
             print("Adding 'monthly_token_limit' column to api_keys...")
-            await conn.execute(text(
-                "ALTER TABLE api_keys ADD COLUMN monthly_token_limit INTEGER"
-            ))
+            await conn.execute(text("ALTER TABLE api_keys ADD COLUMN monthly_token_limit INTEGER"))
             print("Column added successfully!")
         else:
             print("'monthly_token_limit' column already exists in api_keys")
 
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print("Migration completed successfully!")
-        print("="*50)
+        print("=" * 50)
 
     await engine.dispose()
 

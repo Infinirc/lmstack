@@ -1,4 +1,5 @@
 """API Key model for authentication and access control"""
+
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Index
@@ -32,9 +33,7 @@ class ApiKey(Base):
     # Relationships
     usages = relationship("Usage", back_populates="api_key")
 
-    __table_args__ = (
-        Index("ix_api_keys_access_key", "access_key"),
-    )
+    __table_args__ = (Index("ix_api_keys_access_key", "access_key"),)
 
 
 class Usage(Base):

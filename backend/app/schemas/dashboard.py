@@ -1,4 +1,5 @@
 """Dashboard Pydantic schemas"""
+
 from datetime import datetime, date
 from typing import List, Optional
 from pydantic import BaseModel
@@ -6,6 +7,7 @@ from pydantic import BaseModel
 
 class ResourceCounts(BaseModel):
     """Resource count summary"""
+
     worker_count: int
     worker_online_count: int
     gpu_count: int
@@ -16,6 +18,7 @@ class ResourceCounts(BaseModel):
 
 class GPUSummary(BaseModel):
     """GPU summary across all workers"""
+
     total_memory_gb: float
     used_memory_gb: float
     utilization_avg: float
@@ -25,12 +28,14 @@ class GPUSummary(BaseModel):
 
 class UsagePoint(BaseModel):
     """Single point in usage time series"""
+
     date: date
     value: int
 
 
 class UsageSummary(BaseModel):
     """Usage statistics summary"""
+
     total_requests: int
     total_prompt_tokens: int
     total_completion_tokens: int
@@ -40,6 +45,7 @@ class UsageSummary(BaseModel):
 
 class TopModel(BaseModel):
     """Top model by usage"""
+
     model_id: int
     model_name: str
     request_count: int
@@ -48,6 +54,7 @@ class TopModel(BaseModel):
 
 class TopApiKey(BaseModel):
     """Top API key by usage"""
+
     api_key_id: int
     api_key_name: str
     request_count: int
@@ -56,6 +63,7 @@ class TopApiKey(BaseModel):
 
 class DashboardResponse(BaseModel):
     """Complete dashboard response"""
+
     resources: ResourceCounts
     gpu_summary: GPUSummary
     usage: UsageSummary

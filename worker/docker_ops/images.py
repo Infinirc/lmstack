@@ -57,16 +57,18 @@ class ImageManager:
                     # Normalize timestamp format (remove nanoseconds)
                     created_at = created_at.split(".")[0] + "Z"
 
-                images.append({
-                    "id": image.short_id.replace("sha256:", ""),
-                    "repository": repo,
-                    "tag": img_tag,
-                    "full_name": tag,
-                    "size": image.attrs.get("Size", 0),
-                    "created_at": created_at,
-                    "digest": image.attrs.get("RepoDigests", [None])[0],
-                    "labels": image.labels or {},
-                })
+                images.append(
+                    {
+                        "id": image.short_id.replace("sha256:", ""),
+                        "repository": repo,
+                        "tag": img_tag,
+                        "full_name": tag,
+                        "size": image.attrs.get("Size", 0),
+                        "created_at": created_at,
+                        "digest": image.attrs.get("RepoDigests", [None])[0],
+                        "labels": image.labels or {},
+                    }
+                )
 
         return images
 
@@ -89,11 +91,13 @@ class ImageManager:
         layers = []
         for layer in history:
             if layer.get("Size", 0) > 0:  # Skip empty layers
-                layers.append({
-                    "digest": layer.get("Id", "")[:20] if layer.get("Id") else "",
-                    "size": layer.get("Size", 0),
-                    "instruction": layer.get("CreatedBy", ""),
-                })
+                layers.append(
+                    {
+                        "digest": layer.get("Id", "")[:20] if layer.get("Id") else "",
+                        "size": layer.get("Size", 0),
+                        "instruction": layer.get("CreatedBy", ""),
+                    }
+                )
 
         # Parse config
         config = image.attrs.get("Config", {})
@@ -121,7 +125,11 @@ class ImageManager:
                 "entrypoint": config.get("Entrypoint"),
                 "working_dir": config.get("WorkingDir"),
                 "exposed_ports": list(config.get("ExposedPorts", {}).keys()),
-                "volumes": list(config.get("Volumes", {}).keys()) if config.get("Volumes") else None,
+                "volumes": (
+                    list(config.get("Volumes", {}).keys())
+                    if config.get("Volumes")
+                    else None
+                ),
             },
         }
 
@@ -155,7 +163,9 @@ class ImageManager:
         # Pull with progress tracking
         layers_progress: dict[str, dict] = {}
 
-        for line in self.client.api.pull(image, stream=True, decode=True, auth_config=auth):
+        for line in self.client.api.pull(
+            image, stream=True, decode=True, auth_config=auth
+        ):
             if progress_callback and "id" in line:
                 layer_id = line["id"]
                 detail = line.get("progressDetail", {})

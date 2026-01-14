@@ -3,6 +3,7 @@
 This module provides standardized exceptions for consistent error handling
 across the application.
 """
+
 from typing import Any, Optional
 
 

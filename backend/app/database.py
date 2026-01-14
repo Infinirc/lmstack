@@ -1,4 +1,5 @@
 """Database configuration and session management"""
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -20,6 +21,7 @@ async_session_maker = async_sessionmaker(
 
 class Base(DeclarativeBase):
     """Base class for all database models"""
+
     pass
 
 

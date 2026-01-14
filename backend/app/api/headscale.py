@@ -2,6 +2,7 @@
 
 Provides endpoints for managing the Headscale VPN server.
 """
+
 import logging
 from typing import Optional, List
 
@@ -21,15 +22,20 @@ router = APIRouter()
 # Schemas
 # ============================================================================
 
+
 class HeadscaleStartRequest(BaseModel):
     """Request to start Headscale."""
-    server_url: Optional[str] = Field(None, description="Server URL (auto-detected if not provided)")
+
+    server_url: Optional[str] = Field(
+        None, description="Server URL (auto-detected if not provided)"
+    )
     http_port: int = Field(8080, description="HTTP port for Headscale")
     grpc_port: int = Field(50443, description="gRPC port for Headscale")
 
 
 class HeadscaleStatusResponse(BaseModel):
     """Headscale status response."""
+
     enabled: bool
     running: bool
     container_status: Optional[str] = None
@@ -40,6 +46,7 @@ class HeadscaleStatusResponse(BaseModel):
 
 class PreauthKeyRequest(BaseModel):
     """Request to create a preauth key."""
+
     reusable: bool = Field(True, description="Allow multiple uses")
     ephemeral: bool = Field(False, description="Nodes using this key will be ephemeral")
     expiration: str = Field("720h", description="Key expiration (e.g., 24h, 720h)")
@@ -48,12 +55,14 @@ class PreauthKeyRequest(BaseModel):
 
 class PreauthKeyResponse(BaseModel):
     """Preauth key response."""
+
     key: str
     join_command: str
 
 
 class HeadscaleNodeResponse(BaseModel):
     """Node in Headscale."""
+
     id: int
     name: str
     given_name: Optional[str] = None
@@ -66,6 +75,7 @@ class HeadscaleNodeResponse(BaseModel):
 
 class HeadscaleNodesResponse(BaseModel):
     """List of Headscale nodes."""
+
     items: List[HeadscaleNodeResponse]
     total: int
 
@@ -73,6 +83,7 @@ class HeadscaleNodesResponse(BaseModel):
 # ============================================================================
 # Endpoints
 # ============================================================================
+
 
 @router.get("/status", response_model=HeadscaleStatusResponse)
 async def get_headscale_status(
@@ -105,6 +116,7 @@ async def start_headscale(
         if host_ip in ("localhost", "127.0.0.1"):
             # Try to get actual IP
             import socket
+
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.connect(("8.8.8.8", 80))

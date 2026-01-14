@@ -1,4 +1,5 @@
 """User database model"""
+
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -11,9 +12,10 @@ from app.database import Base
 
 class UserRole(str, Enum):
     """User role enum"""
-    ADMIN = "admin"      # Full access - can manage users, settings, everything
+
+    ADMIN = "admin"  # Full access - can manage users, settings, everything
     OPERATOR = "operator"  # Can manage deployments, models, workers
-    VIEWER = "viewer"    # Read-only access
+    VIEWER = "viewer"  # Read-only access
 
 
 class User(Base):
@@ -34,9 +36,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

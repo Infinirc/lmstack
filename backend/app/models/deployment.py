@@ -1,4 +1,5 @@
 """Deployment database model"""
+
 from datetime import datetime
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 
 class DeploymentStatus(str, Enum):
     """Deployment status enum"""
+
     PENDING = "pending"
     DOWNLOADING = "downloading"
     STARTING = "starting"
@@ -34,22 +36,14 @@ class Deployment(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
     # Foreign keys
-    model_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("llm_models.id"), nullable=False
-    )
-    worker_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("workers.id"), nullable=False
-    )
+    model_id: Mapped[int] = mapped_column(Integer, ForeignKey("llm_models.id"), nullable=False)
+    worker_id: Mapped[int] = mapped_column(Integer, ForeignKey("workers.id"), nullable=False)
 
     # Inference backend (vllm, sglang, ollama)
-    backend: Mapped[str] = mapped_column(
-        String(50), default=BackendType.VLLM.value, nullable=False
-    )
+    backend: Mapped[str] = mapped_column(String(50), default=BackendType.VLLM.value, nullable=False)
 
     # Status
-    status: Mapped[str] = mapped_column(
-        String(50), default=DeploymentStatus.PENDING.value
-    )
+    status: Mapped[str] = mapped_column(String(50), default=DeploymentStatus.PENDING.value)
     status_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Container info
@@ -60,9 +54,7 @@ class Deployment(Base):
     gpu_indexes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     extra_params: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

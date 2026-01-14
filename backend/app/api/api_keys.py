@@ -1,4 +1,5 @@
 """API Keys management routes"""
+
 import secrets
 import hashlib
 from datetime import datetime, timedelta
@@ -55,10 +56,7 @@ async def list_api_keys(
 
     # Get paginated results
     result = await db.execute(
-        select(ApiKey)
-        .offset(skip)
-        .limit(limit)
-        .order_by(ApiKey.created_at.desc())
+        select(ApiKey).offset(skip).limit(limit).order_by(ApiKey.created_at.desc())
     )
     api_keys = result.scalars().all()
 
@@ -75,9 +73,7 @@ async def create_api_key(
 ):
     """Create a new API key"""
     # Check for duplicate name
-    existing = await db.execute(
-        select(ApiKey).where(ApiKey.name == api_key_in.name)
-    )
+    existing = await db.execute(select(ApiKey).where(ApiKey.name == api_key_in.name))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="API key with this name already exists")
 
@@ -129,9 +125,7 @@ async def get_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Get an API key by ID"""
-    result = await db.execute(
-        select(ApiKey).where(ApiKey.id == api_key_id)
-    )
+    result = await db.execute(select(ApiKey).where(ApiKey.id == api_key_id))
     api_key = result.scalar_one_or_none()
 
     if not api_key:
@@ -147,9 +141,7 @@ async def update_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an API key"""
-    result = await db.execute(
-        select(ApiKey).where(ApiKey.id == api_key_id)
-    )
+    result = await db.execute(select(ApiKey).where(ApiKey.id == api_key_id))
     api_key = result.scalar_one_or_none()
 
     if not api_key:
@@ -157,9 +149,7 @@ async def update_api_key(
 
     # Check for duplicate name
     if api_key_in.name and api_key_in.name != api_key.name:
-        existing = await db.execute(
-            select(ApiKey).where(ApiKey.name == api_key_in.name)
-        )
+        existing = await db.execute(select(ApiKey).where(ApiKey.name == api_key_in.name))
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="API key with this name already exists")
 
@@ -180,9 +170,7 @@ async def delete_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an API key"""
-    result = await db.execute(
-        select(ApiKey).where(ApiKey.id == api_key_id)
-    )
+    result = await db.execute(select(ApiKey).where(ApiKey.id == api_key_id))
     api_key = result.scalar_one_or_none()
 
     if not api_key:
@@ -201,9 +189,7 @@ async def get_api_key_stats(
     from datetime import timedelta
     from app.models.api_key import Usage
 
-    result = await db.execute(
-        select(ApiKey).where(ApiKey.id == api_key_id)
-    )
+    result = await db.execute(select(ApiKey).where(ApiKey.id == api_key_id))
     api_key = result.scalar_one_or_none()
 
     if not api_key:
@@ -228,7 +214,9 @@ async def get_api_key_stats(
         "total_requests": row.total_requests or 0 if row else 0,
         "total_prompt_tokens": row.total_prompt_tokens or 0 if row else 0,
         "total_completion_tokens": row.total_completion_tokens or 0 if row else 0,
-        "total_tokens": (row.total_prompt_tokens or 0) + (row.total_completion_tokens or 0) if row else 0,
+        "total_tokens": (
+            (row.total_prompt_tokens or 0) + (row.total_completion_tokens or 0) if row else 0
+        ),
     }
 
 
@@ -248,8 +236,7 @@ async def get_all_api_keys_stats(
             func.sum(Usage.request_count).label("total_requests"),
             func.sum(Usage.prompt_tokens).label("total_prompt_tokens"),
             func.sum(Usage.completion_tokens).label("total_completion_tokens"),
-        )
-        .where(Usage.date >= thirty_days_ago)
+        ).where(Usage.date >= thirty_days_ago)
     )
     total_row = total_result.first()
 
@@ -273,6 +260,10 @@ async def get_all_api_keys_stats(
         "total_requests": total_row.total_requests or 0 if total_row else 0,
         "total_prompt_tokens": total_row.total_prompt_tokens or 0 if total_row else 0,
         "total_completion_tokens": total_row.total_completion_tokens or 0 if total_row else 0,
-        "total_tokens": (total_row.total_prompt_tokens or 0) + (total_row.total_completion_tokens or 0) if total_row else 0,
+        "total_tokens": (
+            (total_row.total_prompt_tokens or 0) + (total_row.total_completion_tokens or 0)
+            if total_row
+            else 0
+        ),
         "per_key_stats": per_key_stats,
     }

@@ -4,6 +4,7 @@ Model Files API Routes
 Provides a virtual view of model files on workers by aggregating deployment data.
 A model "exists" on a worker when there's any deployment for it on that worker.
 """
+
 from typing import Optional
 from collections import defaultdict
 
@@ -70,17 +71,13 @@ async def list_model_files(
         first_dep = deps[0]
 
         # Determine overall status based on deployment states
-        running_count = sum(
-            1 for d in deps
-            if d.status == DeploymentStatus.RUNNING.value
-        )
-        downloading_count = sum(
-            1 for d in deps
-            if d.status == DeploymentStatus.DOWNLOADING.value
-        )
+        running_count = sum(1 for d in deps if d.status == DeploymentStatus.RUNNING.value)
+        downloading_count = sum(1 for d in deps if d.status == DeploymentStatus.DOWNLOADING.value)
         starting_count = sum(
-            1 for d in deps
-            if d.status in [
+            1
+            for d in deps
+            if d.status
+            in [
                 DeploymentStatus.PENDING.value,
                 DeploymentStatus.STARTING.value,
             ]
@@ -106,34 +103,36 @@ async def list_model_files(
         else:
             progress = 0.0
 
-        model_files.append(ModelFileView(
-            model_id=mid,
-            worker_id=wid,
-            model_name=first_dep.model.name if first_dep.model else "Unknown",
-            model_source=first_dep.model.model_id if first_dep.model else "",
-            worker_name=first_dep.worker.name if first_dep.worker else "Unknown",
-            worker_address=first_dep.worker.address if first_dep.worker else "",
-            status=status,
-            download_progress=progress,
-            deployment_count=len(deps),
-            running_count=running_count,
-            deployments=[
-                ModelFileDeployment(
-                    id=d.id,
-                    name=d.name,
-                    status=d.status,
-                    port=d.port,
-                )
-                for d in sorted(deps, key=lambda x: x.created_at, reverse=True)
-            ],
-        ))
+        model_files.append(
+            ModelFileView(
+                model_id=mid,
+                worker_id=wid,
+                model_name=first_dep.model.name if first_dep.model else "Unknown",
+                model_source=first_dep.model.model_id if first_dep.model else "",
+                worker_name=first_dep.worker.name if first_dep.worker else "Unknown",
+                worker_address=first_dep.worker.address if first_dep.worker else "",
+                status=status,
+                download_progress=progress,
+                deployment_count=len(deps),
+                running_count=running_count,
+                deployments=[
+                    ModelFileDeployment(
+                        id=d.id,
+                        name=d.name,
+                        status=d.status,
+                        port=d.port,
+                    )
+                    for d in sorted(deps, key=lambda x: x.created_at, reverse=True)
+                ],
+            )
+        )
 
     # Sort by model name, then worker name for consistent ordering
     model_files.sort(key=lambda x: (x.model_name.lower(), x.worker_name.lower()))
 
     # Apply pagination
     total = len(model_files)
-    model_files = model_files[skip:skip + limit]
+    model_files = model_files[skip : skip + limit]
 
     return ModelFileListResponse(items=model_files, total=total)
 
@@ -166,8 +165,7 @@ async def delete_model_file(
 
     if not deployments:
         raise HTTPException(
-            status_code=404,
-            detail="No model files found for this model on this worker"
+            status_code=404, detail="No model files found for this model on this worker"
         )
 
     # Check for active deployments
@@ -185,7 +183,7 @@ async def delete_model_file(
             active_names += f" and {len(active) - 3} more"
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot delete: {len(active)} deployment(s) are still active ({active_names}). Stop them first."
+            detail=f"Cannot delete: {len(active)} deployment(s) are still active ({active_names}). Stop them first.",
         )
 
     # Delete all stopped deployments

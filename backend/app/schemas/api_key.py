@@ -1,4 +1,5 @@
 """API Key Pydantic schemas"""
+
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -6,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class ApiKeyCreate(BaseModel):
     """Request to create an API key"""
+
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
     allowed_model_ids: Optional[List[int]] = None  # None = all models allowed
@@ -15,6 +17,7 @@ class ApiKeyCreate(BaseModel):
 
 class ApiKeyUpdate(BaseModel):
     """Request to update an API key"""
+
     name: Optional[str] = None
     description: Optional[str] = None
     allowed_model_ids: Optional[List[int]] = None
@@ -23,6 +26,7 @@ class ApiKeyUpdate(BaseModel):
 
 class ApiKeyResponse(BaseModel):
     """API key response (without secret)"""
+
     id: int
     name: str
     description: Optional[str]
@@ -39,10 +43,12 @@ class ApiKeyResponse(BaseModel):
 
 class ApiKeyCreateResponse(ApiKeyResponse):
     """Response when creating an API key (includes full key value)"""
+
     api_key: str  # Full key: lmsk_{access_key}_{secret_key}
 
 
 class ApiKeyListResponse(BaseModel):
     """Paginated API key list"""
+
     items: List[ApiKeyResponse]
     total: int

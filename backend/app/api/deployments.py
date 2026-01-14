@@ -1,4 +1,5 @@
 """Deployment API routes"""
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
@@ -87,11 +88,13 @@ async def list_deployments(
 
     # Get total count
     count_query = select(func.count()).select_from(
-        select(Deployment).where(
+        select(Deployment)
+        .where(
             *([Deployment.status == status] if status else []),
             *([Deployment.worker_id == worker_id] if worker_id else []),
             *([Deployment.model_id == model_id] if model_id else []),
-        ).subquery()
+        )
+        .subquery()
     )
     total = await db.scalar(count_query)
 
@@ -113,47 +116,43 @@ async def create_deployment(
 ):
     """Create a new deployment"""
     # Check if deployment with same name exists
-    existing = await db.execute(
-        select(Deployment).where(Deployment.name == deployment_in.name)
-    )
+    existing = await db.execute(select(Deployment).where(Deployment.name == deployment_in.name))
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="Deployment with this name already exists"
-        )
+        raise HTTPException(status_code=400, detail="Deployment with this name already exists")
 
     # Verify worker exists
-    worker_result = await db.execute(
-        select(Worker).where(Worker.id == deployment_in.worker_id)
-    )
+    worker_result = await db.execute(select(Worker).where(Worker.id == deployment_in.worker_id))
     worker = worker_result.scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
 
     # Verify model exists
-    model_result = await db.execute(
-        select(LLMModel).where(LLMModel.id == deployment_in.model_id)
-    )
+    model_result = await db.execute(select(LLMModel).where(LLMModel.id == deployment_in.model_id))
     model = model_result.scalar_one_or_none()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
     # Validate backend compatibility with model source
     from app.models.llm_model import ModelSource, BackendType
-    backend_value = deployment_in.backend.value if hasattr(deployment_in.backend, 'value') else deployment_in.backend
+
+    backend_value = (
+        deployment_in.backend.value
+        if hasattr(deployment_in.backend, "value")
+        else deployment_in.backend
+    )
 
     if model.source == ModelSource.OLLAMA.value:
         # Ollama models can only use Ollama backend
         if backend_value != BackendType.OLLAMA.value:
             raise HTTPException(
-                status_code=400,
-                detail="Ollama models can only be deployed with Ollama backend"
+                status_code=400, detail="Ollama models can only be deployed with Ollama backend"
             )
     elif model.source == ModelSource.HUGGINGFACE.value:
         # HuggingFace models can use vLLM or SGLang, not Ollama
         if backend_value == BackendType.OLLAMA.value:
             raise HTTPException(
                 status_code=400,
-                detail="HuggingFace models cannot be deployed with Ollama backend. Use vLLM or SGLang."
+                detail="HuggingFace models cannot be deployed with Ollama backend. Use vLLM or SGLang.",
             )
 
     deployment = Deployment(
@@ -251,9 +250,7 @@ async def delete_deployment(
     db: AsyncSession = Depends(get_db),
 ):
     """Stop and delete a deployment"""
-    result = await db.execute(
-        select(Deployment).where(Deployment.id == deployment_id)
-    )
+    result = await db.execute(select(Deployment).where(Deployment.id == deployment_id))
     deployment = result.scalar_one_or_none()
 
     if not deployment:

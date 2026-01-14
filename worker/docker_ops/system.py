@@ -32,7 +32,7 @@ class SystemDetector:
             mem = psutil.virtual_memory()
 
             # Disk info (root partition)
-            disk = psutil.disk_usage('/')
+            disk = psutil.disk_usage("/")
 
             return {
                 "cpu": {

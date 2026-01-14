@@ -1,4 +1,5 @@
 """HuggingFace API integration for model info and VRAM estimation"""
+
 import asyncio
 import re
 from typing import Optional
@@ -23,6 +24,7 @@ _MAX_CACHE_ENTRIES = 500  # Limit to prevent memory leaks
 
 class ModelInfo(BaseModel):
     """HuggingFace model information"""
+
     id: str
     model_id: str
     author: Optional[str] = None
@@ -44,6 +46,7 @@ class ModelInfo(BaseModel):
 
 class VRAMEstimate(BaseModel):
     """VRAM estimation result"""
+
     model_id: str
     parameter_count: Optional[float] = None  # in billions
     estimated_vram_gb: float
@@ -55,6 +58,7 @@ class VRAMEstimate(BaseModel):
 
 class ModelFile(BaseModel):
     """Model file information"""
+
     filename: str
     size: int
     type: str  # "model", "config", "tokenizer", etc.
@@ -63,6 +67,7 @@ class ModelFile(BaseModel):
 def _get_cached(key: str) -> Optional[dict]:
     """Get cached value if not expired"""
     import time
+
     if key in _model_cache:
         timestamp, data = _model_cache[key]
         if time.time() - timestamp < CACHE_TTL:
@@ -74,21 +79,19 @@ def _get_cached(key: str) -> Optional[dict]:
 def _set_cache(key: str, data: dict):
     """Set cache value with automatic cleanup of old entries."""
     import time
+
     current_time = time.time()
 
     # Cleanup expired entries if cache is getting large
     if len(_model_cache) >= _MAX_CACHE_ENTRIES:
-        expired_keys = [
-            k for k, (ts, _) in _model_cache.items()
-            if current_time - ts >= CACHE_TTL
-        ]
+        expired_keys = [k for k, (ts, _) in _model_cache.items() if current_time - ts >= CACHE_TTL]
         for k in expired_keys:
             _model_cache.pop(k, None)
 
         # If still too large, remove oldest entries
         if len(_model_cache) >= _MAX_CACHE_ENTRIES:
             sorted_keys = sorted(_model_cache.keys(), key=lambda k: _model_cache[k][0])
-            for k in sorted_keys[:_MAX_CACHE_ENTRIES // 4]:
+            for k in sorted_keys[: _MAX_CACHE_ENTRIES // 4]:
                 _model_cache.pop(k, None)
 
     _model_cache[key] = (current_time, data)
@@ -112,11 +115,11 @@ def _parse_parameter_count(model_id: str, config: dict, tags: list[str]) -> Opti
     # 2. Try to parse from model ID (e.g., "Llama-3.1-8B" -> 8, "Qwen2.5-72B-Instruct" -> 72)
     # This is usually reliable for well-known models
     patterns = [
-        r'[-_](\d+(?:\.\d+)?)[Bb](?:[-_]|$)',     # "-8B-", "_70B_", "-1.5B"
-        r'[-_](\d+(?:\.\d+)?)[Bb]$',               # ends with "-8B"
-        r'(\d+(?:\.\d+)?)[Bb][-_]',                # "8B-", "70B_"
-        r'[^0-9](\d+(?:\.\d+)?)[Bb][^a-zA-Z0-9]',  # "8B" surrounded by non-alphanumeric
-        r'[^0-9](\d+(?:\.\d+)?)[Bb]$',             # "8B" at end after non-digit
+        r"[-_](\d+(?:\.\d+)?)[Bb](?:[-_]|$)",  # "-8B-", "_70B_", "-1.5B"
+        r"[-_](\d+(?:\.\d+)?)[Bb]$",  # ends with "-8B"
+        r"(\d+(?:\.\d+)?)[Bb][-_]",  # "8B-", "70B_"
+        r"[^0-9](\d+(?:\.\d+)?)[Bb][^a-zA-Z0-9]",  # "8B" surrounded by non-alphanumeric
+        r"[^0-9](\d+(?:\.\d+)?)[Bb]$",  # "8B" at end after non-digit
     ]
 
     model_name = model_id.split("/")[-1]
@@ -273,9 +276,13 @@ async def get_model_info(
             if response.status_code == 404:
                 raise HTTPException(status_code=404, detail="Model not found")
             elif response.status_code == 401:
-                raise HTTPException(status_code=401, detail="Invalid or missing token for gated model")
+                raise HTTPException(
+                    status_code=401, detail="Invalid or missing token for gated model"
+                )
             elif response.status_code == 403:
-                raise HTTPException(status_code=403, detail="Access denied. Model may require accepting terms.")
+                raise HTTPException(
+                    status_code=403, detail="Access denied. Model may require accepting terms."
+                )
 
             response.raise_for_status()
             data = response.json()
@@ -294,11 +301,7 @@ async def get_model_info(
                 logger.debug(f"Could not fetch config for {model_id}: {e}")
 
             # Parse parameter count
-            param_count = _parse_parameter_count(
-                model_id,
-                config,
-                data.get("tags", [])
-            )
+            param_count = _parse_parameter_count(model_id, config, data.get("tags", []))
 
             # Calculate total size from siblings (files)
             total_size = 0
@@ -329,7 +332,11 @@ async def get_model_info(
                 "last_modified": data.get("lastModified"),
                 "size_bytes": total_size if total_size > 0 else None,
                 "parameter_count": f"{param_count:.1f}B" if param_count else None,
-                "description": data.get("cardData", {}).get("description") if isinstance(data.get("cardData"), dict) else None,
+                "description": (
+                    data.get("cardData", {}).get("description")
+                    if isinstance(data.get("cardData"), dict)
+                    else None
+                ),
             }
 
             _set_cache(f"model:{model_id}", result)
@@ -346,7 +353,9 @@ async def estimate_model_vram(
     model_id: str,
     precision: str = Query("fp16", description="Model precision: fp32, fp16, bf16, int8, int4"),
     context_length: int = Query(4096, description="Context length"),
-    gpu_memory_gb: Optional[float] = Query(None, description="Available GPU memory in GB for compatibility check"),
+    gpu_memory_gb: Optional[float] = Query(
+        None, description="Available GPU memory in GB for compatibility check"
+    ),
     token: Optional[str] = Query(None, description="HuggingFace API token"),
 ):
     """
@@ -363,12 +372,10 @@ async def estimate_model_vram(
         if not param_count:
             raise HTTPException(
                 status_code=400,
-                detail="Could not determine model size. Please ensure the model ID is correct."
+                detail="Could not determine model size. Please ensure the model ID is correct.",
             )
         model_info = ModelInfo(
-            id=model_id,
-            model_id=model_id,
-            parameter_count=f"{param_count:.1f}B"
+            id=model_id, model_id=model_id, parameter_count=f"{param_count:.1f}B"
         )
 
     # Parse parameter count
@@ -385,10 +392,7 @@ async def estimate_model_vram(
             # Rough estimate: file size / 2 (fp16) = params
             param_count = model_info.size_bytes / (2 * 1e9)
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="Could not determine model parameter count"
-            )
+            raise HTTPException(status_code=400, detail="Could not determine model parameter count")
 
     # Estimate VRAM
     vram_gb, breakdown = estimate_vram(
@@ -474,11 +478,13 @@ async def list_model_files(
                 else:
                     file_type = "other"
 
-                files.append(ModelFile(
-                    filename=filename,
-                    size=size,
-                    type=file_type,
-                ))
+                files.append(
+                    ModelFile(
+                        filename=filename,
+                        size=size,
+                        type=file_type,
+                    )
+                )
 
             return files
 
@@ -596,10 +602,16 @@ async def get_model_readme(
                 return {"content": None, "message": "README.md not found"}
             elif response.status_code == 401:
                 # Gated model - README requires authentication
-                return {"content": None, "message": "This is a gated model. README requires HuggingFace authentication."}
+                return {
+                    "content": None,
+                    "message": "This is a gated model. README requires HuggingFace authentication.",
+                }
             elif response.status_code == 403:
                 # Access denied - need to accept terms
-                return {"content": None, "message": "Access denied. You may need to accept the model's terms on HuggingFace."}
+                return {
+                    "content": None,
+                    "message": "Access denied. You may need to accept the model's terms on HuggingFace.",
+                }
 
             response.raise_for_status()
             return {"content": response.text}

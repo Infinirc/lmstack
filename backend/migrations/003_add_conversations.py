@@ -21,9 +21,9 @@ from app.config import get_settings
 
 async def table_exists(conn, table_name: str) -> bool:
     """Check if a table exists (SQLite compatible)"""
-    result = await conn.execute(text(
-        f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
-    ))
+    result = await conn.execute(
+        text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+    )
     return result.fetchone() is not None
 
 
@@ -33,9 +33,11 @@ async def migrate():
 
     async with engine.begin() as conn:
         # Create conversations table if not exists
-        if not await table_exists(conn, 'conversations'):
+        if not await table_exists(conn, "conversations"):
             print("Creating 'conversations' table...")
-            await conn.execute(text("""
+            await conn.execute(
+                text(
+                    """
                 CREATE TABLE conversations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
@@ -46,19 +48,23 @@ async def migrate():
                     FOREIGN KEY (user_id) REFERENCES users(id),
                     FOREIGN KEY (deployment_id) REFERENCES deployments(id)
                 )
-            """))
+            """
+                )
+            )
             # Create index on user_id
-            await conn.execute(text(
-                "CREATE INDEX idx_conversations_user_id ON conversations(user_id)"
-            ))
+            await conn.execute(
+                text("CREATE INDEX idx_conversations_user_id ON conversations(user_id)")
+            )
             print("'conversations' table created successfully!")
         else:
             print("'conversations' table already exists")
 
         # Create messages table if not exists
-        if not await table_exists(conn, 'messages'):
+        if not await table_exists(conn, "messages"):
             print("Creating 'messages' table...")
-            await conn.execute(text("""
+            await conn.execute(
+                text(
+                    """
                 CREATE TABLE messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     conversation_id INTEGER NOT NULL,
@@ -70,18 +76,20 @@ async def migrate():
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
                 )
-            """))
+            """
+                )
+            )
             # Create index on conversation_id
-            await conn.execute(text(
-                "CREATE INDEX idx_messages_conversation_id ON messages(conversation_id)"
-            ))
+            await conn.execute(
+                text("CREATE INDEX idx_messages_conversation_id ON messages(conversation_id)")
+            )
             print("'messages' table created successfully!")
         else:
             print("'messages' table already exists")
 
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print("Migration completed successfully!")
-        print("="*50)
+        print("=" * 50)
 
     await engine.dispose()
 

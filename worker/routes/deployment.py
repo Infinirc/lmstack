@@ -60,7 +60,9 @@ async def deploy(request: DeployRequest):
     agent = get_agent()
 
     port_info = f" on port {request.port}" if request.port else ""
-    logger.info(f"Deploying {request.deployment_name} with image {request.image}{port_info}")
+    logger.info(
+        f"Deploying {request.deployment_name} with image {request.image}{port_info}"
+    )
 
     # Sanitize container name to handle special characters
     container_name = sanitize_container_name(f"lmstack-{request.deployment_name}")

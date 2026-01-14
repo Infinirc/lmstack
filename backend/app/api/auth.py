@@ -1,4 +1,5 @@
 """Authentication and user management API routes"""
+
 import logging
 from typing import Optional
 
@@ -27,6 +28,7 @@ router = APIRouter()
 
 
 # ==================== Dependencies ====================
+
 
 async def get_current_user(
     authorization: Optional[str] = Header(None),
@@ -70,6 +72,7 @@ async def require_operator(current_user: User = Depends(get_current_user)) -> Us
 
 
 # ==================== Setup Endpoints ====================
+
 
 @router.get("/setup/status", response_model=SetupStatusResponse)
 async def get_setup_status(db: AsyncSession = Depends(get_db)):
@@ -115,6 +118,7 @@ async def setup_admin(
 
 
 # ==================== Auth Endpoints ====================
+
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
@@ -165,6 +169,7 @@ async def change_password(
 
 # ==================== User Management Endpoints (Admin only) ====================
 
+
 @router.get("/users", response_model=UserListResponse)
 async def list_users(
     skip: int = Query(0, ge=0),
@@ -178,10 +183,7 @@ async def list_users(
 
     # Get paginated results
     result = await db.execute(
-        select(User)
-        .offset(skip)
-        .limit(limit)
-        .order_by(User.created_at.desc())
+        select(User).offset(skip).limit(limit).order_by(User.created_at.desc())
     )
     users = result.scalars().all()
 

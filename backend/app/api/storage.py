@@ -3,6 +3,7 @@
 Provides endpoints for managing Docker storage across workers.
 Operations are proxied to the worker agent, or run locally for local workers.
 """
+
 import logging
 from typing import Optional
 
@@ -26,8 +27,10 @@ DEFAULT_TIMEOUT = 30.0
 # Response Schemas
 # =============================================================================
 
+
 class StorageCategory(BaseModel):
     """Storage category stats."""
+
     count: int
     size: int
     reclaimable: int
@@ -35,6 +38,7 @@ class StorageCategory(BaseModel):
 
 class DiskUsageResponse(BaseModel):
     """Disk usage response."""
+
     worker_id: int
     worker_name: str
     images: StorageCategory
@@ -47,6 +51,7 @@ class DiskUsageResponse(BaseModel):
 
 class VolumeResponse(BaseModel):
     """Volume information."""
+
     name: str
     worker_id: int
     worker_name: str
@@ -59,6 +64,7 @@ class VolumeResponse(BaseModel):
 
 class PruneRequest(BaseModel):
     """Prune request options."""
+
     images: bool = True
     containers: bool = True
     volumes: bool = False
@@ -67,6 +73,7 @@ class PruneRequest(BaseModel):
 
 class PruneResponse(BaseModel):
     """Prune result."""
+
     worker_id: int
     worker_name: str
     images_deleted: int
@@ -79,6 +86,7 @@ class PruneResponse(BaseModel):
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
 
 def _is_local_worker(worker: Worker) -> bool:
     """Check if worker is a local worker (no agent)."""
@@ -128,19 +136,16 @@ async def call_worker(
 
     except httpx.ConnectError:
         raise HTTPException(
-            status_code=503,
-            detail=f"Cannot connect to worker {worker.name} at {worker.address}"
+            status_code=503, detail=f"Cannot connect to worker {worker.name} at {worker.address}"
         )
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Request to worker {worker.name} timed out"
-        )
+        raise HTTPException(status_code=504, detail=f"Request to worker {worker.name} timed out")
 
 
 # =============================================================================
 # Local Docker Operations
 # =============================================================================
+
 
 def _get_local_disk_usage() -> dict:
     """Get Docker disk usage from local Docker daemon."""
@@ -152,9 +157,7 @@ def _get_local_disk_usage() -> dict:
     image_count = len(images)
     image_size = sum(img.get("Size", 0) or 0 for img in images)
     image_reclaimable = sum(
-        (img.get("Size", 0) or 0)
-        for img in images
-        if img.get("Containers", 0) == 0
+        (img.get("Size", 0) or 0) for img in images if img.get("Containers", 0) == 0
     )
 
     # Calculate container stats
@@ -162,9 +165,7 @@ def _get_local_disk_usage() -> dict:
     container_count = len(containers)
     container_size = sum(c.get("SizeRw", 0) or 0 for c in containers)
     container_reclaimable = sum(
-        (c.get("SizeRw", 0) or 0)
-        for c in containers
-        if c.get("State") != "running"
+        (c.get("SizeRw", 0) or 0) for c in containers if c.get("State") != "running"
     )
 
     # Calculate volume stats
@@ -182,17 +183,21 @@ def _get_local_disk_usage() -> dict:
     cache_count = len(build_cache)
     cache_size = sum(b.get("Size", 0) or 0 for b in build_cache)
     cache_reclaimable = sum(
-        (b.get("Size", 0) or 0)
-        for b in build_cache
-        if not b.get("InUse", False)
+        (b.get("Size", 0) or 0) for b in build_cache if not b.get("InUse", False)
     )
 
     total_size = image_size + container_size + volume_size + cache_size
-    total_reclaimable = image_reclaimable + container_reclaimable + volume_reclaimable + cache_reclaimable
+    total_reclaimable = (
+        image_reclaimable + container_reclaimable + volume_reclaimable + cache_reclaimable
+    )
 
     return {
         "images": {"count": image_count, "size": image_size, "reclaimable": image_reclaimable},
-        "containers": {"count": container_count, "size": container_size, "reclaimable": container_reclaimable},
+        "containers": {
+            "count": container_count,
+            "size": container_size,
+            "reclaimable": container_reclaimable,
+        },
         "volumes": {"count": volume_count, "size": volume_size, "reclaimable": volume_reclaimable},
         "build_cache": {"count": cache_count, "size": cache_size, "reclaimable": cache_reclaimable},
         "total_size": total_size,
@@ -207,14 +212,16 @@ def _get_local_volumes() -> list[dict]:
     result = []
     for vol in volumes:
         attrs = vol.attrs
-        result.append({
-            "name": vol.name,
-            "driver": attrs.get("Driver") or "local",
-            "mountpoint": attrs.get("Mountpoint") or "",
-            "created_at": attrs.get("CreatedAt") or "",
-            "labels": attrs.get("Labels") or {},
-            "scope": attrs.get("Scope") or "local",
-        })
+        result.append(
+            {
+                "name": vol.name,
+                "driver": attrs.get("Driver") or "local",
+                "mountpoint": attrs.get("Mountpoint") or "",
+                "created_at": attrs.get("CreatedAt") or "",
+                "labels": attrs.get("Labels") or {},
+                "scope": attrs.get("Scope") or "local",
+            }
+        )
     return result
 
 
@@ -267,6 +274,7 @@ def _prune_local_storage(images: bool, containers: bool, volumes: bool, build_ca
 # Endpoints
 # =============================================================================
 
+
 @router.get("/disk-usage", response_model=list[DiskUsageResponse])
 async def get_disk_usage(
     worker_id: Optional[int] = Query(None, description="Filter by worker ID"),
@@ -291,16 +299,18 @@ async def get_disk_usage(
             else:
                 data = await call_worker(worker, "GET", "/storage/disk-usage")
 
-            results.append(DiskUsageResponse(
-                worker_id=worker.id,
-                worker_name=worker.name,
-                images=StorageCategory(**data["images"]),
-                containers=StorageCategory(**data["containers"]),
-                volumes=StorageCategory(**data["volumes"]),
-                build_cache=StorageCategory(**data["build_cache"]),
-                total_size=data["total_size"],
-                total_reclaimable=data["total_reclaimable"],
-            ))
+            results.append(
+                DiskUsageResponse(
+                    worker_id=worker.id,
+                    worker_name=worker.name,
+                    images=StorageCategory(**data["images"]),
+                    containers=StorageCategory(**data["containers"]),
+                    volumes=StorageCategory(**data["volumes"]),
+                    build_cache=StorageCategory(**data["build_cache"]),
+                    total_size=data["total_size"],
+                    total_reclaimable=data["total_reclaimable"],
+                )
+            )
         except HTTPException as e:
             logger.warning(f"Failed to get disk usage from {worker.name}: {e.detail}")
         except Exception as e:
@@ -338,16 +348,18 @@ async def list_volumes(
                 logger.info(f"Worker {worker.name} returned {len(vols)} volumes")
 
             for vol in vols:
-                results.append(VolumeResponse(
-                    name=vol["name"],
-                    worker_id=worker.id,
-                    worker_name=worker.name,
-                    driver=vol.get("driver", "local"),
-                    mountpoint=vol.get("mountpoint", ""),
-                    created_at=vol.get("created_at", ""),
-                    labels=vol.get("labels") or {},
-                    scope=vol.get("scope", "local"),
-                ))
+                results.append(
+                    VolumeResponse(
+                        name=vol["name"],
+                        worker_id=worker.id,
+                        worker_name=worker.name,
+                        driver=vol.get("driver", "local"),
+                        mountpoint=vol.get("mountpoint", ""),
+                        created_at=vol.get("created_at", ""),
+                        labels=vol.get("labels") or {},
+                        scope=vol.get("scope", "local"),
+                    )
+                )
         except HTTPException as e:
             logger.warning(f"Failed to list volumes from {worker.name}: {e.detail}")
         except Exception as e:
@@ -421,15 +433,17 @@ async def prune_storage(
                     timeout=120.0,
                 )
 
-            results.append(PruneResponse(
-                worker_id=worker.id,
-                worker_name=worker.name,
-                images_deleted=data.get("images_deleted", 0),
-                containers_deleted=data.get("containers_deleted", 0),
-                volumes_deleted=data.get("volumes_deleted", 0),
-                build_cache_deleted=data.get("build_cache_deleted", 0),
-                space_reclaimed=data.get("space_reclaimed", 0),
-            ))
+            results.append(
+                PruneResponse(
+                    worker_id=worker.id,
+                    worker_name=worker.name,
+                    images_deleted=data.get("images_deleted", 0),
+                    containers_deleted=data.get("containers_deleted", 0),
+                    volumes_deleted=data.get("volumes_deleted", 0),
+                    build_cache_deleted=data.get("build_cache_deleted", 0),
+                    space_reclaimed=data.get("space_reclaimed", 0),
+                )
+            )
         except HTTPException as e:
             logger.warning(f"Failed to prune storage on {worker.name}: {e.detail}")
         except Exception as e:

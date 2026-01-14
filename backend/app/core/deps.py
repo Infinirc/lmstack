@@ -1,4 +1,5 @@
 """Shared dependencies for API endpoints"""
+
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException

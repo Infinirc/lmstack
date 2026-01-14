@@ -1,6 +1,7 @@
 """
 Tests for deployment management.
 """
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -1,4 +1,5 @@
 """LLM Model API routes"""
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -43,9 +44,7 @@ async def list_models(
     # Add deployment count
     items = []
     for model in models:
-        deployment_count_query = select(func.count()).where(
-            Deployment.model_id == model.id
-        )
+        deployment_count_query = select(func.count()).where(Deployment.model_id == model.id)
         deployment_count = await db.scalar(deployment_count_query) or 0
 
         model_dict = {
@@ -120,9 +119,7 @@ async def get_model(
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    deployment_count_query = select(func.count()).where(
-        Deployment.model_id == model.id
-    )
+    deployment_count_query = select(func.count()).where(Deployment.model_id == model.id)
     deployment_count = await db.scalar(deployment_count_query) or 0
 
     return LLMModelResponse(
@@ -163,9 +160,7 @@ async def update_model(
     await db.commit()
     await db.refresh(model)
 
-    deployment_count_query = select(func.count()).where(
-        Deployment.model_id == model.id
-    )
+    deployment_count_query = select(func.count()).where(Deployment.model_id == model.id)
     deployment_count = await db.scalar(deployment_count_query) or 0
 
     return LLMModelResponse(
@@ -195,14 +190,9 @@ async def delete_model(
         raise HTTPException(status_code=404, detail="Model not found")
 
     # Check if model has active deployments
-    deployment_count = await db.scalar(
-        select(func.count()).where(Deployment.model_id == model_id)
-    )
+    deployment_count = await db.scalar(select(func.count()).where(Deployment.model_id == model_id))
     if deployment_count and deployment_count > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete model with active deployments"
-        )
+        raise HTTPException(status_code=400, detail="Cannot delete model with active deployments")
 
     await db.delete(model)
     await db.commit()

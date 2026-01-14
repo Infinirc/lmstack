@@ -60,7 +60,9 @@ async def get_container(container_id: str):
         return agent.container_manager.get_container_detail(container_id)
     except Exception as e:
         logger.error(f"Failed to get container {container_id}: {e}")
-        raise HTTPException(status_code=404, detail=f"Container not found: {container_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Container not found: {container_id}"
+        )
 
 
 @router.get("/{container_id}/stats")
@@ -162,7 +164,9 @@ async def unpause_container(container_id: str):
 
 
 @router.delete("/{container_id}")
-async def delete_container(container_id: str, force: bool = False, volumes: bool = False):
+async def delete_container(
+    container_id: str, force: bool = False, volumes: bool = False
+):
     """Delete a container."""
     agent = get_agent()
 

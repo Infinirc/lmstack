@@ -1,4 +1,5 @@
 """API Gateway service for authentication, routing, and usage tracking"""
+
 import logging
 from datetime import datetime, date
 from typing import Optional, Tuple
@@ -36,7 +37,7 @@ class GatewayService:
             return None, None
 
         # Remove prefix and split
-        key_parts = token[len(API_KEY_PREFIX) + 1:].split("_", 1)
+        key_parts = token[len(API_KEY_PREFIX) + 1 :].split("_", 1)
         if len(key_parts) != 2:
             return None, None
 
@@ -49,9 +50,7 @@ class GatewayService:
         secret_key: str,
     ) -> Optional[ApiKey]:
         """Validate API key and return the key record if valid."""
-        result = await db.execute(
-            select(ApiKey).where(ApiKey.access_key == access_key)
-        )
+        result = await db.execute(select(ApiKey).where(ApiKey.access_key == access_key))
         api_key = result.scalar_one_or_none()
 
         if not api_key:
@@ -98,9 +97,7 @@ class GatewayService:
         Returns the deployment and model if found, None otherwise.
         """
         # Try to find by model name first
-        result = await db.execute(
-            select(LLMModel).where(LLMModel.name == model_name)
-        )
+        result = await db.execute(select(LLMModel).where(LLMModel.name == model_name))
         model = result.scalar_one_or_none()
 
         if model:
@@ -136,9 +133,7 @@ class GatewayService:
             return row[0], row[1]
 
         # Try to find by model_id (HuggingFace ID or Ollama model name)
-        result = await db.execute(
-            select(LLMModel).where(LLMModel.model_id == model_name)
-        )
+        result = await db.execute(select(LLMModel).where(LLMModel.model_id == model_name))
         model = result.scalar_one_or_none()
 
         if model:
@@ -192,30 +187,32 @@ class GatewayService:
 
             seen_model_ids.add(model.id)
             created_timestamp = int(model.created_at.timestamp()) if model.created_at else 0
-            models.append({
-                "id": model.name,
-                "object": "model",
-                "created": created_timestamp,
-                "owned_by": "lmstack",
-                "root": model.model_id,
-                "parent": None,
-                "permission": [
-                    {
-                        "id": f"modelperm-{model.id}",
-                        "object": "model_permission",
-                        "created": created_timestamp,
-                        "allow_create_engine": False,
-                        "allow_sampling": True,
-                        "allow_logprobs": True,
-                        "allow_search_indices": False,
-                        "allow_view": True,
-                        "allow_fine_tuning": False,
-                        "organization": "*",
-                        "group": None,
-                        "is_blocking": False,
-                    }
-                ],
-            })
+            models.append(
+                {
+                    "id": model.name,
+                    "object": "model",
+                    "created": created_timestamp,
+                    "owned_by": "lmstack",
+                    "root": model.model_id,
+                    "parent": None,
+                    "permission": [
+                        {
+                            "id": f"modelperm-{model.id}",
+                            "object": "model_permission",
+                            "created": created_timestamp,
+                            "allow_create_engine": False,
+                            "allow_sampling": True,
+                            "allow_logprobs": True,
+                            "allow_search_indices": False,
+                            "allow_view": True,
+                            "allow_fine_tuning": False,
+                            "organization": "*",
+                            "group": None,
+                            "is_blocking": False,
+                        }
+                    ],
+                }
+            )
 
         return models
 

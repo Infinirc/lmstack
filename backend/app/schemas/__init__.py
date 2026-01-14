@@ -1,4 +1,5 @@
 """Pydantic schemas for API"""
+
 from app.schemas.worker import (
     WorkerCreate,
     WorkerUpdate,

@@ -12,8 +12,10 @@ from pydantic import BaseModel
 # Deployment Models
 # =============================================================================
 
+
 class DeployRequest(BaseModel):
     """Request to deploy a model."""
+
     deployment_id: int
     deployment_name: str
     image: str
@@ -26,11 +28,13 @@ class DeployRequest(BaseModel):
 
 class StopRequest(BaseModel):
     """Request to stop a container."""
+
     container_id: str
 
 
 class LogsRequest(BaseModel):
     """Request for container logs."""
+
     container_id: str
     tail: int = 100
 
@@ -39,14 +43,17 @@ class LogsRequest(BaseModel):
 # Image Management Models
 # =============================================================================
 
+
 class ImagePullRequest(BaseModel):
     """Request to pull an image."""
+
     image: str
     registry_auth: Optional[dict[str, str]] = None
 
 
 class ImageBuildRequest(BaseModel):
     """Request to build an image."""
+
     dockerfile: str
     tag: str
     build_args: Optional[dict[str, str]] = None
@@ -54,6 +61,7 @@ class ImageBuildRequest(BaseModel):
 
 class ImageDeleteRequest(BaseModel):
     """Request to delete an image."""
+
     image_id: str
     force: bool = False
 
@@ -62,8 +70,10 @@ class ImageDeleteRequest(BaseModel):
 # Container Management Models
 # =============================================================================
 
+
 class ContainerCreateRequest(BaseModel):
     """Request to create a container."""
+
     name: str
     image: str
     command: Optional[list[str]] = None
@@ -81,12 +91,14 @@ class ContainerCreateRequest(BaseModel):
 
 class ContainerActionRequest(BaseModel):
     """Request for container lifecycle actions."""
+
     container_id: str
     timeout: int = 10
 
 
 class ContainerExecRequest(BaseModel):
     """Request to exec command in container."""
+
     command: list[str]
     tty: bool = False
     privileged: bool = False

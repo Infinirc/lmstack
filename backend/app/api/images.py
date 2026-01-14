@@ -3,6 +3,7 @@
 Provides endpoints for managing Docker images across workers.
 All operations are proxied to the appropriate worker agent.
 """
+
 import logging
 from typing import Any, Optional
 
@@ -27,8 +28,10 @@ DEFAULT_TIMEOUT = 30.0
 # Request/Response Schemas
 # =============================================================================
 
+
 class RegistryAuth(BaseModel):
     """Registry authentication credentials."""
+
     username: str
     password: str
     server_address: Optional[str] = None
@@ -36,6 +39,7 @@ class RegistryAuth(BaseModel):
 
 class ImagePullRequest(BaseModel):
     """Request to pull an image to a worker."""
+
     worker_id: int
     image: str = Field(..., description="Image reference (e.g., 'nginx:latest')")
     registry_auth: Optional[RegistryAuth] = None
@@ -43,6 +47,7 @@ class ImagePullRequest(BaseModel):
 
 class ImageBuildRequest(BaseModel):
     """Request to build an image on a worker."""
+
     worker_id: int
     dockerfile: str = Field(..., description="Dockerfile content")
     tag: str = Field(..., description="Tag for the built image")
@@ -51,6 +56,7 @@ class ImageBuildRequest(BaseModel):
 
 class ImageResponse(BaseModel):
     """Image information response."""
+
     id: str
     worker_id: int
     worker_name: str
@@ -65,12 +71,14 @@ class ImageResponse(BaseModel):
 
 class ImageDetailResponse(ImageResponse):
     """Detailed image information including layers."""
+
     layers: list[dict[str, Any]] = []
     config: Optional[dict[str, Any]] = None
 
 
 class ImageListResponse(BaseModel):
     """Paginated image list response."""
+
     items: list[ImageResponse]
     total: int
 
@@ -78,6 +86,7 @@ class ImageListResponse(BaseModel):
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
 
 async def get_worker_or_404(
     worker_id: int,
@@ -90,8 +99,7 @@ async def get_worker_or_404(
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
     if worker.status != "online":
         raise HTTPException(
-            status_code=400,
-            detail=f"Worker {worker.name} is not online (status: {worker.status})"
+            status_code=400, detail=f"Worker {worker.name} is not online (status: {worker.status})"
         )
     return worker
 
@@ -121,14 +129,10 @@ async def call_worker_api(
 
     except httpx.ConnectError:
         raise HTTPException(
-            status_code=503,
-            detail=f"Cannot connect to worker {worker.name} at {worker.address}"
+            status_code=503, detail=f"Cannot connect to worker {worker.name} at {worker.address}"
         )
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Worker {worker.name} request timed out"
-        )
+        raise HTTPException(status_code=504, detail=f"Worker {worker.name} request timed out")
     except HTTPException:
         raise
     except Exception as e:
@@ -139,6 +143,7 @@ async def call_worker_api(
 # =============================================================================
 # API Endpoints
 # =============================================================================
+
 
 @router.get("", response_model=ImageListResponse)
 async def list_images(
@@ -158,9 +163,7 @@ async def list_images(
         workers = [await get_worker_or_404(worker_id, db)]
     else:
         # Query all online workers
-        result = await db.execute(
-            select(Worker).where(Worker.status == "online")
-        )
+        result = await db.execute(select(Worker).where(Worker.status == "online"))
         workers = list(result.scalars().all())
 
     for worker in workers:
@@ -172,18 +175,20 @@ async def list_images(
             data = await call_worker_api(worker, "GET", "/images", params=params)
 
             for img in data.get("items", []):
-                all_images.append(ImageResponse(
-                    id=img["id"],
-                    worker_id=worker.id,
-                    worker_name=worker.name,
-                    repository=img["repository"],
-                    tag=img["tag"],
-                    full_name=img["full_name"],
-                    size=img["size"],
-                    created_at=img["created_at"],
-                    digest=img.get("digest"),
-                    labels=img.get("labels"),
-                ))
+                all_images.append(
+                    ImageResponse(
+                        id=img["id"],
+                        worker_id=worker.id,
+                        worker_name=worker.name,
+                        repository=img["repository"],
+                        tag=img["tag"],
+                        full_name=img["full_name"],
+                        size=img["size"],
+                        created_at=img["created_at"],
+                        digest=img.get("digest"),
+                        labels=img.get("labels"),
+                    )
+                )
         except HTTPException as e:
             if e.status_code != 503:  # Ignore connection errors for listing
                 logger.warning(f"Error listing images from {worker.name}: {e.detail}")

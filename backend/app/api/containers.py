@@ -3,6 +3,7 @@
 Provides endpoints for managing Docker containers across workers.
 All operations are proxied to the appropriate worker agent.
 """
+
 import logging
 from typing import Any, Optional
 
@@ -27,8 +28,10 @@ CONTAINER_ACTION_TIMEOUT = 60.0
 # Request/Response Schemas
 # =============================================================================
 
+
 class PortMapping(BaseModel):
     """Container port mapping."""
+
     container_port: int
     host_port: Optional[int] = None
     protocol: str = "tcp"
@@ -36,6 +39,7 @@ class PortMapping(BaseModel):
 
 class VolumeMount(BaseModel):
     """Container volume mount."""
+
     source: str
     destination: str
     mode: str = "rw"
@@ -43,6 +47,7 @@ class VolumeMount(BaseModel):
 
 class ContainerCreateRequest(BaseModel):
     """Request to create a new container."""
+
     worker_id: int
     name: str
     image: str
@@ -60,6 +65,7 @@ class ContainerCreateRequest(BaseModel):
 
 class ContainerExecRequest(BaseModel):
     """Request to execute a command in a container."""
+
     command: list[str]
     tty: bool = False
     privileged: bool = False
@@ -70,6 +76,7 @@ class ContainerExecRequest(BaseModel):
 
 class ContainerResponse(BaseModel):
     """Container information response."""
+
     id: str
     worker_id: int
     worker_name: str
@@ -93,6 +100,7 @@ class ContainerResponse(BaseModel):
 
 class ContainerStatsResponse(BaseModel):
     """Container resource usage stats."""
+
     cpu_percent: float
     memory_usage: int
     memory_limit: int
@@ -106,6 +114,7 @@ class ContainerStatsResponse(BaseModel):
 
 class ContainerLogsResponse(BaseModel):
     """Container logs response."""
+
     container_id: str
     logs: str
     stdout: Optional[str] = None
@@ -114,6 +123,7 @@ class ContainerLogsResponse(BaseModel):
 
 class ContainerExecResponse(BaseModel):
     """Container exec command result."""
+
     exit_code: int
     stdout: str
     stderr: str
@@ -121,6 +131,7 @@ class ContainerExecResponse(BaseModel):
 
 class ContainerListResponse(BaseModel):
     """Paginated container list response."""
+
     items: list[ContainerResponse]
     total: int
 
@@ -128,6 +139,7 @@ class ContainerListResponse(BaseModel):
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
 
 async def get_worker_or_404(
     worker_id: int,
@@ -140,8 +152,7 @@ async def get_worker_or_404(
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
     if worker.status != "online":
         raise HTTPException(
-            status_code=400,
-            detail=f"Worker {worker.name} is not online (status: {worker.status})"
+            status_code=400, detail=f"Worker {worker.name} is not online (status: {worker.status})"
         )
     return worker
 
@@ -171,14 +182,10 @@ async def call_worker_api(
 
     except httpx.ConnectError:
         raise HTTPException(
-            status_code=503,
-            detail=f"Cannot connect to worker {worker.name} at {worker.address}"
+            status_code=503, detail=f"Cannot connect to worker {worker.name} at {worker.address}"
         )
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Worker {worker.name} request timed out"
-        )
+        raise HTTPException(status_code=504, detail=f"Worker {worker.name} request timed out")
     except HTTPException:
         raise
     except Exception as e:
@@ -215,6 +222,7 @@ def container_to_response(container: dict, worker: Worker) -> ContainerResponse:
 # API Endpoints
 # =============================================================================
 
+
 @router.get("", response_model=ContainerListResponse)
 async def list_containers(
     worker_id: Optional[int] = Query(None, description="Filter by worker ID"),
@@ -233,9 +241,7 @@ async def list_containers(
     if worker_id:
         workers = [await get_worker_or_404(worker_id, db)]
     else:
-        result = await db.execute(
-            select(Worker).where(Worker.status == "online")
-        )
+        result = await db.execute(select(Worker).where(Worker.status == "online"))
         workers = list(result.scalars().all())
 
     for worker in workers:

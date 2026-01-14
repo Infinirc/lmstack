@@ -1,4 +1,5 @@
 """Worker API routes"""
+
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -46,9 +47,7 @@ async def list_workers(
     # Add deployment count
     items = []
     for worker in workers:
-        deployment_count_query = select(func.count()).where(
-            Deployment.worker_id == worker.id
-        )
+        deployment_count_query = select(func.count()).where(Deployment.worker_id == worker.id)
         deployment_count = await db.scalar(deployment_count_query) or 0
 
         worker_dict = {
@@ -124,9 +123,7 @@ async def get_worker(
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
 
-    deployment_count_query = select(func.count()).where(
-        Deployment.worker_id == worker.id
-    )
+    deployment_count_query = select(func.count()).where(Deployment.worker_id == worker.id)
     deployment_count = await db.scalar(deployment_count_query) or 0
 
     return WorkerResponse(
@@ -175,9 +172,7 @@ async def update_worker(
     await db.commit()
     await db.refresh(worker)
 
-    deployment_count_query = select(func.count()).where(
-        Deployment.worker_id == worker.id
-    )
+    deployment_count_query = select(func.count()).where(Deployment.worker_id == worker.id)
     deployment_count = await db.scalar(deployment_count_query) or 0
 
     return WorkerResponse(
@@ -213,10 +208,7 @@ async def delete_worker(
         select(func.count()).where(Deployment.worker_id == worker_id)
     )
     if deployment_count and deployment_count > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete worker with active deployments"
-        )
+        raise HTTPException(status_code=400, detail="Cannot delete worker with active deployments")
 
     await db.delete(worker)
     await db.commit()

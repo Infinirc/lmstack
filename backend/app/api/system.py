@@ -1,4 +1,5 @@
 """System management API routes"""
+
 import os
 import shutil
 from datetime import datetime
@@ -25,6 +26,7 @@ BACKUP_DIR.mkdir(exist_ok=True)
 
 class BackupInfo(BaseModel):
     """Backup file information"""
+
     filename: str
     size: int
     created_at: str
@@ -32,12 +34,14 @@ class BackupInfo(BaseModel):
 
 class BackupListResponse(BaseModel):
     """Response for listing backups"""
+
     items: list[BackupInfo]
     total: int
 
 
 class MessageResponse(BaseModel):
     """Simple message response"""
+
     message: str
     details: Optional[str] = None
 
@@ -61,13 +65,10 @@ async def clear_statistics(
 
         return MessageResponse(
             message="Statistics cleared successfully",
-            details=f"Deleted {deleted_count} usage records"
+            details=f"Deleted {deleted_count} usage records",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to clear statistics: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to clear statistics: {str(e)}")
 
 
 @router.get("/backups", response_model=BackupListResponse)
@@ -80,11 +81,13 @@ async def list_backups():
     if BACKUP_DIR.exists():
         for file in sorted(BACKUP_DIR.glob("*.db"), key=os.path.getmtime, reverse=True):
             stat = file.stat()
-            backups.append(BackupInfo(
-                filename=file.name,
-                size=stat.st_size,
-                created_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            ))
+            backups.append(
+                BackupInfo(
+                    filename=file.name,
+                    size=stat.st_size,
+                    created_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                )
+            )
 
     return BackupListResponse(items=backups, total=len(backups))
 
@@ -101,8 +104,7 @@ async def create_backup():
         db_url = settings.database_url
         if "sqlite" not in db_url:
             raise HTTPException(
-                status_code=400,
-                detail="Backup only supported for SQLite databases"
+                status_code=400, detail="Backup only supported for SQLite databases"
             )
 
         # Extract database file path
@@ -111,10 +113,7 @@ async def create_backup():
         db_file = Path(db_path)
 
         if not db_file.exists():
-            raise HTTPException(
-                status_code=404,
-                detail="Database file not found"
-            )
+            raise HTTPException(status_code=404, detail="Database file not found")
 
         # Create backup with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -125,16 +124,12 @@ async def create_backup():
         shutil.copy2(db_file, backup_path)
 
         return MessageResponse(
-            message="Backup created successfully",
-            details=f"Saved as {backup_filename}"
+            message="Backup created successfully", details=f"Saved as {backup_filename}"
         )
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create backup: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to create backup: {str(e)}")
 
 
 @router.get("/backup/{filename}")
@@ -151,11 +146,7 @@ async def download_backup(filename: str):
     if not backup_path.exists():
         raise HTTPException(status_code=404, detail="Backup not found")
 
-    return FileResponse(
-        path=backup_path,
-        filename=filename,
-        media_type="application/octet-stream"
-    )
+    return FileResponse(path=backup_path, filename=filename, media_type="application/octet-stream")
 
 
 @router.post("/restore/{filename}", response_model=MessageResponse)
@@ -192,13 +183,10 @@ async def restore_backup(filename: str):
 
         return MessageResponse(
             message="Database restored successfully",
-            details="Please restart the server for changes to take full effect"
+            details="Please restart the server for changes to take full effect",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to restore backup: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
 
 
 @router.delete("/backup/{filename}", response_model=MessageResponse)
@@ -217,15 +205,9 @@ async def delete_backup(filename: str):
 
     try:
         backup_path.unlink()
-        return MessageResponse(
-            message="Backup deleted successfully",
-            details=f"Deleted {filename}"
-        )
+        return MessageResponse(message="Backup deleted successfully", details=f"Deleted {filename}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete backup: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to delete backup: {str(e)}")
 
 
 @router.post("/restore-upload", response_model=MessageResponse)
@@ -237,10 +219,7 @@ async def restore_from_upload(file: UploadFile = File(...)):
     The server should be restarted after restore for changes to take effect.
     """
     if not file.filename or not file.filename.endswith(".db"):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file. Please upload a .db file"
-        )
+        raise HTTPException(status_code=400, detail="Invalid file. Please upload a .db file")
 
     try:
         # Get database path
@@ -261,10 +240,7 @@ async def restore_from_upload(file: UploadFile = File(...)):
 
         return MessageResponse(
             message="Database restored from upload successfully",
-            details="Please restart the server for changes to take full effect"
+            details="Please restart the server for changes to take full effect",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to restore from upload: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to restore from upload: {str(e)}")

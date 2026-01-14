@@ -3,6 +3,7 @@
 Manages nginx reverse proxy for deployed apps.
 Runs nginx container on the LMStack controller to proxy requests to worker apps.
 """
+
 import asyncio
 import logging
 import os
@@ -99,7 +100,7 @@ class AppProxyManager:
         """Setup config directories."""
         os.makedirs(NGINX_CONFD_PATH, exist_ok=True)
         # Write main nginx.conf
-        with open(NGINX_CONF_PATH, 'w') as f:
+        with open(NGINX_CONF_PATH, "w") as f:
             f.write(generate_nginx_main_conf())
 
     @property
@@ -125,7 +126,8 @@ class AppProxyManager:
                 content = conf_file.read_text()
                 # Extract listen port from config
                 import re
-                match = re.search(r'listen\s+(\d+)', content)
+
+                match = re.search(r"listen\s+(\d+)", content)
                 if match:
                     ports.add(int(match.group(1)))
         return ports
@@ -190,7 +192,9 @@ class AppProxyManager:
 
         config_file = Path(NGINX_CONFD_PATH) / f"app_{app_id}.conf"
         config_file.write_text(config)
-        logger.info(f"Created proxy config for app {app_id}: port {listen_port} -> {worker_host}:{worker_port}")
+        logger.info(
+            f"Created proxy config for app {app_id}: port {listen_port} -> {worker_host}:{worker_port}"
+        )
 
         # Recreate container with new port binding
         container = self._get_container()

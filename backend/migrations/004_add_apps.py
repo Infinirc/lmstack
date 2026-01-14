@@ -21,9 +21,9 @@ from app.config import get_settings
 
 async def table_exists(conn, table_name: str) -> bool:
     """Check if a table exists (SQLite compatible)"""
-    result = await conn.execute(text(
-        f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
-    ))
+    result = await conn.execute(
+        text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+    )
     return result.fetchone() is not None
 
 
@@ -33,9 +33,11 @@ async def migrate():
 
     async with engine.begin() as conn:
         # Create apps table if not exists
-        if not await table_exists(conn, 'apps'):
+        if not await table_exists(conn, "apps"):
             print("Creating 'apps' table...")
-            await conn.execute(text("""
+            await conn.execute(
+                text(
+                    """
                 CREATE TABLE apps (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     app_type VARCHAR(50) NOT NULL,
@@ -53,14 +55,16 @@ async def migrate():
                     FOREIGN KEY (worker_id) REFERENCES workers(id),
                     FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
                 )
-            """))
+            """
+                )
+            )
             print("'apps' table created successfully!")
         else:
             print("'apps' table already exists")
 
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print("Migration completed successfully!")
-        print("="*50)
+        print("=" * 50)
 
     await engine.dispose()
 

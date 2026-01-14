@@ -3,6 +3,7 @@
 Contains the main FastAPI endpoint handlers for app deployment.
 Lifecycle endpoints (start/stop/delete/logs) are in lifecycle.py.
 """
+
 import logging
 import secrets
 from typing import Optional
@@ -51,17 +52,20 @@ router.include_router(lifecycle_router)
 # List & Discovery Endpoints
 # =============================================================================
 
+
 @router.get("/available", response_model=AvailableAppsResponse)
 async def list_available_apps():
     """List all available apps that can be deployed."""
     items = []
     for app_type, definition in APP_DEFINITIONS.items():
-        items.append(AppDefinition(
-            type=app_type.value,
-            name=definition["name"],
-            description=definition["description"],
-            image=definition["image"],
-        ))
+        items.append(
+            AppDefinition(
+                type=app_type.value,
+                name=definition["name"],
+                description=definition["description"],
+                image=definition["image"],
+            )
+        )
     return AvailableAppsResponse(items=items)
 
 
@@ -77,12 +81,7 @@ async def list_apps(
     total = await db.scalar(select(func.count()).select_from(App))
 
     # Get paginated results with worker relationship
-    result = await db.execute(
-        select(App)
-        .offset(skip)
-        .limit(limit)
-        .order_by(App.created_at.desc())
-    )
+    result = await db.execute(select(App).offset(skip).limit(limit).order_by(App.created_at.desc()))
     apps = result.scalars().all()
 
     # Load worker relationships
@@ -122,6 +121,7 @@ async def get_app(
 # Deploy Endpoint
 # =============================================================================
 
+
 @router.post("", response_model=AppResponse, status_code=201)
 async def deploy_app(
     deploy_request: AppDeploy,
@@ -140,10 +140,7 @@ async def deploy_app(
     try:
         app_type = AppType(deploy_request.app_type)
     except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid app type: {deploy_request.app_type}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid app type: {deploy_request.app_type}")
 
     app_def = APP_DEFINITIONS[app_type]
 
@@ -159,8 +156,7 @@ async def deploy_app(
     )
     if existing.scalar_one_or_none():
         raise HTTPException(
-            status_code=400,
-            detail=f"{app_def['name']} is already deployed on worker {worker.name}"
+            status_code=400, detail=f"{app_def['name']} is already deployed on worker {worker.name}"
         )
 
     # Generate app name
@@ -226,6 +222,7 @@ async def deploy_app(
 # Helper Functions
 # =============================================================================
 
+
 async def _create_api_key_if_needed(
     db: AsyncSession,
     app_name: str,
@@ -236,9 +233,7 @@ async def _create_api_key_if_needed(
     Returns:
         Tuple of (ApiKey or None, full_key string)
     """
-    needs_api_key = any(
-        v == "{api_key}" for v in app_def.get("env_template", {}).values()
-    )
+    needs_api_key = any(v == "{api_key}" for v in app_def.get("env_template", {}).values())
 
     if not needs_api_key:
         return None, ""
@@ -300,7 +295,11 @@ async def _build_env_vars(
         .where(Deployment.status == "running")
     )
     running_model_names = [row[0] for row in running_models_result.fetchall()]
-    model_list = "-all," + ",".join(f"+{name}" for name in running_model_names) if running_model_names else ""
+    model_list = (
+        "-all," + ",".join(f"+{name}" for name in running_model_names)
+        if running_model_names
+        else ""
+    )
 
     # Build env vars from template
     env_vars = {}

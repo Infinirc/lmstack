@@ -1,4 +1,5 @@
 """Dashboard API routes"""
+
 from datetime import datetime, timedelta, date
 from typing import List
 
@@ -101,12 +102,8 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     )
     usage_rows = usage_result.all()
 
-    request_history = [
-        UsagePoint(date=row.day, value=row.requests or 0) for row in usage_rows
-    ]
-    token_history = [
-        UsagePoint(date=row.day, value=row.tokens or 0) for row in usage_rows
-    ]
+    request_history = [UsagePoint(date=row.day, value=row.requests or 0) for row in usage_rows]
+    token_history = [UsagePoint(date=row.day, value=row.tokens or 0) for row in usage_rows]
 
     # Total usage
     total_result = await db.execute(

@@ -19,9 +19,7 @@ from app.config import get_settings
 
 async def column_exists(conn, table_name: str, column_name: str) -> bool:
     """Check if a column exists in a table (SQLite compatible)"""
-    result = await conn.execute(text(
-        f"PRAGMA table_info({table_name})"
-    ))
+    result = await conn.execute(text(f"PRAGMA table_info({table_name})"))
     columns = [row[1] for row in result.fetchall()]
     return column_name in columns
 
@@ -32,18 +30,22 @@ async def migrate():
 
     async with engine.begin() as conn:
         # Add use_proxy column if not exists
-        if not await column_exists(conn, 'apps', 'use_proxy'):
+        if not await column_exists(conn, "apps", "use_proxy"):
             print("Adding 'use_proxy' column to apps table...")
-            await conn.execute(text("""
+            await conn.execute(
+                text(
+                    """
                 ALTER TABLE apps ADD COLUMN use_proxy BOOLEAN DEFAULT 1
-            """))
+            """
+                )
+            )
             print("'use_proxy' column added successfully!")
         else:
             print("'use_proxy' column already exists")
 
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print("Migration completed successfully!")
-        print("="*50)
+        print("=" * 50)
 
     await engine.dispose()
 

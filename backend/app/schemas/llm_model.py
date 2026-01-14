@@ -1,4 +1,5 @@
 """LLM Model Pydantic schemas"""
+
 from datetime import datetime
 from typing import Optional
 
@@ -9,6 +10,7 @@ from app.models.llm_model import ModelSource
 
 class LLMModelBase(BaseModel):
     """Base LLM model schema"""
+
     name: str = Field(..., min_length=1, max_length=255)
     model_id: str = Field(..., min_length=1, max_length=512)
     source: ModelSource = ModelSource.HUGGINGFACE
@@ -19,11 +21,13 @@ class LLMModelBase(BaseModel):
 
 class LLMModelCreate(LLMModelBase):
     """Schema for creating an LLM model"""
+
     pass
 
 
 class LLMModelUpdate(BaseModel):
     """Schema for updating an LLM model"""
+
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     model_id: Optional[str] = Field(None, min_length=1, max_length=512)
     source: Optional[ModelSource] = None
@@ -34,6 +38,7 @@ class LLMModelUpdate(BaseModel):
 
 class LLMModelResponse(LLMModelBase):
     """Schema for LLM model response"""
+
     id: int
     created_at: datetime
     updated_at: datetime
@@ -45,5 +50,6 @@ class LLMModelResponse(LLMModelBase):
 
 class LLMModelListResponse(BaseModel):
     """Schema for LLM model list response"""
+
     items: list[LLMModelResponse]
     total: int

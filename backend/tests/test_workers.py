@@ -1,6 +1,7 @@
 """
 Tests for worker management endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,14 +33,9 @@ class TestWorkerEndpoints:
     """Test worker management API endpoints."""
 
     @pytest.mark.asyncio
-    async def test_list_workers_empty(
-        self, async_client: AsyncClient, auth_headers: dict
-    ):
+    async def test_list_workers_empty(self, async_client: AsyncClient, auth_headers: dict):
         """Test listing workers when none exist."""
-        response = await async_client.get(
-            "/api/workers",
-            headers=auth_headers
-        )
+        response = await async_client.get("/api/workers", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -51,10 +47,7 @@ class TestWorkerEndpoints:
         self, async_client: AsyncClient, auth_headers: dict, sample_worker: Worker
     ):
         """Test listing workers."""
-        response = await async_client.get(
-            "/api/workers",
-            headers=auth_headers
-        )
+        response = await async_client.get("/api/workers", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -67,10 +60,7 @@ class TestWorkerEndpoints:
         self, async_client: AsyncClient, auth_headers: dict, sample_worker: Worker
     ):
         """Test getting a specific worker."""
-        response = await async_client.get(
-            f"/api/workers/{sample_worker.id}",
-            headers=auth_headers
-        )
+        response = await async_client.get(f"/api/workers/{sample_worker.id}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -79,14 +69,9 @@ class TestWorkerEndpoints:
         assert data["gpu_count"] == 2
 
     @pytest.mark.asyncio
-    async def test_get_worker_not_found(
-        self, async_client: AsyncClient, auth_headers: dict
-    ):
+    async def test_get_worker_not_found(self, async_client: AsyncClient, auth_headers: dict):
         """Test getting a nonexistent worker."""
-        response = await async_client.get(
-            "/api/workers/99999",
-            headers=auth_headers
-        )
+        response = await async_client.get("/api/workers/99999", headers=auth_headers)
 
         assert response.status_code == 404
 

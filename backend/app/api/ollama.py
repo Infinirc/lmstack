@@ -1,4 +1,5 @@
 """Ollama library API - browse available models from ollama.com"""
+
 import re
 import time
 from typing import Optional
@@ -23,6 +24,7 @@ _MAX_CACHE_ENTRIES = 100  # Limit to prevent memory leaks
 
 class OllamaModel(BaseModel):
     """Ollama model information"""
+
     name: str
     description: Optional[str] = None
     pulls: int = 0
@@ -49,17 +51,14 @@ def _set_cache(key: str, data: list):
 
     # Cleanup expired entries if cache is getting large
     if len(_models_cache) >= _MAX_CACHE_ENTRIES:
-        expired_keys = [
-            k for k, (ts, _) in _models_cache.items()
-            if current_time - ts >= CACHE_TTL
-        ]
+        expired_keys = [k for k, (ts, _) in _models_cache.items() if current_time - ts >= CACHE_TTL]
         for k in expired_keys:
             _models_cache.pop(k, None)
 
         # If still too large, remove oldest entries
         if len(_models_cache) >= _MAX_CACHE_ENTRIES:
             sorted_keys = sorted(_models_cache.keys(), key=lambda k: _models_cache[k][0])
-            for k in sorted_keys[:_MAX_CACHE_ENTRIES // 4]:
+            for k in sorted_keys[: _MAX_CACHE_ENTRIES // 4]:
                 _models_cache.pop(k, None)
 
     _models_cache[key] = (current_time, data)
@@ -71,12 +70,12 @@ def _parse_pulls(text: str) -> int:
         return 0
     text = text.strip().upper()
     try:
-        if 'M' in text:
-            return int(float(text.replace('M', '').replace(',', '')) * 1_000_000)
-        elif 'K' in text:
-            return int(float(text.replace('K', '').replace(',', '')) * 1_000)
+        if "M" in text:
+            return int(float(text.replace("M", "").replace(",", "")) * 1_000_000)
+        elif "K" in text:
+            return int(float(text.replace("K", "").replace(",", "")) * 1_000)
         else:
-            return int(text.replace(',', ''))
+            return int(text.replace(",", ""))
     except ValueError:
         return 0
 
@@ -89,7 +88,8 @@ def _extract_readme(html: str) -> Optional[str]:
     # This contains the already-rendered HTML from the markdown
     display_match = re.search(
         r'<div[^>]*id="display"[^>]*>(.*?)</div>\s*</div>\s*<div[^>]*id="editorContainer"',
-        html, re.DOTALL
+        html,
+        re.DOTALL,
     )
     if display_match:
         content = display_match.group(1).strip()
@@ -117,27 +117,24 @@ def _parse_model_html(html: str) -> list[OllamaModel]:
     # Looking for model links like /library/modelname
     model_pattern = re.compile(
         r'href="/library/([^"]+)"[^>]*>.*?'
-        r'(?:<p[^>]*>([^<]*)</p>)?.*?'
-        r'(?:(\d+(?:\.\d+)?[KMB]?)\s*(?:Pulls|pulls))?',
-        re.DOTALL | re.IGNORECASE
+        r"(?:<p[^>]*>([^<]*)</p>)?.*?"
+        r"(?:(\d+(?:\.\d+)?[KMB]?)\s*(?:Pulls|pulls))?",
+        re.DOTALL | re.IGNORECASE,
     )
 
     # Simpler pattern for model extraction
     # Match model items from the library page
-    card_pattern = re.compile(
-        r'<a[^>]*href="/library/([^"]+)"[^>]*>.*?</a>',
-        re.DOTALL
-    )
+    card_pattern = re.compile(r'<a[^>]*href="/library/([^"]+)"[^>]*>.*?</a>', re.DOTALL)
 
     # Extract individual model sections
     # The library page has model cards with name, description, pulls, tags
     item_pattern = re.compile(
-        r'<li[^>]*>.*?'
+        r"<li[^>]*>.*?"
         r'<a[^>]*href="/library/([^"]+)"[^>]*>.*?'
         r'<span[^>]*class="[^"]*truncate[^"]*"[^>]*>([^<]*)</span>.*?'
-        r'(?:<p[^>]*>([^<]*)</p>)?.*?'
-        r'</li>',
-        re.DOTALL
+        r"(?:<p[^>]*>([^<]*)</p>)?.*?"
+        r"</li>",
+        re.DOTALL,
     )
 
     # Alternative simpler extraction - get model names from links
@@ -149,7 +146,7 @@ def _parse_model_html(html: str) -> list[OllamaModel]:
     # Try to extract more info for each model
     for name in model_names:
         # Skip non-model links
-        if name in ['', 'search', 'models', 'download']:
+        if name in ["", "search", "models", "download"]:
             continue
 
         model = OllamaModel(name=name)
@@ -158,9 +155,9 @@ def _parse_model_html(html: str) -> list[OllamaModel]:
         # Look for context around the model name
         context_pattern = re.compile(
             rf'href="/library/{re.escape(name)}"[^>]*>.*?'
-            rf'(?:<span[^>]*>([^<]+)</span>)?.*?'
-            rf'(?:(\d+(?:\.\d+)?[KMB]?)\s*(?:Pulls)?)?',
-            re.DOTALL | re.IGNORECASE
+            rf"(?:<span[^>]*>([^<]+)</span>)?.*?"
+            rf"(?:(\d+(?:\.\d+)?[KMB]?)\s*(?:Pulls)?)?",
+            re.DOTALL | re.IGNORECASE,
         )
         match = context_pattern.search(html)
         if match:
@@ -170,13 +167,17 @@ def _parse_model_html(html: str) -> list[OllamaModel]:
                 model.pulls = _parse_pulls(match.group(2))
 
         # Check for capability tags
-        for cap in ['Vision', 'Tools', 'Embedding', 'Thinking', 'Code']:
-            if f'>{cap}<' in html or f'"{cap}"' in html.lower():
+        for cap in ["Vision", "Tools", "Embedding", "Thinking", "Code"]:
+            if f">{cap}<" in html or f'"{cap}"' in html.lower():
                 # Check if this capability is near this model's entry
                 cap_check = re.search(
                     rf'href="/library/{re.escape(name)}".*?{cap}',
-                    html[:html.find(f'href="/library/{name}"') + 2000] if f'href="/library/{name}"' in html else '',
-                    re.DOTALL | re.IGNORECASE
+                    (
+                        html[: html.find(f'href="/library/{name}"') + 2000]
+                        if f'href="/library/{name}"' in html
+                        else ""
+                    ),
+                    re.DOTALL | re.IGNORECASE,
                 )
                 if cap_check:
                     model.capabilities.append(cap.lower())
@@ -355,7 +356,9 @@ POPULAR_MODELS = [
 @router.get("/models", response_model=list[OllamaModel])
 async def list_models(
     search: Optional[str] = Query(None, description="Search query"),
-    capability: Optional[str] = Query(None, description="Filter by capability: vision, tools, embedding, code, thinking"),
+    capability: Optional[str] = Query(
+        None, description="Filter by capability: vision, tools, embedding, code, thinking"
+    ),
     limit: int = Query(20, ge=1, le=100, description="Number of results"),
 ):
     """
@@ -367,8 +370,12 @@ async def list_models(
     # Filter by search query
     if search:
         search_lower = search.lower()
-        models = [m for m in models if search_lower in m.name.lower() or
-                  (m.description and search_lower in m.description.lower())]
+        models = [
+            m
+            for m in models
+            if search_lower in m.name.lower()
+            or (m.description and search_lower in m.description.lower())
+        ]
 
     # Filter by capability
     if capability:
@@ -419,7 +426,9 @@ async def get_model_info(model_name: str):
 
             # Extract description if not set
             if not model.description:
-                desc_match = re.search(r'<p[^>]*class="[^"]*text-neutral-[^"]*"[^>]*>([^<]+)</p>', html)
+                desc_match = re.search(
+                    r'<p[^>]*class="[^"]*text-neutral-[^"]*"[^>]*>([^<]+)</p>', html
+                )
                 if desc_match:
                     model.description = desc_match.group(1).strip()
 
@@ -431,7 +440,7 @@ async def get_model_info(model_name: str):
 
             # Extract parameter sizes from tags
             for tag in model.tags:
-                size_match = re.match(r'(\d+(?:\.\d+)?[bm])', tag.lower())
+                size_match = re.match(r"(\d+(?:\.\d+)?[bm])", tag.lower())
                 if size_match and size_match.group(1) not in model.sizes:
                     model.sizes.append(size_match.group(1))
 
@@ -471,8 +480,7 @@ async def get_model_tags(model_name: str):
 
             # Extract tags from the page
             tag_pattern = re.compile(
-                rf'href="/library/{re.escape(model_name)}:([^"]+)"',
-                re.IGNORECASE
+                rf'href="/library/{re.escape(model_name)}:([^"]+)"', re.IGNORECASE
             )
             tags = list(set(tag_pattern.findall(html)))
 
@@ -482,12 +490,12 @@ async def get_model_tags(model_name: str):
                 info = {"name": tag, "full_name": f"{model_name}:{tag}"}
 
                 # Try to determine size from tag name
-                size_match = re.match(r'(\d+(?:\.\d+)?[bm])', tag.lower())
+                size_match = re.match(r"(\d+(?:\.\d+)?[bm])", tag.lower())
                 if size_match:
                     info["size"] = size_match.group(1)
 
                 # Check for quantization
-                for quant in ['q4_0', 'q4_1', 'q5_0', 'q5_1', 'q8_0', 'fp16', 'fp32']:
+                for quant in ["q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "fp16", "fp32"]:
                     if quant in tag.lower():
                         info["quantization"] = quant
                         break

@@ -3,6 +3,7 @@
 Proxies requests to deployed apps like Open WebUI through LMStack.
 This allows users to access apps via a single LMStack URL.
 """
+
 import logging
 from typing import Optional, AsyncIterator
 
@@ -50,9 +51,15 @@ async def proxy_request(
     # Build headers for the proxied request
     headers = {}
     hop_by_hop = {
-        "connection", "keep-alive", "proxy-authenticate",
-        "proxy-authorization", "te", "trailers", "transfer-encoding",
-        "upgrade", "host",
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+        "host",
     }
     for key, value in request.headers.items():
         if key.lower() not in hop_by_hop:
@@ -74,14 +81,19 @@ async def proxy_request(
                 content=body,
                 headers=headers,
             )
-            logger.info(f"Proxy response: status={response.status_code}, content-type={response.headers.get('content-type')}, content-length={len(response.content)}")
+            logger.info(
+                f"Proxy response: status={response.status_code}, content-type={response.headers.get('content-type')}, content-length={len(response.content)}"
+            )
 
             # Build response headers, excluding hop-by-hop and encoding headers
             # httpx auto-decompresses, so we must not forward Content-Encoding
             response_headers = {}
             excluded = {
-                "transfer-encoding", "connection", "keep-alive",
-                "content-encoding", "content-length",  # httpx decompresses, so these are invalid
+                "transfer-encoding",
+                "connection",
+                "keep-alive",
+                "content-encoding",
+                "content-length",  # httpx decompresses, so these are invalid
             }
             for key, value in response.headers.items():
                 if key.lower() not in excluded:
@@ -126,8 +138,7 @@ async def proxy_to_app(
 
     if not app:
         raise HTTPException(
-            status_code=404,
-            detail=f"App '{app_type_name}' is not deployed or not running"
+            status_code=404, detail=f"App '{app_type_name}' is not deployed or not running"
         )
 
     # Load worker relationship
