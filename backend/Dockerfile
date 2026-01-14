@@ -10,31 +10,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies to /usr/local (system-wide)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Production image
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash appuser
-
 # Copy installed packages from builder
-COPY --from=builder /root/.local /home/appuser/.local
-ENV PATH=/home/appuser/.local/bin:$PATH
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY --chown=appuser:appuser app/ ./app/
-COPY --chown=appuser:appuser migrations/ ./migrations/
+COPY app/ ./app/
+COPY migrations/ ./migrations/
 
 # Create data directory
-RUN mkdir -p /app/data && chown -R appuser:appuser /app/data
-
-# Switch to non-root user
-USER appuser
+RUN mkdir -p /app/data
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -42,5 +36,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 EXPOSE 8000
 
-# Use gunicorn for production
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
