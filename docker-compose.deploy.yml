@@ -11,6 +11,7 @@ services:
     volumes:
       - lmstack-data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/lmstack-proxy:/tmp/lmstack-proxy
     environment:
       - LMSTACK_SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - LMSTACK_EXTERNAL_URL=${EXTERNAL_URL:-}
