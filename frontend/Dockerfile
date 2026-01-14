@@ -26,8 +26,8 @@ FROM nginx:alpine
 # Add non-root user
 RUN adduser -D -g '' appuser
 
-# Copy custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx config as template (envsubst will process ${BACKEND_HOST})
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Copy built files from builder
 COPY --from=builder /app/dist /usr/share/nginx/html

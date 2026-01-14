@@ -21,8 +21,11 @@ services:
     container_name: lmstack-frontend
     ports:
       - "3000:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      - VITE_API_URL=http://localhost:8088
+      - BACKEND_HOST=host.docker.internal
+      - NGINX_ENVSUBST_FILTER=BACKEND_HOST
     depends_on:
       - server
     restart: unless-stopped
