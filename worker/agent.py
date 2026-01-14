@@ -60,11 +60,13 @@ class WorkerAgent:
         server_url: str,
         host: str = "0.0.0.0",
         port: int = 8080,
+        registration_token: Optional[str] = None,
     ):
         self.name = name
         self.server_url = server_url.rstrip("/")
         self.host = host
         self.port = port
+        self.registration_token = registration_token
         self.worker_id: Optional[int] = None
 
         # Initialize Docker managers
@@ -84,15 +86,21 @@ class WorkerAgent:
             gpu_info = self.gpu_detector.detect()
             system_info = self.system_detector.detect()
 
+            registration_data = {
+                "name": self.name,
+                "address": f"{self._get_advertise_address()}:{self.port}",
+                "gpu_info": gpu_info,
+                "system_info": system_info,
+            }
+
+            # Include registration token if provided
+            if self.registration_token:
+                registration_data["registration_token"] = self.registration_token
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.server_url}/api/workers",
-                    json={
-                        "name": self.name,
-                        "address": f"{self._get_advertise_address()}:{self.port}",
-                        "gpu_info": gpu_info,
-                        "system_info": system_info,
-                    },
+                    json=registration_data,
                 )
 
                 if response.status_code == 201:
@@ -104,6 +112,10 @@ class WorkerAgent:
                     # Worker might already exist, try to reconnect
                     logger.warning("Worker already exists, attempting to reconnect...")
                     return await self._reconnect()
+                elif response.status_code == 401:
+                    error_detail = response.json().get("detail", "Authentication failed")
+                    logger.error(f"Registration failed: {error_detail}")
+                    return False
                 else:
                     logger.error(f"Failed to register: {response.text}")
                     return False
@@ -250,6 +262,7 @@ def main():
     # Get defaults from environment variables (for Docker)
     default_name = os.environ.get("WORKER_NAME")
     default_server_url = os.environ.get("BACKEND_URL")
+    default_registration_token = os.environ.get("REGISTRATION_TOKEN")
 
     parser = argparse.ArgumentParser(description="LMStack Worker Agent")
     parser.add_argument(
@@ -264,6 +277,11 @@ def main():
         required=default_server_url is None,
         help="LMStack server URL (or set BACKEND_URL env var)",
     )
+    parser.add_argument(
+        "--registration-token",
+        default=default_registration_token,
+        help="Registration token from the server (or set REGISTRATION_TOKEN env var)",
+    )
     parser.add_argument("--host", default="0.0.0.0", help="Agent host")
     parser.add_argument("--port", type=int, default=8080, help="Agent port")
 
@@ -274,6 +292,7 @@ def main():
         server_url=args.server_url,
         host=args.host,
         port=args.port,
+        registration_token=args.registration_token,
     )
 
     # Handle shutdown signals

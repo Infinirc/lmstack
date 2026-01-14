@@ -123,3 +123,43 @@ class WorkerHeartbeat(BaseModel):
     gpu_info: list[GPUInfo] | None = None
     system_info: SystemInfo | None = None
     status: WorkerStatus = WorkerStatus.ONLINE
+
+
+class RegistrationTokenCreate(BaseModel):
+    """Schema for creating a registration token"""
+
+    name: str = Field(..., min_length=1, max_length=255, description="Suggested worker name")
+    expires_in_hours: int = Field(default=24, ge=1, le=168, description="Token validity in hours")
+
+
+class RegistrationTokenResponse(BaseModel):
+    """Schema for registration token response"""
+
+    id: int
+    token: str
+    name: str
+    is_used: bool
+    used_by_worker_id: int | None = None
+    created_at: datetime
+    expires_at: datetime
+    used_at: datetime | None = None
+    is_valid: bool
+    docker_command: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class RegistrationTokenListResponse(BaseModel):
+    """Schema for registration token list response"""
+
+    items: list[RegistrationTokenResponse]
+    total: int
+
+
+class WorkerRegisterWithToken(WorkerBase):
+    """Schema for registering a worker with a token"""
+
+    registration_token: str = Field(..., description="Registration token from the server")
+    gpu_info: list[GPUInfo] | None = None
+    system_info: SystemInfo | None = None

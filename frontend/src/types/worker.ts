@@ -68,3 +68,21 @@ export interface WorkerCreate {
   tailscale_ip?: string;
   headscale_node_id?: number;
 }
+
+export interface RegistrationToken {
+  id: number;
+  token: string;
+  name: string;
+  is_used: boolean;
+  used_by_worker_id?: number;
+  created_at: string;
+  expires_at: string;
+  used_at?: string;
+  is_valid: boolean;
+  docker_command?: string;
+}
+
+export interface RegistrationTokenCreate {
+  name: string;
+  expires_in_hours?: number;
+}

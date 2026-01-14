@@ -4,6 +4,7 @@ import {
   Card,
   Form,
   Input,
+  InputNumber,
   Modal,
   Space,
   Table,
@@ -17,6 +18,7 @@ import {
   Statistic,
   Tooltip,
   Typography,
+  Alert,
 } from "antd";
 import {
   PlusOutlined,
@@ -29,14 +31,15 @@ import {
   CloseCircleOutlined,
   DatabaseOutlined,
   DesktopOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { workersApi, modelFilesApi } from "../services/api";
 import type {
   Worker,
-  WorkerCreate,
   GPUInfo,
   SystemInfo,
   ModelFileView,
+  RegistrationToken,
 } from "../types";
 import { useResponsive } from "../hooks";
 import dayjs from "dayjs";
@@ -58,6 +61,11 @@ export default function Workers() {
   const [modelFilesModal, setModelFilesModal] = useState<Worker | null>(null);
   const [form] = Form.useForm();
   const { isMobile } = useResponsive();
+
+  // Registration token state
+  const [generatedToken, setGeneratedToken] =
+    useState<RegistrationToken | null>(null);
+  const [generatingToken, setGeneratingToken] = useState(false);
 
   const fetchWorkers = useCallback(async () => {
     try {
@@ -88,17 +96,37 @@ export default function Workers() {
     }
   }, [workers, detailModal]);
 
-  const handleCreate = async (values: WorkerCreate) => {
+  const handleGenerateToken = async (values: {
+    name: string;
+    expires_in_hours: number;
+  }) => {
+    setGeneratingToken(true);
     try {
-      await workersApi.create(values);
-      message.success("Worker created successfully");
-      setModalOpen(false);
-      form.resetFields();
-      fetchWorkers();
+      const token = await workersApi.createToken({
+        name: values.name,
+        expires_in_hours: values.expires_in_hours,
+      });
+      setGeneratedToken(token);
+      message.success("Registration token generated");
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail || "Failed to create worker");
+      message.error(err.response?.data?.detail || "Failed to generate token");
+    } finally {
+      setGeneratingToken(false);
     }
+  };
+
+  const handleCopyCommand = () => {
+    if (generatedToken?.docker_command) {
+      navigator.clipboard.writeText(generatedToken.docker_command);
+      message.success("Command copied to clipboard");
+    }
+  };
+
+  const handleCloseAddModal = () => {
+    setModalOpen(false);
+    setGeneratedToken(null);
+    form.resetFields();
   };
 
   const handleDelete = async (id: number) => {
@@ -559,44 +587,114 @@ export default function Workers() {
       <Modal
         title="Add Worker"
         open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          form.resetFields();
-        }}
+        onCancel={handleCloseAddModal}
         footer={null}
-        width={isMobile ? "100%" : 520}
+        width={isMobile ? "100%" : 600}
         style={
           isMobile ? { top: 20, maxWidth: "100%", margin: "0 8px" } : undefined
         }
       >
-        <Form form={form} layout="vertical" onFinish={handleCreate}>
-          <Form.Item
-            name="name"
-            label="Worker Name"
-            rules={[{ required: true, message: "Please enter worker name" }]}
+        {!generatedToken ? (
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleGenerateToken}
+            initialValues={{ expires_in_hours: 24 }}
           >
-            <Input placeholder="e.g., gpu-worker-01" />
-          </Form.Item>
-          <Form.Item
-            name="address"
-            label="Address"
-            rules={[{ required: true, message: "Please enter worker address" }]}
-            extra="IP:Port of the worker agent (e.g., 192.168.1.100:8080)"
-          >
-            <Input placeholder="e.g., 192.168.1.100:8080" />
-          </Form.Item>
-          <Form.Item name="description" label="Description">
-            <Input.TextArea placeholder="Optional description" rows={2} />
-          </Form.Item>
-          <Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit">
-                Create
-              </Button>
-              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
-            </Space>
-          </Form.Item>
-        </Form>
+            <Alert
+              message="Worker Registration"
+              description="Generate a registration token and run the Docker command on your GPU machine to add a worker."
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Form.Item
+              name="name"
+              label="Worker Name"
+              rules={[{ required: true, message: "Please enter worker name" }]}
+            >
+              <Input placeholder="e.g., gpu-worker-01" />
+            </Form.Item>
+            <Form.Item
+              name="expires_in_hours"
+              label="Token Validity (hours)"
+              rules={[
+                { required: true, message: "Please enter token validity" },
+              ]}
+            >
+              <InputNumber min={1} max={168} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={generatingToken}
+                >
+                  Generate Token
+                </Button>
+                <Button onClick={handleCloseAddModal}>Cancel</Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        ) : (
+          <div>
+            <Alert
+              message="Token Generated Successfully"
+              description={
+                <span>
+                  Copy and run the command below on your GPU machine. Token
+                  expires at{" "}
+                  <strong>
+                    {dayjs(generatedToken.expires_at).format(
+                      "YYYY-MM-DD HH:mm",
+                    )}
+                  </strong>
+                </span>
+              }
+              type="success"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>Docker Command:</Text>
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 12,
+                  backgroundColor: "#1e1e1e",
+                  borderRadius: 6,
+                  position: "relative",
+                }}
+              >
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-all",
+                    color: "#d4d4d4",
+                    fontSize: 12,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  {generatedToken.docker_command}
+                </pre>
+                <Button
+                  type="primary"
+                  icon={<CopyOutlined />}
+                  size="small"
+                  onClick={handleCopyCommand}
+                  style={{ position: "absolute", top: 8, right: 8 }}
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <Button onClick={handleCloseAddModal}>Done</Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal

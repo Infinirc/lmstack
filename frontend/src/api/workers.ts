@@ -2,7 +2,13 @@
  * Workers API
  */
 import { api } from "./client";
-import type { Worker, WorkerCreate, ListResponse } from "../types";
+import type {
+  Worker,
+  WorkerCreate,
+  ListResponse,
+  RegistrationToken,
+  RegistrationTokenCreate,
+} from "../types";
 
 export interface WorkerListParams {
   skip?: number;
@@ -40,5 +46,32 @@ export const workersApi = {
   registerLocal: async (): Promise<Worker> => {
     const response = await api.post<Worker>("/workers/local");
     return response.data;
+  },
+
+  // Registration Token APIs
+  createToken: async (
+    data: RegistrationTokenCreate,
+  ): Promise<RegistrationToken> => {
+    const response = await api.post<RegistrationToken>("/workers/tokens", data);
+    return response.data;
+  },
+
+  listTokens: async (
+    includeUsed = false,
+  ): Promise<ListResponse<RegistrationToken>> => {
+    const response = await api.get<ListResponse<RegistrationToken>>(
+      "/workers/tokens",
+      { params: { include_used: includeUsed } },
+    );
+    return response.data;
+  },
+
+  getToken: async (id: number): Promise<RegistrationToken> => {
+    const response = await api.get<RegistrationToken>(`/workers/tokens/${id}`);
+    return response.data;
+  },
+
+  deleteToken: async (id: number): Promise<void> => {
+    await api.delete(`/workers/tokens/${id}`);
   },
 };

@@ -2,17 +2,22 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.deployment import Deployment
+from app.models.registration_token import RegistrationToken
 from app.models.worker import Worker, WorkerStatus
 from app.schemas.worker import (
+    RegistrationTokenCreate,
+    RegistrationTokenListResponse,
+    RegistrationTokenResponse,
     WorkerCreate,
     WorkerHeartbeat,
     WorkerListResponse,
+    WorkerRegisterWithToken,
     WorkerResponse,
     WorkerUpdate,
 )
@@ -70,10 +75,32 @@ async def list_workers(
 
 @router.post("", response_model=WorkerResponse, status_code=201)
 async def create_worker(
-    worker_in: WorkerCreate,
+    worker_in: WorkerCreate | WorkerRegisterWithToken,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register a new worker"""
+    """Register a new worker (requires registration token)"""
+    # Check for registration token
+    registration_token = getattr(worker_in, "registration_token", None)
+    if not registration_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Registration token required. Generate a token from the web UI.",
+        )
+
+    # Verify token
+    result = await db.execute(
+        select(RegistrationToken).where(RegistrationToken.token == registration_token)
+    )
+    token = result.scalar_one_or_none()
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Invalid registration token")
+
+    if not token.is_valid:
+        if token.is_used:
+            raise HTTPException(status_code=401, detail="Registration token has already been used")
+        raise HTTPException(status_code=401, detail="Registration token has expired")
+
     # Check if worker with same name exists
     existing = await db.execute(select(Worker).where(Worker.name == worker_in.name))
     if existing.scalar_one_or_none():
@@ -93,6 +120,12 @@ async def create_worker(
     db.add(worker)
     await db.commit()
     await db.refresh(worker)
+
+    # Mark token as used
+    token.is_used = True
+    token.used_at = datetime.now(UTC)
+    token.used_by_worker_id = worker.id
+    await db.commit()
 
     return WorkerResponse(
         id=worker.id,
@@ -313,3 +346,138 @@ async def register_local_worker(
         last_heartbeat=worker.last_heartbeat,
         deployment_count=0,
     )
+
+
+def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
+    """Generate docker run command for worker registration."""
+    return f"""docker run -d \\
+  --name lmstack-worker \\
+  --gpus all \\
+  --privileged \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v ~/.cache/huggingface:/root/.cache/huggingface \\
+  -e BACKEND_URL={backend_url} \\
+  -e WORKER_NAME={name} \\
+  -e REGISTRATION_TOKEN={token} \\
+  infinirc/lmstack-worker:latest"""
+
+
+@router.post("/tokens", response_model=RegistrationTokenResponse, status_code=201)
+async def create_registration_token(
+    token_in: RegistrationTokenCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a new registration token for worker registration."""
+    token = RegistrationToken.create(
+        name=token_in.name,
+        expires_in_hours=token_in.expires_in_hours,
+    )
+
+    db.add(token)
+    await db.commit()
+    await db.refresh(token)
+
+    # Generate backend URL from request
+    backend_url = str(request.base_url).rstrip("/")
+
+    return RegistrationTokenResponse(
+        id=token.id,
+        token=token.token,
+        name=token.name,
+        is_used=token.is_used,
+        used_by_worker_id=token.used_by_worker_id,
+        created_at=token.created_at,
+        expires_at=token.expires_at,
+        used_at=token.used_at,
+        is_valid=token.is_valid,
+        docker_command=_generate_docker_command(token.token, token.name, backend_url),
+    )
+
+
+@router.get("/tokens", response_model=RegistrationTokenListResponse)
+async def list_registration_tokens(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    include_used: bool = Query(False, description="Include used tokens"),
+    db: AsyncSession = Depends(get_db),
+):
+    """List registration tokens."""
+    query = select(RegistrationToken)
+
+    if not include_used:
+        query = query.where(RegistrationToken.is_used == False)  # noqa: E712
+
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    query = query.offset(skip).limit(limit).order_by(RegistrationToken.created_at.desc())
+    result = await db.execute(query)
+    tokens = result.scalars().all()
+
+    items = [
+        RegistrationTokenResponse(
+            id=t.id,
+            token=t.token,
+            name=t.name,
+            is_used=t.is_used,
+            used_by_worker_id=t.used_by_worker_id,
+            created_at=t.created_at,
+            expires_at=t.expires_at,
+            used_at=t.used_at,
+            is_valid=t.is_valid,
+            docker_command=None,
+        )
+        for t in tokens
+    ]
+
+    return RegistrationTokenListResponse(items=items, total=total or 0)
+
+
+@router.get("/tokens/{token_id}", response_model=RegistrationTokenResponse)
+async def get_registration_token(
+    token_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a registration token by ID."""
+    result = await db.execute(select(RegistrationToken).where(RegistrationToken.id == token_id))
+    token = result.scalar_one_or_none()
+
+    if not token:
+        raise HTTPException(status_code=404, detail="Registration token not found")
+
+    backend_url = str(request.base_url).rstrip("/")
+
+    return RegistrationTokenResponse(
+        id=token.id,
+        token=token.token,
+        name=token.name,
+        is_used=token.is_used,
+        used_by_worker_id=token.used_by_worker_id,
+        created_at=token.created_at,
+        expires_at=token.expires_at,
+        used_at=token.used_at,
+        is_valid=token.is_valid,
+        docker_command=(
+            _generate_docker_command(token.token, token.name, backend_url)
+            if token.is_valid
+            else None
+        ),
+    )
+
+
+@router.delete("/tokens/{token_id}", status_code=204)
+async def delete_registration_token(
+    token_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a registration token."""
+    result = await db.execute(select(RegistrationToken).where(RegistrationToken.id == token_id))
+    token = result.scalar_one_or_none()
+
+    if not token:
+        raise HTTPException(status_code=404, detail="Registration token not found")
+
+    await db.delete(token)
+    await db.commit()

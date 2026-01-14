@@ -17,6 +17,8 @@ export type {
   ConnectionType,
   Worker,
   WorkerCreate,
+  RegistrationToken,
+  RegistrationTokenCreate,
 } from "./worker";
 
 // Model Types
