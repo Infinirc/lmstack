@@ -23,10 +23,10 @@ ENV BACKEND_URL=http://backend:8000
 ENV WORKER_NAME=worker
 ENV AGENT_PORT=52001
 
-# Health check (uses AGENT_PORT env var)
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${AGENT_PORT}/health || exit 1
+    CMD curl -f http://localhost:52001/health || exit 1
 
-EXPOSE ${AGENT_PORT}
+EXPOSE 52001
 
 CMD ["python", "agent.py"]
