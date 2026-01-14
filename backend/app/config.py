@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     app_name: str = "LMStack"
     debug: bool = False
 
-    # Database
-    database_url: str = "sqlite+aiosqlite:///./lmstack.db"
+    # Database - use data directory for Docker compatibility
+    database_url: str = "sqlite+aiosqlite:///./data/lmstack.db"
 
     # Server
     host: str = "0.0.0.0"
