@@ -247,9 +247,23 @@ async def health():
 def main():
     global agent
 
+    # Get defaults from environment variables (for Docker)
+    default_name = os.environ.get("WORKER_NAME")
+    default_server_url = os.environ.get("BACKEND_URL")
+
     parser = argparse.ArgumentParser(description="LMStack Worker Agent")
-    parser.add_argument("--name", required=True, help="Worker name")
-    parser.add_argument("--server-url", required=True, help="LMStack server URL")
+    parser.add_argument(
+        "--name",
+        default=default_name,
+        required=default_name is None,
+        help="Worker name (or set WORKER_NAME env var)",
+    )
+    parser.add_argument(
+        "--server-url",
+        default=default_server_url,
+        required=default_server_url is None,
+        help="LMStack server URL (or set BACKEND_URL env var)",
+    )
     parser.add_argument("--host", default="0.0.0.0", help="Agent host")
     parser.add_argument("--port", type=int, default=8080, help="Agent port")
 
