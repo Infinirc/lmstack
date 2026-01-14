@@ -26,11 +26,13 @@ from app.api.apps.utils import (
     get_worker_or_404,
     hash_secret,
 )
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
 from app.models.api_key import ApiKey
 from app.models.app import APP_DEFINITIONS, App, AppStatus, AppType
 from app.models.deployment import Deployment
 from app.models.llm_model import LLMModel
+from app.models.user import User
 from app.models.worker import Worker
 from app.schemas.app import (
     AppDefinition,
@@ -53,8 +55,10 @@ router.include_router(lifecycle_router)
 
 
 @router.get("/available", response_model=AvailableAppsResponse)
-async def list_available_apps():
-    """List all available apps that can be deployed."""
+async def list_available_apps(
+    current_user: User = Depends(require_viewer),
+):
+    """List all available apps that can be deployed (requires viewer+)."""
     items = []
     for app_type, definition in APP_DEFINITIONS.items():
         items.append(
@@ -74,8 +78,9 @@ async def list_apps(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List all deployed apps."""
+    """List all deployed apps (requires viewer+)."""
     # Count total
     total = await db.scalar(select(func.count()).select_from(App))
 
@@ -94,8 +99,11 @@ async def list_apps(
 
 
 @router.get("/{app_id}/progress")
-async def get_app_deploy_progress(app_id: int):
-    """Get deployment progress for an app."""
+async def get_app_deploy_progress(
+    app_id: int,
+    current_user: User = Depends(require_viewer),
+):
+    """Get deployment progress for an app (requires viewer+)."""
     return get_deployment_progress(app_id)
 
 
@@ -104,8 +112,9 @@ async def get_app(
     app_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get app details."""
+    """Get app details (requires viewer+)."""
     result = await db.execute(select(App).where(App.id == app_id))
     app = result.scalar_one_or_none()
 
@@ -127,8 +136,9 @@ async def deploy_app(
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Deploy a new app.
+    """Deploy a new app (requires operator+).
 
     This will:
     1. Create an API key for the app to access LMStack

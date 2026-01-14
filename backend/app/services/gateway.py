@@ -6,7 +6,7 @@ from datetime import date, datetime
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.api_keys import API_KEY_PREFIX, verify_secret
+from app.core.api_key_utils import API_KEY_PREFIX, verify_secret
 from app.models.api_key import ApiKey, Usage
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.llm_model import LLMModel

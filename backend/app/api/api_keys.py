@@ -1,6 +1,5 @@
 """API Keys management routes"""
 
-import hashlib
 import secrets
 from datetime import datetime, timedelta
 
@@ -8,8 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.api_key_utils import API_KEY_PREFIX, hash_secret
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
 from app.models.api_key import ApiKey
+from app.models.user import User
 from app.schemas.api_key import (
     ApiKeyCreate,
     ApiKeyCreateResponse,
@@ -19,8 +21,6 @@ from app.schemas.api_key import (
 )
 
 router = APIRouter()
-
-API_KEY_PREFIX = "lmsk"
 
 
 def generate_access_key() -> str:
@@ -33,23 +33,14 @@ def generate_secret_key() -> str:
     return secrets.token_hex(16)  # 32 characters
 
 
-def hash_secret(secret: str) -> str:
-    """Hash a secret key for storage"""
-    return hashlib.sha256(secret.encode()).hexdigest()
-
-
-def verify_secret(secret: str, hashed: str) -> bool:
-    """Verify a secret against its hash"""
-    return hash_secret(secret) == hashed
-
-
 @router.get("", response_model=ApiKeyListResponse)
 async def list_api_keys(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List all API keys"""
+    """List all API keys (requires viewer+)"""
     # Count total
     total = await db.scalar(select(func.count()).select_from(ApiKey))
 
@@ -69,8 +60,9 @@ async def list_api_keys(
 async def create_api_key(
     api_key_in: ApiKeyCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Create a new API key"""
+    """Create a new API key (requires operator+)"""
     # Check for duplicate name
     existing = await db.execute(select(ApiKey).where(ApiKey.name == api_key_in.name))
     if existing.scalar_one_or_none():
@@ -122,8 +114,9 @@ async def create_api_key(
 async def get_api_key(
     api_key_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get an API key by ID"""
+    """Get an API key by ID (requires viewer+)"""
     result = await db.execute(select(ApiKey).where(ApiKey.id == api_key_id))
     api_key = result.scalar_one_or_none()
 
@@ -138,8 +131,9 @@ async def update_api_key(
     api_key_id: int,
     api_key_in: ApiKeyUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Update an API key"""
+    """Update an API key (requires operator+)"""
     result = await db.execute(select(ApiKey).where(ApiKey.id == api_key_id))
     api_key = result.scalar_one_or_none()
 
@@ -167,8 +161,9 @@ async def update_api_key(
 async def delete_api_key(
     api_key_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Delete an API key"""
+    """Delete an API key (requires operator+)"""
     result = await db.execute(select(ApiKey).where(ApiKey.id == api_key_id))
     api_key = result.scalar_one_or_none()
 
@@ -183,8 +178,9 @@ async def delete_api_key(
 async def get_api_key_stats(
     api_key_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get usage statistics for an API key"""
+    """Get usage statistics for an API key (requires viewer+)"""
     from datetime import timedelta
 
     from app.models.api_key import Usage
@@ -223,8 +219,9 @@ async def get_api_key_stats(
 @router.get("/stats/summary")
 async def get_all_api_keys_stats(
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get summary statistics for all API keys"""
+    """Get summary statistics for all API keys (requires viewer+)"""
     from datetime import timedelta
 
     from app.models.api_key import Usage

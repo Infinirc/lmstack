@@ -16,7 +16,17 @@ import {
 } from "react";
 import { STORAGE_KEYS } from "../constants";
 import { authApi } from "../services/api";
-import type { User } from "../types";
+import type { User, UserRole } from "../types";
+
+/**
+ * Role hierarchy for permission checks
+ * Higher number = more permissions
+ */
+const ROLE_HIERARCHY: Record<UserRole, number> = {
+  viewer: 0,
+  operator: 1,
+  admin: 2,
+};
 
 /**
  * Authentication context value interface
@@ -38,6 +48,14 @@ interface AuthContextValue {
   checkAuth: () => Promise<void>;
   /** Check if system has been initialized */
   checkSetupStatus: () => Promise<boolean>;
+  /** Check if current user has at least the required role */
+  hasPermission: (requiredRole: UserRole) => boolean;
+  /** Whether current user is an admin */
+  isAdmin: boolean;
+  /** Whether current user is at least an operator (operator+) */
+  isOperator: boolean;
+  /** Whether current user can edit resources (operator+) */
+  canEdit: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -129,6 +147,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
+  /**
+   * Check if current user has at least the required role
+   */
+  const hasPermission = useCallback(
+    (requiredRole: UserRole): boolean => {
+      if (!user) return false;
+      return ROLE_HIERARCHY[user.role] >= ROLE_HIERARCHY[requiredRole];
+    },
+    [user],
+  );
+
+  // Computed permission flags
+  const isAdmin = user?.role === "admin";
+  const isOperator = hasPermission("operator");
+  const canEdit = isOperator; // operator+ can edit resources
+
   // Initialize auth state on mount
   useEffect(() => {
     const init = async () => {
@@ -147,6 +181,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     logout,
     checkAuth,
     checkSetupStatus,
+    hasPermission,
+    isAdmin,
+    isOperator,
+    canEdit,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

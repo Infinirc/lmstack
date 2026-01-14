@@ -5,9 +5,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.llm_model import LLMModel
+from app.models.user import User
 from app.models.worker import Worker
 from app.schemas.deployment import (
     DeploymentCreate,
@@ -70,8 +72,9 @@ async def list_deployments(
     worker_id: int | None = None,
     model_id: int | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List all deployments"""
+    """List all deployments (requires viewer+)"""
     query = select(Deployment).options(
         selectinload(Deployment.worker),
         selectinload(Deployment.model),
@@ -111,8 +114,9 @@ async def create_deployment(
     deployment_in: DeploymentCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Create a new deployment"""
+    """Create a new deployment (requires operator+)"""
     # Check if deployment with same name exists
     existing = await db.execute(select(Deployment).where(Deployment.name == deployment_in.name))
     if existing.scalar_one_or_none():
@@ -190,8 +194,9 @@ async def create_deployment(
 async def get_deployment(
     deployment_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get a deployment by ID"""
+    """Get a deployment by ID (requires viewer+)"""
     result = await db.execute(
         select(Deployment)
         .where(Deployment.id == deployment_id)
@@ -213,8 +218,9 @@ async def update_deployment(
     deployment_id: int,
     deployment_in: DeploymentUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Update a deployment"""
+    """Update a deployment (requires operator+)"""
     result = await db.execute(
         select(Deployment)
         .where(Deployment.id == deployment_id)
@@ -247,8 +253,9 @@ async def delete_deployment(
     deployment_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Stop and delete a deployment"""
+    """Stop and delete a deployment (requires operator+)"""
     result = await db.execute(select(Deployment).where(Deployment.id == deployment_id))
     deployment = result.scalar_one_or_none()
 
@@ -269,8 +276,9 @@ async def stop_deployment(
     deployment_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Stop a deployment without deleting it"""
+    """Stop a deployment without deleting it (requires operator+)"""
     result = await db.execute(
         select(Deployment)
         .where(Deployment.id == deployment_id)
@@ -305,8 +313,9 @@ async def start_deployment(
     deployment_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Restart a stopped deployment"""
+    """Restart a stopped deployment (requires operator+)"""
     result = await db.execute(
         select(Deployment)
         .where(Deployment.id == deployment_id)
@@ -345,8 +354,9 @@ async def get_deployment_logs(
     deployment_id: int,
     tail: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get logs for a deployment"""
+    """Get logs for a deployment (requires viewer+)"""
     result = await db.execute(
         select(Deployment)
         .where(Deployment.id == deployment_id)

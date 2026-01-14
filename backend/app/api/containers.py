@@ -13,7 +13,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
+from app.models.user import User
 from app.models.worker import Worker
 
 logger = logging.getLogger(__name__)
@@ -232,8 +234,9 @@ async def list_containers(
     managed_only: bool = Query(False, description="Only LMStack-managed containers"),
     state: str | None = Query(None, description="Filter by state"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List containers across workers.
+    """List containers across workers (requires viewer+).
 
     If worker_id is provided, lists containers only from that worker.
     Otherwise, lists containers from all online workers.
@@ -276,8 +279,9 @@ async def get_container(
     container_id: str,
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get detailed information about a container."""
+    """Get detailed information about a container (requires viewer+)."""
     worker = await get_worker_or_404(worker_id, db)
     data = await call_worker_api(worker, "GET", f"/containers/{container_id}")
     return container_to_response(data, worker)
@@ -288,8 +292,9 @@ async def get_container_stats(
     container_id: str,
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get container resource usage statistics."""
+    """Get container resource usage statistics (requires viewer+)."""
     worker = await get_worker_or_404(worker_id, db)
     return await call_worker_api(worker, "GET", f"/containers/{container_id}/stats")
 
@@ -298,8 +303,9 @@ async def get_container_stats(
 async def create_container(
     request: ContainerCreateRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Create and start a new container on a worker."""
+    """Create and start a new container on a worker (requires operator+)."""
     worker = await get_worker_or_404(request.worker_id, db)
 
     payload = {
@@ -345,8 +351,9 @@ async def start_container(
     container_id: str,
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Start a stopped container."""
+    """Start a stopped container (requires operator+)."""
     worker = await get_worker_or_404(worker_id, db)
     data = await call_worker_api(
         worker,
@@ -363,8 +370,9 @@ async def stop_container(
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     timeout: int = Query(10, description="Seconds to wait before killing"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Stop a running container."""
+    """Stop a running container (requires operator+)."""
     worker = await get_worker_or_404(worker_id, db)
     data = await call_worker_api(
         worker,
@@ -382,8 +390,9 @@ async def restart_container(
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     timeout: int = Query(10, description="Seconds to wait during stop"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Restart a container."""
+    """Restart a container (requires operator+)."""
     worker = await get_worker_or_404(worker_id, db)
     data = await call_worker_api(
         worker,
@@ -400,8 +409,9 @@ async def pause_container(
     container_id: str,
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Pause a running container."""
+    """Pause a running container (requires operator+)."""
     worker = await get_worker_or_404(worker_id, db)
     data = await call_worker_api(
         worker,
@@ -416,8 +426,9 @@ async def unpause_container(
     container_id: str,
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Unpause a paused container."""
+    """Unpause a paused container (requires operator+)."""
     worker = await get_worker_or_404(worker_id, db)
     data = await call_worker_api(
         worker,
@@ -434,8 +445,9 @@ async def delete_container(
     force: bool = Query(False, description="Force removal of running container"),
     volumes: bool = Query(False, description="Remove associated volumes"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Delete a container from a worker."""
+    """Delete a container from a worker (requires operator+)."""
     worker = await get_worker_or_404(worker_id, db)
     await call_worker_api(
         worker,
@@ -454,8 +466,9 @@ async def get_container_logs(
     until: int | None = Query(None, description="Unix timestamp to end at"),
     timestamps: bool = Query(True, description="Include timestamps"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get container logs."""
+    """Get container logs (requires viewer+)."""
     worker = await get_worker_or_404(worker_id, db)
 
     params = {
@@ -481,8 +494,9 @@ async def exec_container_command(
     request: ContainerExecRequest,
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Execute a command in a running container."""
+    """Execute a command in a running container (requires operator+)."""
     worker = await get_worker_or_404(worker_id, db)
 
     payload = {

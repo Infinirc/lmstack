@@ -12,8 +12,10 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.deps import require_admin
 from app.database import get_db
 from app.models.api_key import Usage
+from app.models.user import User
 
 router = APIRouter()
 settings = get_settings()
@@ -48,9 +50,10 @@ class MessageResponse(BaseModel):
 @router.post("/clear-stats", response_model=MessageResponse)
 async def clear_statistics(
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
-    Clear all usage statistics data.
+    Clear all usage statistics data (requires admin).
 
     This will delete all records from the usage table.
     This action cannot be undone.
@@ -71,9 +74,11 @@ async def clear_statistics(
 
 
 @router.get("/backups", response_model=BackupListResponse)
-async def list_backups():
+async def list_backups(
+    current_user: User = Depends(require_admin),
+):
     """
-    List all available database backups.
+    List all available database backups (requires admin).
     """
     backups = []
 
@@ -92,9 +97,11 @@ async def list_backups():
 
 
 @router.post("/backup", response_model=MessageResponse)
-async def create_backup():
+async def create_backup(
+    current_user: User = Depends(require_admin),
+):
     """
-    Create a database backup.
+    Create a database backup (requires admin).
 
     Creates a timestamped copy of the database file.
     """
@@ -132,9 +139,12 @@ async def create_backup():
 
 
 @router.get("/backup/{filename}")
-async def download_backup(filename: str):
+async def download_backup(
+    filename: str,
+    current_user: User = Depends(require_admin),
+):
     """
-    Download a specific backup file.
+    Download a specific backup file (requires admin).
     """
     # Validate filename to prevent path traversal
     if ".." in filename or "/" in filename or "\\" in filename:
@@ -149,9 +159,12 @@ async def download_backup(filename: str):
 
 
 @router.post("/restore/{filename}", response_model=MessageResponse)
-async def restore_backup(filename: str):
+async def restore_backup(
+    filename: str,
+    current_user: User = Depends(require_admin),
+):
     """
-    Restore database from a backup file.
+    Restore database from a backup file (requires admin).
 
     WARNING: This will replace the current database with the backup.
     The server should be restarted after restore for changes to take effect.
@@ -189,9 +202,12 @@ async def restore_backup(filename: str):
 
 
 @router.delete("/backup/{filename}", response_model=MessageResponse)
-async def delete_backup(filename: str):
+async def delete_backup(
+    filename: str,
+    current_user: User = Depends(require_admin),
+):
     """
-    Delete a backup file.
+    Delete a backup file (requires admin).
     """
     # Validate filename to prevent path traversal
     if ".." in filename or "/" in filename or "\\" in filename:
@@ -210,9 +226,12 @@ async def delete_backup(filename: str):
 
 
 @router.post("/restore-upload", response_model=MessageResponse)
-async def restore_from_upload(file: UploadFile = File(...)):
+async def restore_from_upload(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_admin),
+):
     """
-    Restore database from an uploaded backup file.
+    Restore database from an uploaded backup file (requires admin).
 
     WARNING: This will replace the current database.
     The server should be restarted after restore for changes to take effect.

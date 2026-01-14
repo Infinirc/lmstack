@@ -15,7 +15,9 @@ import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { modelsApi } from "../services/api";
 import type { LLMModel, LLMModelCreate } from "../types";
 import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
 import { useAppTheme } from "../hooks/useTheme";
+import { useAuth } from "../contexts/AuthContext";
 import ModelCompatibilityCheck from "../components/ModelCompatibilityCheck";
 import HuggingFaceModelPicker from "../components/HuggingFaceModelPicker";
 import OllamaModelPicker from "../components/OllamaModelPicker";
@@ -25,6 +27,8 @@ import type { HFModelInfo } from "../services/api";
 import ollamaLogoDark from "../assets/ollama-dark.png";
 import ollamaLogoLight from "../assets/ollama-light.png";
 import huggingfaceLogo from "../assets/huggingface-2.svg";
+
+dayjs.extend(utc);
 
 // HuggingFace logo component
 const HuggingFaceLogo = ({ height = 16 }: { height?: number }) => (
@@ -95,6 +99,7 @@ function useResponsive() {
 }
 
 export default function Models() {
+  const { canEdit } = useAuth();
   const [models, setModels] = useState<LLMModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -262,25 +267,31 @@ export default function Models() {
       title: "",
       key: "actions",
       width: 80,
-      render: (_: unknown, record: LLMModel) => (
-        <Space>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          />
-          <Popconfirm
-            title="Delete this model?"
-            description="This action cannot be undone."
-            onConfirm={() => handleDelete(record.id)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: unknown, record: LLMModel) =>
+        canEdit && (
+          <Space>
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            />
+            <Popconfirm
+              title="Delete this model?"
+              description="This action cannot be undone."
+              onConfirm={() => handleDelete(record.id)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+              />
+            </Popconfirm>
+          </Space>
+        ),
     },
   ];
 
@@ -315,30 +326,32 @@ export default function Models() {
       dataIndex: "created_at",
       key: "created_at",
       width: 160,
-      render: (time: string) => dayjs(time).local().format("YYYY-MM-DD HH:mm"),
+      render: (time: string) =>
+        dayjs.utc(time).local().format("YYYY-MM-DD HH:mm"),
     },
     {
       title: "Actions",
       key: "actions",
       width: 100,
-      render: (_: unknown, record: LLMModel) => (
-        <Space>
-          <Button
-            type="text"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          />
-          <Popconfirm
-            title="Delete this model?"
-            description="This action cannot be undone."
-            onConfirm={() => handleDelete(record.id)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: unknown, record: LLMModel) =>
+        canEdit && (
+          <Space>
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            />
+            <Popconfirm
+              title="Delete this model?"
+              description="This action cannot be undone."
+              onConfirm={() => handleDelete(record.id)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="text" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          </Space>
+        ),
     },
   ];
 
@@ -348,14 +361,16 @@ export default function Models() {
         style={{ borderRadius: 12 }}
         title="Models"
         extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setModalOpen(true)}
-            size={isMobile ? "small" : "middle"}
-          >
-            {isMobile ? "Add" : "Add Model"}
-          </Button>
+          canEdit && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setModalOpen(true)}
+              size={isMobile ? "small" : "middle"}
+            >
+              {isMobile ? "Add" : "Add Model"}
+            </Button>
+          )
         }
       >
         <Table

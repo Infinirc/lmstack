@@ -39,10 +39,14 @@ import type {
 } from "../types";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import utc from "dayjs/plugin/utc";
 
 dayjs.extend(relativeTime);
+dayjs.extend(utc);
 
 const REFRESH_INTERVAL = 5000;
+
+import { useAuth } from "../contexts/AuthContext";
 
 function useResponsive() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -89,6 +93,7 @@ export default function Containers() {
   const [managedOnly, setManagedOnly] = useState(false);
   const [createForm] = Form.useForm();
   const { isMobile } = useResponsive();
+  const { canEdit } = useAuth();
 
   const fetchData = useCallback(async () => {
     try {
@@ -325,14 +330,15 @@ export default function Containers() {
       render: (_: unknown, record: Container) => (
         <Space direction="vertical" size={4}>
           <Space size={4}>
-            {record.state === "running" ? (
+            {canEdit && record.state === "running" ? (
               <Button
                 type="text"
                 size="small"
                 icon={<PauseCircleOutlined />}
                 onClick={() => handleStop(record)}
               />
-            ) : record.state === "exited" || record.state === "created" ? (
+            ) : canEdit &&
+              (record.state === "exited" || record.state === "created") ? (
               <Button
                 type="text"
                 size="small"
@@ -354,19 +360,21 @@ export default function Containers() {
               icon={<EyeOutlined />}
               onClick={() => setDetailModal(record)}
             />
-            <Popconfirm
-              title="Delete container?"
-              onConfirm={() => handleDelete(record)}
-              okText="Delete"
-              okButtonProps={{ danger: true }}
-            >
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-              />
-            </Popconfirm>
+            {canEdit && (
+              <Popconfirm
+                title="Delete container?"
+                onConfirm={() => handleDelete(record)}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                />
+              </Popconfirm>
+            )}
           </Space>
         </Space>
       ),
@@ -434,7 +442,7 @@ export default function Containers() {
       width: 200,
       render: (_: unknown, record: Container) => (
         <Space>
-          {record.state === "running" ? (
+          {canEdit && record.state === "running" ? (
             <>
               <Tooltip title="Stop">
                 <Button
@@ -451,7 +459,8 @@ export default function Containers() {
                 />
               </Tooltip>
             </>
-          ) : record.state === "exited" || record.state === "created" ? (
+          ) : canEdit &&
+            (record.state === "exited" || record.state === "created") ? (
             <Tooltip title="Start">
               <Button
                 type="text"
@@ -474,7 +483,7 @@ export default function Containers() {
               onClick={() => setDetailModal(record)}
             />
           </Tooltip>
-          {record.state === "running" && (
+          {canEdit && record.state === "running" && (
             <Tooltip title="Terminal">
               <Button
                 type="text"
@@ -483,17 +492,19 @@ export default function Containers() {
               />
             </Tooltip>
           )}
-          <Popconfirm
-            title="Delete container?"
-            description="This will force remove the container."
-            onConfirm={() => handleDelete(record)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Tooltip title="Delete">
-              <Button type="text" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
+          {canEdit && (
+            <Popconfirm
+              title="Delete container?"
+              description="This will force remove the container."
+              onConfirm={() => handleDelete(record)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title="Delete">
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -707,9 +718,10 @@ export default function Containers() {
                       {detailModal.status}
                     </Descriptions.Item>
                     <Descriptions.Item label="Created">
-                      {dayjs(detailModal.created_at).format(
-                        "YYYY-MM-DD HH:mm:ss",
-                      )}
+                      {dayjs
+                        .utc(detailModal.created_at)
+                        .local()
+                        .format("YYYY-MM-DD HH:mm:ss")}
                     </Descriptions.Item>
                     {detailModal.ports.length > 0 && (
                       <Descriptions.Item label="Ports" span={2}>

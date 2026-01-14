@@ -26,8 +26,10 @@ import { imagesApi, workersApi } from "../services/api";
 import type { ContainerImage, ContainerImageDetail, Worker } from "../types";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import utc from "dayjs/plugin/utc";
 
 dayjs.extend(relativeTime);
+dayjs.extend(utc);
 
 const REFRESH_INTERVAL = 10000;
 
@@ -157,7 +159,8 @@ export default function Images() {
             {record.worker_name}
           </div>
           <div style={{ fontSize: 11, color: "#888" }}>
-            {formatBytes(record.size)} · {dayjs(record.created_at).fromNow()}
+            {formatBytes(record.size)} ·{" "}
+            {dayjs.utc(record.created_at).fromNow()}
           </div>
         </div>
       ),
@@ -220,9 +223,12 @@ export default function Images() {
       key: "created",
       render: (_: unknown, record: ContainerImage) => (
         <Tooltip
-          title={dayjs(record.created_at).local().format("YYYY-MM-DD HH:mm:ss")}
+          title={dayjs
+            .utc(record.created_at)
+            .local()
+            .format("YYYY-MM-DD HH:mm:ss")}
         >
-          {dayjs(record.created_at).fromNow()}
+          {dayjs.utc(record.created_at).fromNow()}
         </Tooltip>
       ),
     },

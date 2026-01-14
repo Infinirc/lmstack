@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
 from app.models.deployment import Deployment
 from app.models.llm_model import LLMModel
+from app.models.user import User
 from app.schemas.llm_model import (
     LLMModelCreate,
     LLMModelListResponse,
@@ -23,8 +25,9 @@ async def list_models(
     limit: int = Query(50, ge=1, le=100),
     source: str | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List all LLM models"""
+    """List all LLM models (requires viewer+)"""
     query = select(LLMModel)
 
     if source:
@@ -66,8 +69,9 @@ async def list_models(
 async def create_model(
     model_in: LLMModelCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Create a new LLM model definition"""
+    """Create a new LLM model definition (requires operator+)"""
     # Check if model with same name exists
     existing = await db.execute(select(LLMModel).where(LLMModel.name == model_in.name))
     if existing.scalar_one_or_none():
@@ -109,8 +113,9 @@ async def create_model(
 async def get_model(
     model_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get an LLM model by ID"""
+    """Get an LLM model by ID (requires viewer+)"""
     result = await db.execute(select(LLMModel).where(LLMModel.id == model_id))
     model = result.scalar_one_or_none()
 
@@ -139,8 +144,9 @@ async def update_model(
     model_id: int,
     model_in: LLMModelUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Update an LLM model"""
+    """Update an LLM model (requires operator+)"""
     result = await db.execute(select(LLMModel).where(LLMModel.id == model_id))
     model = result.scalar_one_or_none()
 
@@ -179,8 +185,9 @@ async def update_model(
 async def delete_model(
     model_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Delete an LLM model"""
+    """Delete an LLM model (requires operator+)"""
     result = await db.execute(select(LLMModel).where(LLMModel.id == model_id))
     model = result.scalar_one_or_none()
 

@@ -34,10 +34,14 @@ import {
 import type { Worker } from "../types";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import utc from "dayjs/plugin/utc";
 
 dayjs.extend(relativeTime);
+dayjs.extend(utc);
 
 const REFRESH_INTERVAL = 10000;
+
+import { useAuth } from "../contexts/AuthContext";
 
 function useResponsive() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -76,6 +80,7 @@ export default function Storage() {
   });
   const [pruning, setPruning] = useState(false);
   const { isMobile } = useResponsive();
+  const { canEdit } = useAuth();
 
   const fetchData = useCallback(async () => {
     try {
@@ -246,21 +251,22 @@ export default function Storage() {
       title: "Actions",
       key: "actions",
       width: 100,
-      render: (_: unknown, record: DiskUsage) => (
-        <Tooltip title="Cleanup">
-          <Button
-            type="text"
-            danger
-            icon={<ClearOutlined />}
-            onClick={() => {
-              setPruneWorker(record);
-              setPruneModalOpen(true);
-            }}
-          >
-            Prune
-          </Button>
-        </Tooltip>
-      ),
+      render: (_: unknown, record: DiskUsage) =>
+        canEdit && (
+          <Tooltip title="Cleanup">
+            <Button
+              type="text"
+              danger
+              icon={<ClearOutlined />}
+              onClick={() => {
+                setPruneWorker(record);
+                setPruneModalOpen(true);
+              }}
+            >
+              Prune
+            </Button>
+          </Tooltip>
+        ),
     },
   ];
 
@@ -291,18 +297,19 @@ export default function Storage() {
       title: "",
       key: "actions",
       width: 80,
-      render: (_: unknown, record: DiskUsage) => (
-        <Button
-          type="text"
-          danger
-          icon={<ClearOutlined />}
-          size="small"
-          onClick={() => {
-            setPruneWorker(record);
-            setPruneModalOpen(true);
-          }}
-        />
-      ),
+      render: (_: unknown, record: DiskUsage) =>
+        canEdit && (
+          <Button
+            type="text"
+            danger
+            icon={<ClearOutlined />}
+            size="small"
+            onClick={() => {
+              setPruneWorker(record);
+              setPruneModalOpen(true);
+            }}
+          />
+        ),
     },
   ];
 
@@ -343,25 +350,26 @@ export default function Storage() {
       title: "Created",
       key: "created",
       render: (_: unknown, record: Volume) =>
-        record.created_at ? dayjs(record.created_at).fromNow() : "-",
+        record.created_at ? dayjs.utc(record.created_at).fromNow() : "-",
     },
     {
       title: "Actions",
       key: "actions",
       width: 100,
-      render: (_: unknown, record: Volume) => (
-        <Popconfirm
-          title="Delete volume?"
-          description="This action cannot be undone."
-          onConfirm={() => handleDeleteVolume(record)}
-          okText="Delete"
-          okButtonProps={{ danger: true }}
-        >
-          <Tooltip title="Delete">
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Tooltip>
-        </Popconfirm>
-      ),
+      render: (_: unknown, record: Volume) =>
+        canEdit && (
+          <Popconfirm
+            title="Delete volume?"
+            description="This action cannot be undone."
+            onConfirm={() => handleDeleteVolume(record)}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+          >
+            <Tooltip title="Delete">
+              <Button type="text" danger icon={<DeleteOutlined />} />
+            </Tooltip>
+          </Popconfirm>
+        ),
     },
   ];
 
@@ -387,16 +395,17 @@ export default function Storage() {
       title: "",
       key: "actions",
       width: 60,
-      render: (_: unknown, record: Volume) => (
-        <Popconfirm
-          title="Delete?"
-          onConfirm={() => handleDeleteVolume(record)}
-          okText="Yes"
-          okButtonProps={{ danger: true }}
-        >
-          <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-        </Popconfirm>
-      ),
+      render: (_: unknown, record: Volume) =>
+        canEdit && (
+          <Popconfirm
+            title="Delete?"
+            onConfirm={() => handleDeleteVolume(record)}
+            okText="Yes"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+          </Popconfirm>
+        ),
     },
   ];
 

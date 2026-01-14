@@ -7,9 +7,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
 from app.models.deployment import Deployment
 from app.models.registration_token import RegistrationToken
+from app.models.user import User
 from app.models.worker import Worker, WorkerStatus
 from app.schemas.worker import (
     RegistrationTokenCreate,
@@ -33,8 +35,9 @@ async def list_workers(
     limit: int = Query(50, ge=1, le=100),
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List all workers"""
+    """List all workers (requires viewer+)"""
     query = select(Worker)
 
     if status:
@@ -225,8 +228,9 @@ async def create_worker(
 async def get_worker(
     worker_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get a worker by ID"""
+    """Get a worker by ID (requires viewer+)"""
     result = await db.execute(select(Worker).where(Worker.id == worker_id))
     worker = result.scalar_one_or_none()
 
@@ -257,8 +261,9 @@ async def update_worker(
     worker_id: int,
     worker_in: WorkerUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Update a worker"""
+    """Update a worker (requires operator+)"""
     result = await db.execute(select(Worker).where(Worker.id == worker_id))
     worker = result.scalar_one_or_none()
 
@@ -305,8 +310,9 @@ async def update_worker(
 async def delete_worker(
     worker_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Delete a worker"""
+    """Delete a worker (requires operator+)"""
     result = await db.execute(select(Worker).where(Worker.id == worker_id))
     worker = result.scalar_one_or_none()
 
@@ -353,8 +359,9 @@ async def worker_heartbeat(
 @router.post("/local", response_model=WorkerResponse, status_code=201)
 async def register_local_worker(
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Register the local machine as a worker"""
+    """Register the local machine as a worker (requires operator+)"""
     # Get local machine info
     info = get_local_worker_info()
 
@@ -463,8 +470,9 @@ async def create_registration_token(
     token_in: RegistrationTokenCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Generate a new registration token for worker registration."""
+    """Generate a new registration token for worker registration (requires operator+)."""
     token = RegistrationToken.create(
         name=token_in.name,
         expires_in_hours=token_in.expires_in_hours,
@@ -496,8 +504,9 @@ async def list_registration_tokens(
     limit: int = Query(50, ge=1, le=100),
     include_used: bool = Query(False, description="Include used tokens"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List registration tokens."""
+    """List registration tokens (requires viewer+)."""
     query = select(RegistrationToken)
 
     if not include_used:
@@ -534,8 +543,9 @@ async def get_registration_token(
     token_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get a registration token by ID."""
+    """Get a registration token by ID (requires viewer+)."""
     result = await db.execute(select(RegistrationToken).where(RegistrationToken.id == token_id))
     token = result.scalar_one_or_none()
 
@@ -566,8 +576,9 @@ async def get_registration_token(
 async def delete_registration_token(
     token_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Delete a registration token."""
+    """Delete a registration token (requires operator+)."""
     result = await db.execute(select(RegistrationToken).where(RegistrationToken.id == token_id))
     token = result.scalar_one_or_none()
 

@@ -48,8 +48,10 @@ import {
 import { useAppTheme } from "../hooks/useTheme";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import utc from "dayjs/plugin/utc";
 
 dayjs.extend(relativeTime);
+dayjs.extend(utc);
 
 const { Text, Paragraph } = Typography;
 
@@ -225,7 +227,7 @@ export default function Headscale() {
       dataIndex: "last_seen",
       key: "last_seen",
       width: 150,
-      render: (time: string | null) => (time ? dayjs(time).fromNow() : "-"),
+      render: (time: string | null) => (time ? dayjs.utc(time).fromNow() : "-"),
     },
     {
       title: "Created",
@@ -233,7 +235,7 @@ export default function Headscale() {
       key: "created_at",
       width: 150,
       render: (time: string | null) =>
-        time ? dayjs(time).local().format("YYYY-MM-DD HH:mm") : "-",
+        time ? dayjs.utc(time).local().format("YYYY-MM-DD HH:mm") : "-",
     },
     {
       title: "Actions",

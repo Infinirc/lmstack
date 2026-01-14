@@ -48,7 +48,11 @@ import {
 } from "../services/api";
 import type { ApiKey, ApiKeyCreate, Deployment, LLMModel } from "../types";
 import { useAppTheme, useResponsive } from "../hooks";
+import { useAuth } from "../contexts/AuthContext";
 import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+
+dayjs.extend(utc);
 
 const { Text } = Typography;
 
@@ -303,6 +307,7 @@ export default function ApiKeys() {
   const [createForm] = Form.useForm();
   const { isMobile } = useResponsive();
   const { isDark } = useAppTheme();
+  const { canEdit } = useAuth();
 
   // Get base URL for API Gateway (always port 8088)
   const baseUrl = useMemo(() => {
@@ -469,15 +474,22 @@ export default function ApiKeys() {
             icon={<CodeOutlined />}
             onClick={() => setCodeModalKey(record)}
           />
-          <Popconfirm
-            title="Delete API key?"
-            description="Applications using this key will stop working."
-            onConfirm={() => handleDelete(record.id)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {canEdit && (
+            <Popconfirm
+              title="Delete API key?"
+              description="Applications using this key will stop working."
+              onConfirm={() => handleDelete(record.id)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+              />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -600,7 +612,7 @@ export default function ApiKeys() {
       width: 100,
       render: (date: string) => (
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {dayjs(date).local().format("MMM D, YYYY")}
+          {dayjs.utc(date).local().format("MMM D, YYYY")}
         </Text>
       ),
     },
@@ -617,17 +629,19 @@ export default function ApiKeys() {
               onClick={() => setCodeModalKey(record)}
             />
           </Tooltip>
-          <Popconfirm
-            title="Delete API key?"
-            description="Applications using this key will stop working."
-            onConfirm={() => handleDelete(record.id)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Tooltip title="Delete">
-              <Button type="text" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
+          {canEdit && (
+            <Popconfirm
+              title="Delete API key?"
+              description="Applications using this key will stop working."
+              onConfirm={() => handleDelete(record.id)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title="Delete">
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -678,15 +692,17 @@ export default function ApiKeys() {
             Manage your API keys for programmatic access
           </Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          size={isMobile ? "middle" : "large"}
-          onClick={() => setCreateModalOpen(true)}
-          style={{ borderRadius: 8 }}
-        >
-          {isMobile ? "Create" : "Create Key"}
-        </Button>
+        {canEdit && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            size={isMobile ? "middle" : "large"}
+            onClick={() => setCreateModalOpen(true)}
+            style={{ borderRadius: 8 }}
+          >
+            {isMobile ? "Create" : "Create Key"}
+          </Button>
+        )}
       </div>
 
       {/* Stats */}

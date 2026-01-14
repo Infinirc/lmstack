@@ -13,7 +13,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
+from app.models.user import User
 from app.models.worker import Worker
 
 logger = logging.getLogger(__name__)
@@ -152,8 +154,9 @@ async def list_images(
     worker_id: int | None = Query(None, description="Filter by worker ID"),
     repository: str | None = Query(None, description="Filter by repository name"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List images across workers.
+    """List images across workers (requires viewer+).
 
     If worker_id is provided, lists images only from that worker.
     Otherwise, lists images from all online workers.
@@ -205,8 +208,9 @@ async def get_image(
     image_id: str,
     worker_id: int = Query(..., description="Worker ID where the image is located"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get detailed information about an image."""
+    """Get detailed information about an image (requires viewer+)."""
     worker = await get_worker_or_404(worker_id, db)
     data = await call_worker_api(worker, "GET", f"/images/{image_id}")
 
@@ -230,8 +234,9 @@ async def get_image(
 async def pull_image(
     request: ImagePullRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Pull an image from a registry to a worker.
+    """Pull an image from a registry to a worker (requires operator+).
 
     This operation may take a long time for large images.
     Returns immediately with a task ID for progress tracking.
@@ -264,8 +269,9 @@ async def pull_image(
 async def build_image(
     request: ImageBuildRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Build an image from a Dockerfile on a worker.
+    """Build an image from a Dockerfile on a worker (requires operator+).
 
     This operation may take a long time depending on the Dockerfile.
     """
@@ -300,8 +306,9 @@ async def delete_image(
     worker_id: int = Query(..., description="Worker ID where the image is located"),
     force: bool = Query(False, description="Force removal even if in use"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Delete an image from a worker."""
+    """Delete an image from a worker (requires operator+)."""
     worker = await get_worker_or_404(worker_id, db)
 
     await call_worker_api(

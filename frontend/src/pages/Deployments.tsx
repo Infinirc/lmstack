@@ -40,10 +40,14 @@ import { getDeploymentStatusColor } from "../utils";
 import { deploymentsApi, workersApi, modelsApi } from "../services/api";
 import type { Deployment, DeploymentCreate, Worker, LLMModel } from "../types";
 import { useResponsive } from "../hooks";
+import { useAuth } from "../contexts/AuthContext";
 import DeploymentAdvancedForm from "../components/DeploymentAdvancedForm";
 import ModelCompatibilityCheck from "../components/ModelCompatibilityCheck";
 import backendVersionsData from "../constants/backendVersions.json";
 import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+
+dayjs.extend(utc);
 
 const { Text } = Typography;
 
@@ -77,6 +81,7 @@ export default function Deployments() {
   );
   const { isMobile } = useResponsive();
   const { isDark } = useAppTheme();
+  const { canEdit } = useAuth();
 
   // Get the selected model
   const selectedModel = models.find((m) => m.id === selectedModelId);
@@ -452,22 +457,30 @@ export default function Deployments() {
               <Button type="text" size="small" icon={<PauseCircleOutlined />} />
             </Popconfirm>
           )}
-          {(record.status === "stopped" || record.status === "error") && (
-            <Button
-              type="text"
-              size="small"
-              icon={<PlayCircleOutlined style={{ color: "#52c41a" }} />}
-              onClick={() => handleStart(record.id)}
-            />
+          {canEdit &&
+            (record.status === "stopped" || record.status === "error") && (
+              <Button
+                type="text"
+                size="small"
+                icon={<PlayCircleOutlined style={{ color: "#52c41a" }} />}
+                onClick={() => handleStart(record.id)}
+              />
+            )}
+          {canEdit && (
+            <Popconfirm
+              title="Delete?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+              />
+            </Popconfirm>
           )}
-          <Popconfirm
-            title="Delete?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
         </Space>
       ),
     },
@@ -608,7 +621,8 @@ export default function Deployments() {
       title: "Created",
       dataIndex: "created_at",
       key: "created_at",
-      render: (time: string) => dayjs(time).local().format("YYYY-MM-DD HH:mm"),
+      render: (time: string) =>
+        dayjs.utc(time).local().format("YYYY-MM-DD HH:mm"),
     },
     {
       title: "Actions",
@@ -621,42 +635,52 @@ export default function Deployments() {
             onClick={() => handleViewLogs(record)}
             title="View Logs"
           />
-          <Button
-            type="text"
-            icon={<SettingOutlined />}
-            onClick={() => handleEditDeployment(record)}
-            title="Settings"
-          />
-          {(record.status === "running" ||
-            record.status === "starting" ||
-            record.status === "downloading") && (
-            <Popconfirm
-              title="Stop this deployment?"
-              description="The container will be stopped but deployment record kept."
-              onConfirm={() => handleStop(record.id)}
-              okText="Stop"
-              okButtonProps={{ danger: true }}
-            >
-              <Button type="text" icon={<PauseCircleOutlined />} title="Stop" />
-            </Popconfirm>
-          )}
-          {(record.status === "stopped" || record.status === "error") && (
+          {canEdit && (
             <Button
               type="text"
-              icon={<PlayCircleOutlined style={{ color: "#52c41a" }} />}
-              onClick={() => handleStart(record.id)}
-              title="Start"
+              icon={<SettingOutlined />}
+              onClick={() => handleEditDeployment(record)}
+              title="Settings"
             />
           )}
-          <Popconfirm
-            title="Delete this deployment?"
-            description="This will stop the container and delete the deployment."
-            onConfirm={() => handleDelete(record.id)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {canEdit &&
+            (record.status === "running" ||
+              record.status === "starting" ||
+              record.status === "downloading") && (
+              <Popconfirm
+                title="Stop this deployment?"
+                description="The container will be stopped but deployment record kept."
+                onConfirm={() => handleStop(record.id)}
+                okText="Stop"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="text"
+                  icon={<PauseCircleOutlined />}
+                  title="Stop"
+                />
+              </Popconfirm>
+            )}
+          {canEdit &&
+            (record.status === "stopped" || record.status === "error") && (
+              <Button
+                type="text"
+                icon={<PlayCircleOutlined style={{ color: "#52c41a" }} />}
+                onClick={() => handleStart(record.id)}
+                title="Start"
+              />
+            )}
+          {canEdit && (
+            <Popconfirm
+              title="Delete this deployment?"
+              description="This will stop the container and delete the deployment."
+              onConfirm={() => handleDelete(record.id)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="text" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -693,14 +717,16 @@ export default function Deployments() {
             >
               {!isMobile && "Refresh"}
             </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setModalOpen(true)}
-              size={isMobile ? "small" : "middle"}
-            >
-              {isMobile ? "New" : "New Deployment"}
-            </Button>
+            {canEdit && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setModalOpen(true)}
+                size={isMobile ? "small" : "middle"}
+              >
+                {isMobile ? "New" : "New Deployment"}
+              </Button>
+            )}
           </Space>
         }
       >

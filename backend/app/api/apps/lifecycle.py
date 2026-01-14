@@ -16,8 +16,10 @@ from app.api.apps.utils import (
     app_to_response,
     call_worker_api,
 )
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
 from app.models.app import App, AppStatus
+from app.models.user import User
 from app.schemas.app import AppLogsResponse, AppResponse
 from app.services.app_proxy_manager import get_proxy_manager
 
@@ -30,8 +32,9 @@ async def stop_app(
     app_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Stop a running app."""
+    """Stop a running app (requires operator+)."""
     result = await db.execute(select(App).where(App.id == app_id))
     app = result.scalar_one_or_none()
 
@@ -77,8 +80,9 @@ async def start_app(
     app_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Start a stopped app."""
+    """Start a stopped app (requires operator+)."""
     result = await db.execute(select(App).where(App.id == app_id))
     app = result.scalar_one_or_none()
 
@@ -123,8 +127,9 @@ async def start_app(
 async def delete_app(
     app_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Delete an app and its container."""
+    """Delete an app and its container (requires operator+)."""
     result = await db.execute(select(App).where(App.id == app_id))
     app = result.scalar_one_or_none()
 
@@ -167,8 +172,9 @@ async def get_app_logs(
     app_id: int,
     tail: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get logs for an app container."""
+    """Get logs for an app container (requires viewer+)."""
     result = await db.execute(select(App).where(App.id == app_id))
     app = result.scalar_one_or_none()
 

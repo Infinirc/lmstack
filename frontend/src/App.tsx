@@ -77,6 +77,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const { isAdmin } = useAuth();
+
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function LoadingScreen() {
   return (
     <div
@@ -426,9 +436,30 @@ function AppLayout() {
               <Route path="/deployments" element={<Deployments />} />
               <Route path="/deploy-apps" element={<DeployApps />} />
               <Route path="/api-keys" element={<ApiKeys />} />
-              <Route path="/users" element={<Users />} />
-              <Route path="/headscale" element={<Headscale />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route
+                path="/users"
+                element={
+                  <RequireAdmin>
+                    <Users />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="/headscale"
+                element={
+                  <RequireAdmin>
+                    <Headscale />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <RequireAdmin>
+                    <Settings />
+                  </RequireAdmin>
+                }
+              />
             </Routes>
           </Content>
         </Layout>

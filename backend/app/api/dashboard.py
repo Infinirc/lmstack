@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import require_viewer
 from app.database import get_db
 from app.models.api_key import ApiKey, Usage
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.llm_model import LLMModel
+from app.models.user import User
 from app.models.worker import Worker
 from app.schemas.dashboard import (
     DashboardResponse,
@@ -25,8 +27,11 @@ router = APIRouter()
 
 
 @router.get("", response_model=DashboardResponse)
-async def get_dashboard(db: AsyncSession = Depends(get_db)):
-    """Get dashboard statistics"""
+async def get_dashboard(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
+):
+    """Get dashboard statistics (requires viewer+)"""
 
     # Resource counts
     workers = (await db.execute(select(Worker))).scalars().all()

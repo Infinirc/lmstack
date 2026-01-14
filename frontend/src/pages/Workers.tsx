@@ -42,6 +42,7 @@ import type {
   RegistrationToken,
 } from "../types";
 import { useResponsive } from "../hooks";
+import { useAuth } from "../contexts/AuthContext";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 
@@ -61,6 +62,7 @@ export default function Workers() {
   const [modelFilesModal, setModelFilesModal] = useState<Worker | null>(null);
   const [form] = Form.useForm();
   const { isMobile } = useResponsive();
+  const { canEdit } = useAuth();
 
   // Registration token state
   const [generatedToken, setGeneratedToken] =
@@ -309,15 +311,22 @@ export default function Workers() {
             icon={<EyeOutlined />}
             onClick={() => setDetailModal(record)}
           />
-          <Popconfirm
-            title="Delete this worker?"
-            description="This action cannot be undone."
-            onConfirm={() => handleDelete(record.id)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {canEdit && (
+            <Popconfirm
+              title="Delete this worker?"
+              description="This action cannot be undone."
+              onConfirm={() => handleDelete(record.id)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+              />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -507,7 +516,7 @@ export default function Workers() {
       dataIndex: "last_heartbeat",
       key: "last_heartbeat",
       render: (time: string | null) =>
-        time ? dayjs(time).local().format("HH:mm:ss") : "-",
+        time ? dayjs.utc(time).local().format("HH:mm:ss") : "-",
     },
     {
       title: "Actions",
@@ -531,15 +540,22 @@ export default function Workers() {
               size="small"
             />
           </Tooltip>
-          <Popconfirm
-            title="Delete this worker?"
-            description="This action cannot be undone."
-            onConfirm={() => handleDelete(record.id)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
+          {canEdit && (
+            <Popconfirm
+              title="Delete this worker?"
+              description="This action cannot be undone."
+              onConfirm={() => handleDelete(record.id)}
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                size="small"
+              />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -576,22 +592,26 @@ export default function Workers() {
             >
               {!isMobile && "Refresh"}
             </Button>
-            <Button
-              icon={<DesktopOutlined />}
-              onClick={handleRegisterLocal}
-              loading={registeringLocal}
-              size={isMobile ? "small" : "middle"}
-            >
-              {isMobile ? "Local" : "Add Local"}
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setModalOpen(true)}
-              size={isMobile ? "small" : "middle"}
-            >
-              {isMobile ? "Add" : "Add Worker"}
-            </Button>
+            {canEdit && (
+              <>
+                <Button
+                  icon={<DesktopOutlined />}
+                  onClick={handleRegisterLocal}
+                  loading={registeringLocal}
+                  size={isMobile ? "small" : "middle"}
+                >
+                  {isMobile ? "Local" : "Add Local"}
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => setModalOpen(true)}
+                  size={isMobile ? "small" : "middle"}
+                >
+                  {isMobile ? "Add" : "Add Worker"}
+                </Button>
+              </>
+            )}
           </Space>
         }
       >
@@ -668,9 +688,10 @@ export default function Workers() {
                   Copy and run the command below on your GPU machine. Token
                   expires at{" "}
                   <strong>
-                    {dayjs(generatedToken.expires_at).format(
-                      "YYYY-MM-DD HH:mm",
-                    )}
+                    {dayjs
+                      .utc(generatedToken.expires_at)
+                      .local()
+                      .format("YYYY-MM-DD HH:mm")}
                   </strong>
                 </span>
               }
@@ -813,13 +834,15 @@ python agent.py \\
                 {detailModal.deployment_count}
               </Descriptions.Item>
               <Descriptions.Item label="Created">
-                {dayjs(detailModal.created_at)
+                {dayjs
+                  .utc(detailModal.created_at)
                   .local()
                   .format("YYYY-MM-DD HH:mm:ss")}
               </Descriptions.Item>
               <Descriptions.Item label="Last Heartbeat">
                 {detailModal.last_heartbeat
-                  ? dayjs(detailModal.last_heartbeat)
+                  ? dayjs
+                      .utc(detailModal.last_heartbeat)
                       .local()
                       .format("YYYY-MM-DD HH:mm:ss")
                   : "-"}
@@ -1055,32 +1078,33 @@ python agent.py \\
                 title: "",
                 key: "actions",
                 width: 60,
-                render: (_: unknown, mf: ModelFileView) => (
-                  <Popconfirm
-                    title="Delete model files?"
-                    description={
-                      mf.running_count > 0
-                        ? "Warning: This model has running deployments!"
-                        : "This will delete cached model files."
-                    }
-                    onConfirm={() =>
-                      handleDeleteModelFile(
-                        mf.model_id,
-                        mf.worker_id,
-                        mf.model_name,
-                      )
-                    }
-                    okText="Delete"
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                    />
-                  </Popconfirm>
-                ),
+                render: (_: unknown, mf: ModelFileView) =>
+                  canEdit && (
+                    <Popconfirm
+                      title="Delete model files?"
+                      description={
+                        mf.running_count > 0
+                          ? "Warning: This model has running deployments!"
+                          : "This will delete cached model files."
+                      }
+                      onConfirm={() =>
+                        handleDeleteModelFile(
+                          mf.model_id,
+                          mf.worker_id,
+                          mf.model_name,
+                        )
+                      }
+                      okText="Delete"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button
+                        type="text"
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                      />
+                    </Popconfirm>
+                  ),
               },
             ]}
           />

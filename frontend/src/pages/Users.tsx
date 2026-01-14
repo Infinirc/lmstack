@@ -26,6 +26,9 @@ import { useAuth } from "../contexts/AuthContext";
 import type { User, UserCreate, UserUpdate } from "../types";
 import { useResponsive } from "../hooks";
 import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+
+dayjs.extend(utc);
 
 export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
@@ -252,7 +255,7 @@ export default function Users() {
       dataIndex: "last_login_at",
       key: "last_login_at",
       render: (date: string) =>
-        date ? dayjs(date).local().format("YYYY-MM-DD HH:mm") : "Never",
+        date ? dayjs.utc(date).local().format("YYYY-MM-DD HH:mm") : "Never",
     },
     {
       title: "Actions",

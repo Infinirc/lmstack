@@ -13,7 +13,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import require_operator, require_viewer
 from app.database import get_db
+from app.models.user import User
 from app.models.worker import Worker
 
 logger = logging.getLogger(__name__)
@@ -291,8 +293,9 @@ def _prune_local_storage(images: bool, containers: bool, volumes: bool, build_ca
 async def get_disk_usage(
     worker_id: int | None = Query(None, description="Filter by worker ID"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """Get Docker disk usage for all workers or a specific worker."""
+    """Get Docker disk usage for all workers or a specific worker (requires viewer+)."""
     if worker_id:
         workers = [await get_worker(db, worker_id)]
     else:
@@ -335,8 +338,9 @@ async def get_disk_usage(
 async def list_volumes(
     worker_id: int | None = Query(None, description="Filter by worker ID"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
 ):
-    """List Docker volumes across workers."""
+    """List Docker volumes across workers (requires viewer+)."""
     if worker_id:
         workers = [await get_worker(db, worker_id)]
     else:
@@ -386,8 +390,9 @@ async def delete_volume(
     worker_id: int = Query(..., description="Worker ID"),
     force: bool = Query(False, description="Force delete"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Delete a Docker volume."""
+    """Delete a Docker volume (requires operator+)."""
     worker = await get_worker(db, worker_id)
 
     if _is_local_worker(worker):
@@ -409,8 +414,9 @@ async def prune_storage(
     request: PruneRequest,
     worker_id: int | None = Query(None, description="Filter by worker ID"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
 ):
-    """Prune unused Docker resources."""
+    """Prune unused Docker resources (requires operator+)."""
     if worker_id:
         workers = [await get_worker(db, worker_id)]
     else:
