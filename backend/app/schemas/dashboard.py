@@ -1,7 +1,7 @@
 """Dashboard Pydantic schemas"""
 
-from datetime import datetime, date
-from typing import List, Optional
+from datetime import date
+
 from pydantic import BaseModel
 
 
@@ -39,8 +39,8 @@ class UsageSummary(BaseModel):
     total_requests: int
     total_prompt_tokens: int
     total_completion_tokens: int
-    request_history: List[UsagePoint]  # Last 30 days
-    token_history: List[UsagePoint]  # Last 30 days
+    request_history: list[UsagePoint]  # Last 30 days
+    token_history: list[UsagePoint]  # Last 30 days
 
 
 class TopModel(BaseModel):
@@ -67,5 +67,5 @@ class DashboardResponse(BaseModel):
     resources: ResourceCounts
     gpu_summary: GPUSummary
     usage: UsageSummary
-    top_models: List[TopModel]
-    top_api_keys: List[TopApiKey]
+    top_models: list[TopModel]
+    top_api_keys: list[TopApiKey]

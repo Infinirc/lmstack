@@ -5,7 +5,7 @@ All operations are proxied to the appropriate worker agent.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -34,7 +34,7 @@ class RegistryAuth(BaseModel):
 
     username: str
     password: str
-    server_address: Optional[str] = None
+    server_address: str | None = None
 
 
 class ImagePullRequest(BaseModel):
@@ -42,7 +42,7 @@ class ImagePullRequest(BaseModel):
 
     worker_id: int
     image: str = Field(..., description="Image reference (e.g., 'nginx:latest')")
-    registry_auth: Optional[RegistryAuth] = None
+    registry_auth: RegistryAuth | None = None
 
 
 class ImageBuildRequest(BaseModel):
@@ -51,7 +51,7 @@ class ImageBuildRequest(BaseModel):
     worker_id: int
     dockerfile: str = Field(..., description="Dockerfile content")
     tag: str = Field(..., description="Tag for the built image")
-    build_args: Optional[dict[str, str]] = None
+    build_args: dict[str, str] | None = None
 
 
 class ImageResponse(BaseModel):
@@ -65,15 +65,15 @@ class ImageResponse(BaseModel):
     full_name: str
     size: int
     created_at: str
-    digest: Optional[str] = None
-    labels: Optional[dict[str, Any]] = None
+    digest: str | None = None
+    labels: dict[str, Any] | None = None
 
 
 class ImageDetailResponse(ImageResponse):
     """Detailed image information including layers."""
 
     layers: list[dict[str, Any]] = []
-    config: Optional[dict[str, Any]] = None
+    config: dict[str, Any] | None = None
 
 
 class ImageListResponse(BaseModel):
@@ -99,7 +99,8 @@ async def get_worker_or_404(
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
     if worker.status != "online":
         raise HTTPException(
-            status_code=400, detail=f"Worker {worker.name} is not online (status: {worker.status})"
+            status_code=400,
+            detail=f"Worker {worker.name} is not online (status: {worker.status})",
         )
     return worker
 
@@ -119,7 +120,9 @@ async def call_worker_api(
             response = await client.request(method, url, **kwargs)
 
             if response.status_code == 404:
-                raise HTTPException(status_code=404, detail="Resource not found on worker")
+                raise HTTPException(
+                    status_code=404, detail="Resource not found on worker"
+                )
 
             if response.status_code >= 400:
                 detail = response.json().get("detail", response.text)
@@ -129,10 +132,13 @@ async def call_worker_api(
 
     except httpx.ConnectError:
         raise HTTPException(
-            status_code=503, detail=f"Cannot connect to worker {worker.name} at {worker.address}"
+            status_code=503,
+            detail=f"Cannot connect to worker {worker.name} at {worker.address}",
         )
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail=f"Worker {worker.name} request timed out")
+        raise HTTPException(
+            status_code=504, detail=f"Worker {worker.name} request timed out"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -147,8 +153,8 @@ async def call_worker_api(
 
 @router.get("", response_model=ImageListResponse)
 async def list_images(
-    worker_id: Optional[int] = Query(None, description="Filter by worker ID"),
-    repository: Optional[str] = Query(None, description="Filter by repository name"),
+    worker_id: int | None = Query(None, description="Filter by worker ID"),
+    repository: str | None = Query(None, description="Filter by repository name"),
     db: AsyncSession = Depends(get_db),
 ):
     """List images across workers.

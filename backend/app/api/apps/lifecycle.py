@@ -4,23 +4,22 @@ Contains endpoints for starting, stopping, and managing app state.
 """
 
 import logging
-from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.apps.utils import (
+    CONTAINER_ACTION_TIMEOUT,
+    DEFAULT_TIMEOUT,
+    app_to_response,
+    call_worker_api,
+)
 from app.database import get_db
 from app.models.app import App, AppStatus
-from app.schemas.app import AppResponse, AppLogsResponse
+from app.schemas.app import AppLogsResponse, AppResponse
 from app.services.app_proxy_manager import get_proxy_manager
-from app.api.apps.utils import (
-    DEFAULT_TIMEOUT,
-    CONTAINER_ACTION_TIMEOUT,
-    call_worker_api,
-    app_to_response,
-)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -192,7 +191,9 @@ async def get_app_logs(
                 params={"tail": tail},
             )
             if response.status_code >= 400:
-                return AppLogsResponse(app_id=app_id, logs=f"Failed to get logs: {response.text}")
+                return AppLogsResponse(
+                    app_id=app_id, logs=f"Failed to get logs: {response.text}"
+                )
 
             logs_data = response.json()
             logs = logs_data.get("logs", "")

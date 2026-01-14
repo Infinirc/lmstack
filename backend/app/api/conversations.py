@@ -1,25 +1,23 @@
 """Conversation API routes"""
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select, delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.auth import get_current_user
 from app.database import get_db
 from app.models.conversation import Conversation, Message
 from app.models.user import User
 from app.schemas.conversation import (
+    AddMessagesRequest,
     ConversationCreate,
-    ConversationUpdate,
-    ConversationResponse,
     ConversationDetailResponse,
     ConversationListResponse,
+    ConversationResponse,
+    ConversationUpdate,
     MessageResponse,
-    AddMessagesRequest,
 )
-from app.api.auth import get_current_user
 
 router = APIRouter()
 
@@ -108,7 +106,9 @@ async def get_conversation(
     """Get a conversation with all messages"""
     result = await db.execute(
         select(Conversation)
-        .where(Conversation.id == conversation_id, Conversation.user_id == current_user.id)
+        .where(
+            Conversation.id == conversation_id, Conversation.user_id == current_user.id
+        )
         .options(selectinload(Conversation.messages))
     )
     conversation = result.scalar_one_or_none()
@@ -234,5 +234,7 @@ async def clear_all_conversations(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete all conversations for the current user"""
-    await db.execute(delete(Conversation).where(Conversation.user_id == current_user.id))
+    await db.execute(
+        delete(Conversation).where(Conversation.user_id == current_user.id)
+    )
     await db.commit()

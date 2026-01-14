@@ -1,22 +1,21 @@
 """API Keys management routes"""
 
-import secrets
 import hashlib
+import secrets
 from datetime import datetime, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.api_key import ApiKey
 from app.schemas.api_key import (
     ApiKeyCreate,
-    ApiKeyUpdate,
-    ApiKeyResponse,
     ApiKeyCreateResponse,
     ApiKeyListResponse,
+    ApiKeyResponse,
+    ApiKeyUpdate,
 )
 
 router = APIRouter()
@@ -75,7 +74,9 @@ async def create_api_key(
     # Check for duplicate name
     existing = await db.execute(select(ApiKey).where(ApiKey.name == api_key_in.name))
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="API key with this name already exists")
+        raise HTTPException(
+            status_code=400, detail="API key with this name already exists"
+        )
 
     # Generate keys
     access_key = generate_access_key()
@@ -149,9 +150,13 @@ async def update_api_key(
 
     # Check for duplicate name
     if api_key_in.name and api_key_in.name != api_key.name:
-        existing = await db.execute(select(ApiKey).where(ApiKey.name == api_key_in.name))
+        existing = await db.execute(
+            select(ApiKey).where(ApiKey.name == api_key_in.name)
+        )
         if existing.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="API key with this name already exists")
+            raise HTTPException(
+                status_code=400, detail="API key with this name already exists"
+            )
 
     # Update fields
     update_data = api_key_in.model_dump(exclude_unset=True)
@@ -187,6 +192,7 @@ async def get_api_key_stats(
 ):
     """Get usage statistics for an API key"""
     from datetime import timedelta
+
     from app.models.api_key import Usage
 
     result = await db.execute(select(ApiKey).where(ApiKey.id == api_key_id))
@@ -215,7 +221,9 @@ async def get_api_key_stats(
         "total_prompt_tokens": row.total_prompt_tokens or 0 if row else 0,
         "total_completion_tokens": row.total_completion_tokens or 0 if row else 0,
         "total_tokens": (
-            (row.total_prompt_tokens or 0) + (row.total_completion_tokens or 0) if row else 0
+            (row.total_prompt_tokens or 0) + (row.total_completion_tokens or 0)
+            if row
+            else 0
         ),
     }
 
@@ -226,6 +234,7 @@ async def get_all_api_keys_stats(
 ):
     """Get summary statistics for all API keys"""
     from datetime import timedelta
+
     from app.models.api_key import Usage
 
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
@@ -259,9 +268,12 @@ async def get_all_api_keys_stats(
     return {
         "total_requests": total_row.total_requests or 0 if total_row else 0,
         "total_prompt_tokens": total_row.total_prompt_tokens or 0 if total_row else 0,
-        "total_completion_tokens": total_row.total_completion_tokens or 0 if total_row else 0,
+        "total_completion_tokens": (
+            total_row.total_completion_tokens or 0 if total_row else 0
+        ),
         "total_tokens": (
-            (total_row.total_prompt_tokens or 0) + (total_row.total_completion_tokens or 0)
+            (total_row.total_prompt_tokens or 0)
+            + (total_row.total_completion_tokens or 0)
             if total_row
             else 0
         ),

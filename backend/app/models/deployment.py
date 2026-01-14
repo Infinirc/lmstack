@@ -2,17 +2,17 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.llm_model import BackendType
 
 if TYPE_CHECKING:
-    from app.models.worker import Worker
     from app.models.llm_model import LLMModel
+    from app.models.worker import Worker
 
 
 class DeploymentStatus(str, Enum):
@@ -36,25 +36,35 @@ class Deployment(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
     # Foreign keys
-    model_id: Mapped[int] = mapped_column(Integer, ForeignKey("llm_models.id"), nullable=False)
-    worker_id: Mapped[int] = mapped_column(Integer, ForeignKey("workers.id"), nullable=False)
+    model_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("llm_models.id"), nullable=False
+    )
+    worker_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workers.id"), nullable=False
+    )
 
     # Inference backend (vllm, sglang, ollama)
-    backend: Mapped[str] = mapped_column(String(50), default=BackendType.VLLM.value, nullable=False)
+    backend: Mapped[str] = mapped_column(
+        String(50), default=BackendType.VLLM.value, nullable=False
+    )
 
     # Status
-    status: Mapped[str] = mapped_column(String(50), default=DeploymentStatus.PENDING.value)
-    status_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(50), default=DeploymentStatus.PENDING.value
+    )
+    status_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Container info
-    container_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    container_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    port: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Configuration
-    gpu_indexes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
-    extra_params: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    gpu_indexes: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    extra_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

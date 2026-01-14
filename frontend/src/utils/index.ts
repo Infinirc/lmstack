@@ -13,7 +13,7 @@ export {
   showInfo,
   logError,
   handleApiError,
-} from './error'
+} from "./error";
 
 export {
   DEPLOYMENT_STATUS_COLORS,
@@ -22,4 +22,4 @@ export {
   getDeploymentStatusColor,
   getWorkerStatusColor,
   getContainerStatusColor,
-} from './status'
+} from "./status";

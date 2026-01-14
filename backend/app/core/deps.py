@@ -1,7 +1,5 @@
 """Shared dependencies for API endpoints"""
 
-from typing import Optional
-
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +9,7 @@ from app.services.auth import auth_service
 
 
 async def get_current_user(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Dependency to get current authenticated user from JWT token."""
@@ -20,7 +18,9 @@ async def get_current_user(
 
     parts = authorization.split(" ")
     if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization header format"
+        )
 
     token = parts[1]
     payload = auth_service.decode_token(token)
@@ -38,9 +38,9 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
-) -> Optional[User]:
+) -> User | None:
     """Dependency to optionally get current user (returns None if not authenticated)."""
     if not authorization:
         return None

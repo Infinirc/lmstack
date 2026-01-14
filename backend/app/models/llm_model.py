@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from sqlalchemy import JSON, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -39,18 +38,20 @@ class LLMModel(Base):
         String(50), default=ModelSource.HUGGINGFACE.value
     )  # huggingface or ollama
     # Keep backend for backwards compatibility with existing databases
-    backend: Mapped[Optional[str]] = mapped_column(
+    backend: Mapped[str | None] = mapped_column(
         String(50), default=BackendType.VLLM.value, nullable=True
     )
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Default inference parameters
-    default_params: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    default_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Docker image for this model (optional override)
-    docker_image: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    docker_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

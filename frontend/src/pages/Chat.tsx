@@ -6,9 +6,9 @@
  *
  * @module pages/Chat
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { Button, message, Tooltip, Dropdown, Popconfirm } from 'antd'
-import Loading from '../components/Loading'
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Button, message, Tooltip, Dropdown, Popconfirm } from "antd";
+import Loading from "../components/Loading";
 import {
   DeleteOutlined,
   RobotOutlined,
@@ -17,26 +17,29 @@ import {
   MessageOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-} from '@ant-design/icons'
+} from "@ant-design/icons";
 import {
   useTheme,
   getChatStyles,
   ChatInput,
   MessageContent,
   generateMessageId,
-} from '../components/chat'
-import { deploymentsApi, conversationsApi } from '../services/api'
-import type { Deployment, ChatMessage } from '../types'
-import type { Conversation as ApiConversation, ConversationMessage } from '../services/api'
-import { useResponsive } from '../hooks'
+} from "../components/chat";
+import { deploymentsApi, conversationsApi } from "../services/api";
+import type { Deployment, ChatMessage } from "../types";
+import type {
+  Conversation as ApiConversation,
+  ConversationMessage,
+} from "../services/api";
+import { useResponsive } from "../hooks";
 
 // Conversation type for UI (maps from API type)
 interface Conversation {
-  id: number
-  title: string
-  messages: ChatMessage[]
-  createdAt: Date
-  updatedAt: Date
+  id: number;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // Convert API conversation to UI conversation
@@ -52,335 +55,360 @@ const convertApiConversation = (apiConv: ApiConversation): Conversation => ({
     thinking: m.thinking,
     timestamp: new Date(m.created_at),
   })),
-})
+});
 
 /**
  * Suggestions for empty chat state
  */
 const SUGGESTIONS = [
-  'Explain what machine learning is',
-  'Write a Python sorting algorithm',
-  'How to design a RESTful API?',
-  'Analyze the time complexity of this code',
-]
+  "Explain what machine learning is",
+  "Write a Python sorting algorithm",
+  "How to design a RESTful API?",
+  "Analyze the time complexity of this code",
+];
 
 /**
  * Chat page component
  */
 export default function Chat() {
-  const { isDark, colors } = useTheme()
-  const { isMobile } = useResponsive()
+  const { isDark, colors } = useTheme();
+  const { isMobile } = useResponsive();
 
   // Conversation state
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [currentConversationId, setCurrentConversationId] = useState<number | null>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true) // Default collapsed
-  const [_conversationsLoading, setConversationsLoading] = useState(true)
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<
+    number | null
+  >(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // Default collapsed
+  const [_conversationsLoading, setConversationsLoading] = useState(true);
 
   // Auto-collapse sidebar on mobile
   useEffect(() => {
-    setSidebarCollapsed(isMobile)
-  }, [isMobile])
+    setSidebarCollapsed(isMobile);
+  }, [isMobile]);
 
   // State
-  const [deployments, setDeployments] = useState<Deployment[]>([])
-  const [selectedDeployment, setSelectedDeployment] = useState<Deployment | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [inputValue, setInputValue] = useState('')
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [selectedDeployment, setSelectedDeployment] =
+    useState<Deployment | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputValue, setInputValue] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Refs
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
-  const userScrolledUpRef = useRef(false)
-  const [showScrollButton, setShowScrollButton] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const userScrolledUpRef = useRef(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Load conversations from API on mount
   useEffect(() => {
     const loadConversations = async () => {
       try {
-        const response = await conversationsApi.list({ limit: 100 })
-        setConversations(response.items.map(convertApiConversation))
+        const response = await conversationsApi.list({ limit: 100 });
+        setConversations(response.items.map(convertApiConversation));
       } catch (error) {
-        console.error('Failed to load conversations:', error)
+        console.error("Failed to load conversations:", error);
       } finally {
-        setConversationsLoading(false)
+        setConversationsLoading(false);
       }
-    }
-    loadConversations()
-  }, [])
+    };
+    loadConversations();
+  }, []);
 
   // Load conversation messages when switching conversations
   useEffect(() => {
-    if (isStreaming) return // Don't sync during streaming
+    if (isStreaming) return; // Don't sync during streaming
     if (currentConversationId) {
       const loadMessages = async () => {
         try {
-          const conv = await conversationsApi.get(currentConversationId)
-          const converted = convertApiConversation(conv)
-          setMessages(converted.messages)
+          const conv = await conversationsApi.get(currentConversationId);
+          const converted = convertApiConversation(conv);
+          setMessages(converted.messages);
           // Update the conversation in the list with full message data
-          setConversations(prev => prev.map(c =>
-            c.id === currentConversationId ? converted : c
-          ))
+          setConversations((prev) =>
+            prev.map((c) => (c.id === currentConversationId ? converted : c)),
+          );
         } catch (error) {
-          console.error('Failed to load conversation:', error)
-          setMessages([])
+          console.error("Failed to load conversation:", error);
+          setMessages([]);
         }
-      }
-      loadMessages()
+      };
+      loadMessages();
     } else {
-      setMessages([])
+      setMessages([]);
     }
-  }, [currentConversationId, isStreaming])
+  }, [currentConversationId, isStreaming]);
 
   // Delete conversation
-  const deleteConversation = useCallback(async (id: number) => {
-    try {
-      await conversationsApi.delete(id)
-      setConversations(prev => prev.filter(c => c.id !== id))
-      if (currentConversationId === id) {
-        setCurrentConversationId(null)
-        setMessages([])
+  const deleteConversation = useCallback(
+    async (id: number) => {
+      try {
+        await conversationsApi.delete(id);
+        setConversations((prev) => prev.filter((c) => c.id !== id));
+        if (currentConversationId === id) {
+          setCurrentConversationId(null);
+          setMessages([]);
+        }
+      } catch (error) {
+        console.error("Failed to delete conversation:", error);
+        message.error("Failed to delete conversation");
       }
-    } catch (error) {
-      console.error('Failed to delete conversation:', error)
-      message.error('Failed to delete conversation')
-    }
-  }, [currentConversationId])
+    },
+    [currentConversationId],
+  );
 
   // Clear all conversations
   const clearAllConversations = useCallback(async () => {
     try {
-      await conversationsApi.clearAll()
-      setConversations([])
-      setCurrentConversationId(null)
-      setMessages([])
+      await conversationsApi.clearAll();
+      setConversations([]);
+      setCurrentConversationId(null);
+      setMessages([]);
     } catch (error) {
-      console.error('Failed to clear conversations:', error)
-      message.error('Failed to clear conversations')
+      console.error("Failed to clear conversations:", error);
+      message.error("Failed to clear conversations");
     }
-  }, [])
+  }, []);
 
   /**
    * Fetch available deployments
    */
   const fetchDeployments = useCallback(async () => {
     try {
-      const response = await deploymentsApi.list({ status: 'running' })
-      setDeployments(response.items)
+      const response = await deploymentsApi.list({ status: "running" });
+      setDeployments(response.items);
 
       // Update or clear selectedDeployment based on current running deployments
       if (selectedDeployment) {
         // Check if selected deployment is still running and update its data (port may have changed)
-        const updated = response.items.find(d => d.id === selectedDeployment.id)
+        const updated = response.items.find(
+          (d) => d.id === selectedDeployment.id,
+        );
         if (updated) {
           // Update with latest data (port, status, etc.)
           if (updated.port !== selectedDeployment.port) {
-            setSelectedDeployment(updated)
+            setSelectedDeployment(updated);
           }
         } else {
           // Selected deployment is no longer running
-          setSelectedDeployment(response.items.length > 0 ? response.items[0] : null)
+          setSelectedDeployment(
+            response.items.length > 0 ? response.items[0] : null,
+          );
         }
       } else if (response.items.length > 0) {
-        setSelectedDeployment(response.items[0])
+        setSelectedDeployment(response.items[0]);
       }
     } catch (error) {
-      console.error('Failed to fetch deployments:', error)
+      console.error("Failed to fetch deployments:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [selectedDeployment])
+  }, [selectedDeployment]);
 
   useEffect(() => {
-    fetchDeployments()
-    const interval = setInterval(fetchDeployments, 10000)
-    return () => clearInterval(interval)
-  }, [fetchDeployments])
+    fetchDeployments();
+    const interval = setInterval(fetchDeployments, 10000);
+    return () => clearInterval(interval);
+  }, [fetchDeployments]);
 
   // Handle scroll detection - check if user scrolled up
   const handleScroll = useCallback(() => {
-    const container = messagesContainerRef.current
-    if (!container) return
+    const container = messagesContainerRef.current;
+    if (!container) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = container
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
 
-    setShowScrollButton(!isNearBottom)
+    setShowScrollButton(!isNearBottom);
 
     if (isNearBottom) {
-      userScrolledUpRef.current = false
+      userScrolledUpRef.current = false;
     } else if (isStreaming) {
-      userScrolledUpRef.current = true
+      userScrolledUpRef.current = true;
     }
-  }, [isStreaming])
+  }, [isStreaming]);
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
-    const container = messagesContainerRef.current
+    const container = messagesContainerRef.current;
     if (container) {
-      container.scrollTop = container.scrollHeight
+      container.scrollTop = container.scrollHeight;
     }
-    userScrolledUpRef.current = false
-    setShowScrollButton(false)
-  }, [])
+    userScrolledUpRef.current = false;
+    setShowScrollButton(false);
+  }, []);
 
   // Auto-scroll during streaming - use interval for consistent scrolling
   useEffect(() => {
-    if (!isStreaming) return
+    if (!isStreaming) return;
 
     // Scroll immediately when streaming starts
     if (!userScrolledUpRef.current) {
-      scrollToBottom()
+      scrollToBottom();
     }
 
     // Keep scrolling during streaming
     const interval = setInterval(() => {
       if (!userScrolledUpRef.current) {
-        const container = messagesContainerRef.current
+        const container = messagesContainerRef.current;
         if (container) {
-          container.scrollTop = container.scrollHeight
+          container.scrollTop = container.scrollHeight;
         }
       }
-    }, 50)
+    }, 50);
 
-    return () => clearInterval(interval)
-  }, [isStreaming, scrollToBottom])
+    return () => clearInterval(interval);
+  }, [isStreaming, scrollToBottom]);
 
   // Auto-scroll when new message is added (not during streaming)
   useEffect(() => {
     if (!isStreaming && messages.length > 0) {
-      scrollToBottom()
+      scrollToBottom();
     }
-  }, [messages.length, isStreaming, scrollToBottom])
+  }, [messages.length, isStreaming, scrollToBottom]);
 
   // Reset scroll flag when streaming stops
   useEffect(() => {
     if (!isStreaming) {
-      userScrolledUpRef.current = false
+      userScrolledUpRef.current = false;
     }
-  }, [isStreaming])
+  }, [isStreaming]);
 
   /**
    * Get endpoint URL for deployment
    */
   const getEndpointUrl = (deployment: Deployment): string | null => {
-    if (!deployment.worker || !deployment.port || deployment.status !== 'running') {
-      return null
+    if (
+      !deployment.worker ||
+      !deployment.port ||
+      deployment.status !== "running"
+    ) {
+      return null;
     }
-    const workerIp = deployment.worker.address.split(':')[0]
-    return `http://${workerIp}:${deployment.port}/v1/chat/completions`
-  }
+    const workerIp = deployment.worker.address.split(":")[0];
+    return `http://${workerIp}:${deployment.port}/v1/chat/completions`;
+  };
 
   /**
    * Send message to API
    */
   const handleSend = useCallback(
     async (content?: string) => {
-      const messageContent = content || inputValue.trim()
-      if (!messageContent || !selectedDeployment || isStreaming) return
+      const messageContent = content || inputValue.trim();
+      if (!messageContent || !selectedDeployment || isStreaming) return;
 
-      const endpoint = getEndpointUrl(selectedDeployment)
+      const endpoint = getEndpointUrl(selectedDeployment);
       if (!endpoint) {
-        message.error('Deployment is not ready. Please wait for it to be running.')
-        return
+        message.error(
+          "Deployment is not ready. Please wait for it to be running.",
+        );
+        return;
       }
 
       // Set streaming first to prevent useEffect from clearing messages
-      setIsStreaming(true)
-      setInputValue('')
+      setIsStreaming(true);
+      setInputValue("");
 
       // Create new conversation if none exists
-      let convId = currentConversationId
+      let convId = currentConversationId;
       if (!convId) {
         try {
-          const title = messageContent.slice(0, 30) + (messageContent.length > 30 ? '...' : '')
+          const title =
+            messageContent.slice(0, 30) +
+            (messageContent.length > 30 ? "..." : "");
           const newConv = await conversationsApi.create({
             title,
             deployment_id: selectedDeployment.id,
-          })
-          const converted = convertApiConversation(newConv)
-          setConversations(prev => [converted, ...prev])
-          setCurrentConversationId(converted.id)
-          convId = converted.id
+          });
+          const converted = convertApiConversation(newConv);
+          setConversations((prev) => [converted, ...prev]);
+          setCurrentConversationId(converted.id);
+          convId = converted.id;
         } catch (error) {
-          console.error('Failed to create conversation:', error)
-          message.error('Failed to create conversation')
-          setIsStreaming(false)
-          return
+          console.error("Failed to create conversation:", error);
+          message.error("Failed to create conversation");
+          setIsStreaming(false);
+          return;
         }
       }
 
       const userMessage: ChatMessage = {
         id: generateMessageId(),
-        role: 'user',
+        role: "user",
         content: messageContent,
         timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, userMessage])
+      };
+      setMessages((prev) => [...prev, userMessage]);
 
       const assistantMessage: ChatMessage = {
         id: generateMessageId(),
-        role: 'assistant',
-        content: '',
+        role: "assistant",
+        content: "",
         timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, assistantMessage])
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
 
       try {
-        abortControllerRef.current = new AbortController()
+        abortControllerRef.current = new AbortController();
 
         const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: selectedDeployment.model?.model_id || 'default',
+            model: selectedDeployment.model?.model_id || "default",
             messages: [
               ...messages.map((m) => ({ role: m.role, content: m.content })),
-              { role: 'user', content: messageContent },
+              { role: "user", content: messageContent },
             ],
             stream: true,
             temperature: 0.7,
             // Don't specify max_tokens - let the server decide based on available context
           }),
           signal: abortControllerRef.current.signal,
-        })
+        });
 
         if (!response.ok) {
-          throw new Error(`API error: ${response.status} ${response.statusText}`)
+          throw new Error(
+            `API error: ${response.status} ${response.statusText}`,
+          );
         }
 
-        const reader = response.body?.getReader()
-        const decoder = new TextDecoder()
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
 
-        if (!reader) throw new Error('No response body')
+        if (!reader) throw new Error("No response body");
 
-        let accumulatedContent = ''
+        let accumulatedContent = "";
 
+        // eslint-disable-next-line no-constant-condition
         while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
+          const { done, value } = await reader.read();
+          if (done) break;
 
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n').filter((line) => line.trim().startsWith('data:'))
+          const chunk = decoder.decode(value);
+          const lines = chunk
+            .split("\n")
+            .filter((line) => line.trim().startsWith("data:"));
 
           for (const line of lines) {
-            const data = line.replace('data: ', '').trim()
-            if (data === '[DONE]') continue
+            const data = line.replace("data: ", "").trim();
+            if (data === "[DONE]") continue;
 
             try {
-              const parsed = JSON.parse(data)
-              const deltaContent = parsed.choices?.[0]?.delta?.content || ''
-              accumulatedContent += deltaContent
+              const parsed = JSON.parse(data);
+              const deltaContent = parsed.choices?.[0]?.delta?.content || "";
+              accumulatedContent += deltaContent;
 
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === assistantMessage.id ? { ...m, content: accumulatedContent } : m
-                )
-              )
+                  m.id === assistantMessage.id
+                    ? { ...m, content: accumulatedContent }
+                    : m,
+                ),
+              );
             } catch {
               // Skip invalid JSON
             }
@@ -392,101 +420,120 @@ export default function Chat() {
           try {
             await conversationsApi.addMessages(convId, {
               messages: [
-                { role: 'user', content: messageContent },
-                { role: 'assistant', content: accumulatedContent },
+                { role: "user", content: messageContent },
+                { role: "assistant", content: accumulatedContent },
               ],
-            })
+            });
             // Update local state
-            setConversations(prev => prev.map(c =>
-              c.id === convId ? { ...c, updatedAt: new Date() } : c
-            ))
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === convId ? { ...c, updatedAt: new Date() } : c,
+              ),
+            );
           } catch (error) {
-            console.error('Failed to save messages:', error)
+            console.error("Failed to save messages:", error);
           }
         }
       } catch (error: unknown) {
-        const err = error as Error
-        if (err.name === 'AbortError') {
-          message.info('Generation stopped')
+        const err = error as Error;
+        if (err.name === "AbortError") {
+          message.info("Generation stopped");
           // Still save the user message if we have a conversation
           if (convId) {
             try {
               await conversationsApi.addMessages(convId, {
-                messages: [{ role: 'user', content: messageContent }],
-              })
+                messages: [{ role: "user", content: messageContent }],
+              });
             } catch (saveError) {
-              console.error('Failed to save user message:', saveError)
+              console.error("Failed to save user message:", saveError);
             }
           }
         } else {
-          message.error(`Error: ${err.message}`)
-          setMessages((prev) => prev.filter((m) => m.id !== assistantMessage.id))
+          message.error(`Error: ${err.message}`);
+          setMessages((prev) =>
+            prev.filter((m) => m.id !== assistantMessage.id),
+          );
         }
       } finally {
-        setIsStreaming(false)
-        abortControllerRef.current = null
+        setIsStreaming(false);
+        abortControllerRef.current = null;
       }
     },
-    [inputValue, selectedDeployment, isStreaming, messages, currentConversationId]
-  )
+    [
+      inputValue,
+      selectedDeployment,
+      isStreaming,
+      messages,
+      currentConversationId,
+    ],
+  );
 
   /**
    * Stop streaming generation
    */
   const handleStop = useCallback(() => {
-    abortControllerRef.current?.abort()
-  }, [])
+    abortControllerRef.current?.abort();
+  }, []);
 
   /**
    * Start new chat (clear current and create new)
    */
   const handleNewChat = useCallback(() => {
-    handleStop()
-    setCurrentConversationId(null)
-    setMessages([])
-  }, [handleStop])
+    handleStop();
+    setCurrentConversationId(null);
+    setMessages([]);
+  }, [handleStop]);
 
   // Loading state
   if (loading) {
     return (
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: '60vh',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "60vh",
         }}
       >
         <Loading size="large" />
       </div>
-    )
+    );
   }
 
   // Model dropdown menu items
   const modelMenuItems = deployments.map((d) => ({
     key: d.id.toString(),
     label: (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "4px 0",
+        }}
+      >
         <RobotOutlined />
         <span>{d.model?.name || d.name}</span>
-        <span style={{ color: colors.textMuted, fontSize: 12 }}>@{d.worker?.name}</span>
+        <span style={{ color: colors.textMuted, fontSize: 12 }}>
+          @{d.worker?.name}
+        </span>
       </div>
     ),
     onClick: () => {
-      const deployment = deployments.find((dep) => dep.id === d.id)
-      setSelectedDeployment(deployment || null)
+      const deployment = deployments.find((dep) => dep.id === d.id);
+      setSelectedDeployment(deployment || null);
     },
-  }))
+  }));
 
   return (
     <div
       className="chat-page"
       style={{
-        display: 'flex',
-        height: 'calc(100vh - 100px)',
-        width: 'calc(100% + 48px)',
-        margin: '0 -24px -24px -24px',
-        padding: '0',
+        display: "flex",
+        height: "calc(100vh - 100px)",
+        width: "calc(100% + 48px)",
+        margin: "0 -24px -24px -24px",
+        padding: "0",
       }}
     >
       {/* Sidebar */}
@@ -505,7 +552,14 @@ export default function Chat() {
       />
 
       {/* Main Chat Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+        }}
+      >
         {/* Header */}
         <ChatHeader
           selectedDeployment={selectedDeployment}
@@ -515,96 +569,98 @@ export default function Chat() {
           colors={colors}
         />
 
-      {/* Messages Area */}
-      <div
-        ref={messagesContainerRef}
-        className="messages-container"
-        onScroll={handleScroll}
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          paddingBottom: 8,
-          width: '100%',
-        }}
-      >
-        {messages.length === 0 ? (
-          <EmptyState
-            selectedDeployment={selectedDeployment}
-            onSend={handleSend}
-            colors={colors}
-            isMobile={isMobile}
-          />
-        ) : (
-          <MessageList
-            messages={messages}
-            isStreaming={isStreaming}
-            isDark={isDark}
-            colors={colors}
-            messagesEndRef={messagesEndRef}
-          />
-        )}
-      </div>
+        {/* Messages Area */}
+        <div
+          ref={messagesContainerRef}
+          className="messages-container"
+          onScroll={handleScroll}
+          style={{
+            flex: 1,
+            overflow: "auto",
+            paddingBottom: 8,
+            width: "100%",
+          }}
+        >
+          {messages.length === 0 ? (
+            <EmptyState
+              selectedDeployment={selectedDeployment}
+              onSend={handleSend}
+              colors={colors}
+              isMobile={isMobile}
+            />
+          ) : (
+            <MessageList
+              messages={messages}
+              isStreaming={isStreaming}
+              isDark={isDark}
+              colors={colors}
+              messagesEndRef={messagesEndRef}
+            />
+          )}
+        </div>
 
-      {/* Input Area */}
-      <div style={{ padding: '0', width: '100%', position: 'relative' }}>
-        {/* Scroll to bottom button */}
-        {showScrollButton && (
-          <div style={{
-            position: 'absolute',
-            top: -48,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 10,
-          }}>
-            <Button
-              type="default"
-              shape="circle"
-              icon={<DownOutlined />}
-              onClick={scrollToBottom}
+        {/* Input Area */}
+        <div style={{ padding: "0", width: "100%", position: "relative" }}>
+          {/* Scroll to bottom button */}
+          {showScrollButton && (
+            <div
               style={{
-                width: 36,
-                height: 36,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                background: isDark ? '#27272a' : '#ffffff',
-                borderColor: isDark ? '#3f3f46' : '#e4e4e7',
+                position: "absolute",
+                top: -48,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 10,
               }}
+            >
+              <Button
+                type="default"
+                shape="circle"
+                icon={<DownOutlined />}
+                onClick={scrollToBottom}
+                style={{
+                  width: 36,
+                  height: 36,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  background: isDark ? "#27272a" : "#ffffff",
+                  borderColor: isDark ? "#3f3f46" : "#e4e4e7",
+                }}
+              />
+            </div>
+          )}
+          <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 16px" }}>
+            <ChatInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSend={() => handleSend()}
+              onStop={handleStop}
+              isStreaming={isStreaming}
+              disabled={!selectedDeployment}
+              isDark={isDark}
+              colors={colors}
             />
           </div>
-        )}
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px' }}>
-          <ChatInput
-            value={inputValue}
-            onChange={setInputValue}
-            onSend={() => handleSend()}
-            onStop={handleStop}
-            isStreaming={isStreaming}
-            disabled={!selectedDeployment}
-            isDark={isDark}
-            colors={colors}
-          />
         </div>
-      </div>
       </div>
 
       {/* Dynamic Styles */}
       <style>{getChatStyles({ isDark, colors })}</style>
     </div>
-  )
+  );
 }
 
 /**
  * Chat header with model selector and action buttons
  */
 interface ChatHeaderProps {
-  selectedDeployment: Deployment | null
+  selectedDeployment: Deployment | null;
   modelMenuItems: {
-    key: string
-    label: React.ReactNode
-    onClick: () => void
-  }[]
-  onToggleSidebar: () => void
-  sidebarCollapsed: boolean
-  colors: ReturnType<typeof useTheme>['colors']
+    key: string;
+    label: React.ReactNode;
+    onClick: () => void;
+  }[];
+  onToggleSidebar: () => void;
+  sidebarCollapsed: boolean;
+  colors: ReturnType<typeof useTheme>["colors"];
 }
 
 function ChatHeader({
@@ -617,20 +673,22 @@ function ChatHeader({
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 16px 8px 16px',
-        width: '100%',
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 16px 8px 16px",
+        width: "100%",
       }}
     >
       {/* Left side */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {/* Toggle sidebar button */}
-        <Tooltip title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}>
+        <Tooltip title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}>
           <Button
             type="text"
-            icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            icon={
+              sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />
+            }
             onClick={onToggleSidebar}
             style={{
               width: 36,
@@ -642,56 +700,60 @@ function ChatHeader({
         </Tooltip>
 
         {/* Model Selector */}
-        <Dropdown menu={{ items: modelMenuItems }} trigger={['click']}>
+        <Dropdown menu={{ items: modelMenuItems }} trigger={["click"]}>
           <Button
             type="text"
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: 8,
               height: 40,
-              padding: '0 12px',
+              padding: "0 12px",
               borderRadius: 10,
               background: colors.hoverBg,
-              border: 'none',
+              border: "none",
               fontSize: 14,
               fontWeight: 500,
               color: colors.text,
             }}
           >
             <RobotOutlined style={{ fontSize: 16 }} />
-            <span>{selectedDeployment?.model?.name || 'Select Model'}</span>
+            <span>{selectedDeployment?.model?.name || "Select Model"}</span>
             <DownOutlined style={{ fontSize: 10, color: colors.textMuted }} />
           </Button>
         </Dropdown>
       </div>
-
     </div>
-  )
+  );
 }
 
 /**
  * Empty state with suggestions
  */
 interface EmptyStateProps {
-  selectedDeployment: Deployment | null
-  onSend: (content: string) => void
-  colors: ReturnType<typeof useTheme>['colors']
-  isMobile?: boolean
+  selectedDeployment: Deployment | null;
+  onSend: (content: string) => void;
+  colors: ReturnType<typeof useTheme>["colors"];
+  isMobile?: boolean;
 }
 
-function EmptyState({ selectedDeployment, onSend, colors, isMobile }: EmptyStateProps) {
+function EmptyState({
+  selectedDeployment,
+  onSend,
+  colors,
+  isMobile,
+}: EmptyStateProps) {
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        padding: isMobile ? '20px 16px' : '40px 20px',
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100%",
+        padding: isMobile ? "20px 16px" : "40px 20px",
         maxWidth: 900,
-        margin: '0 auto',
+        margin: "0 auto",
       }}
     >
       <h2
@@ -699,33 +761,35 @@ function EmptyState({ selectedDeployment, onSend, colors, isMobile }: EmptyState
           fontSize: isMobile ? 22 : 28,
           fontWeight: 500,
           color: colors.text,
-          margin: '0 0 8px 0',
-          letterSpacing: '-0.02em',
-          textAlign: 'center',
+          margin: "0 0 8px 0",
+          letterSpacing: "-0.02em",
+          textAlign: "center",
         }}
       >
         {selectedDeployment
-          ? `Chat with ${selectedDeployment.model?.name || 'AI'}`
-          : 'Select a model to start'}
+          ? `Chat with ${selectedDeployment.model?.name || "AI"}`
+          : "Select a model to start"}
       </h2>
       <p
         style={{
           fontSize: isMobile ? 13 : 15,
           color: colors.textMuted,
-          margin: isMobile ? '0 0 24px 0' : '0 0 40px 0',
-          textAlign: 'center',
+          margin: isMobile ? "0 0 24px 0" : "0 0 40px 0",
+          textAlign: "center",
         }}
       >
-        {selectedDeployment ? 'Ask me anything' : 'Choose a deployed model from the dropdown above'}
+        {selectedDeployment
+          ? "Ask me anything"
+          : "Choose a deployed model from the dropdown above"}
       </p>
 
       {selectedDeployment && (
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
             gap: isMobile ? 8 : 12,
-            width: '100%',
+            width: "100%",
             maxWidth: 700,
           }}
         >
@@ -735,15 +799,15 @@ function EmptyState({ selectedDeployment, onSend, colors, isMobile }: EmptyState
               onClick={() => onSend(suggestion)}
               className="suggestion-btn"
               style={{
-                padding: isMobile ? '12px 16px' : '16px 20px',
+                padding: isMobile ? "12px 16px" : "16px 20px",
                 borderRadius: isMobile ? 12 : 16,
                 border: `1px solid ${colors.border}`,
-                background: 'transparent',
+                background: "transparent",
                 color: colors.textSecondary,
                 fontSize: isMobile ? 13 : 14,
-                textAlign: 'left',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                textAlign: "left",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
                 lineHeight: 1.5,
                 animationDelay: `${idx * 50}ms`,
               }}
@@ -754,35 +818,41 @@ function EmptyState({ selectedDeployment, onSend, colors, isMobile }: EmptyState
         </div>
       )}
     </div>
-  )
+  );
 }
 
 /**
  * Message list component
  */
 interface MessageListProps {
-  messages: ChatMessage[]
-  isStreaming: boolean
-  isDark: boolean
-  colors: ReturnType<typeof useTheme>['colors']
-  messagesEndRef: React.RefObject<HTMLDivElement>
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  isDark: boolean;
+  colors: ReturnType<typeof useTheme>["colors"];
+  messagesEndRef: React.RefObject<HTMLDivElement>;
 }
 
-function MessageList({ messages, isStreaming, isDark, colors, messagesEndRef }: MessageListProps) {
+function MessageList({
+  messages,
+  isStreaming,
+  isDark,
+  colors,
+  messagesEndRef,
+}: MessageListProps) {
   return (
     <div
       style={{
         maxWidth: 900,
-        margin: '0 auto',
-        display: 'flex',
-        flexDirection: 'column',
+        margin: "0 auto",
+        display: "flex",
+        flexDirection: "column",
         gap: 24,
       }}
     >
       {messages.map((msg, index) => {
-        const isLast = index === messages.length - 1
-        const showStreaming = isLast && isStreaming && msg.role === 'assistant'
-        const isUser = msg.role === 'user'
+        const isLast = index === messages.length - 1;
+        const showStreaming = isLast && isStreaming && msg.role === "assistant";
+        const isUser = msg.role === "user";
 
         return (
           <MessageRow
@@ -794,23 +864,23 @@ function MessageList({ messages, isStreaming, isDark, colors, messagesEndRef }: 
             colors={colors}
             animationDelay={index * 30}
           />
-        )
+        );
       })}
       <div ref={messagesEndRef} style={{ height: 1 }} />
     </div>
-  )
+  );
 }
 
 /**
  * Individual message row
  */
 interface MessageRowProps {
-  message: ChatMessage
-  isUser: boolean
-  showStreaming: boolean
-  isDark: boolean
-  colors: ReturnType<typeof useTheme>['colors']
-  animationDelay: number
+  message: ChatMessage;
+  isUser: boolean;
+  showStreaming: boolean;
+  isDark: boolean;
+  colors: ReturnType<typeof useTheme>["colors"];
+  animationDelay: number;
 }
 
 function MessageRow({
@@ -825,29 +895,34 @@ function MessageRow({
     <div
       className="message-row"
       style={{
-        display: 'flex',
-        justifyContent: isUser ? 'flex-end' : 'flex-start',
+        display: "flex",
+        justifyContent: isUser ? "flex-end" : "flex-start",
         animationDelay: `${animationDelay}ms`,
       }}
     >
       {/* Assistant Avatar */}
       {!isUser && (
-        <Avatar icon={<RobotOutlined />} isDark={isDark} colors={colors} position="left" />
+        <Avatar
+          icon={<RobotOutlined />}
+          isDark={isDark}
+          colors={colors}
+          position="left"
+        />
       )}
 
       {/* Message Content */}
       <div
         style={{
-          maxWidth: isUser ? '75%' : '85%',
-          padding: isUser ? '12px 16px' : '0',
+          maxWidth: isUser ? "75%" : "85%",
+          padding: isUser ? "12px 16px" : "0",
           borderRadius: isUser ? 24 : 0,
-          background: isUser ? colors.userBubble : 'transparent',
+          background: isUser ? colors.userBubble : "transparent",
         }}
       >
         {isUser ? (
           <div
             style={{
-              whiteSpace: 'pre-wrap',
+              whiteSpace: "pre-wrap",
               lineHeight: 1.6,
               fontSize: 15,
               color: colors.text,
@@ -867,20 +942,25 @@ function MessageRow({
 
       {/* User Avatar */}
       {isUser && (
-        <Avatar icon={<UserOutlined />} isDark={isDark} colors={colors} position="right" />
+        <Avatar
+          icon={<UserOutlined />}
+          isDark={isDark}
+          colors={colors}
+          position="right"
+        />
       )}
     </div>
-  )
+  );
 }
 
 /**
  * Avatar component
  */
 interface AvatarProps {
-  icon: React.ReactNode
-  isDark: boolean
-  colors: ReturnType<typeof useTheme>['colors']
-  position: 'left' | 'right'
+  icon: React.ReactNode;
+  isDark: boolean;
+  colors: ReturnType<typeof useTheme>["colors"];
+  position: "left" | "right";
 }
 
 function Avatar({ icon, isDark, colors, position }: AvatarProps) {
@@ -889,14 +969,14 @@ function Avatar({ icon, isDark, colors, position }: AvatarProps) {
       style={{
         width: 32,
         height: 32,
-        borderRadius: '50%',
-        background: isDark ? '#3f3f46' : '#e4e4e7',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        borderRadius: "50%",
+        background: isDark ? "#3f3f46" : "#e4e4e7",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         flexShrink: 0,
-        marginRight: position === 'left' ? 12 : 0,
-        marginLeft: position === 'right' ? 12 : 0,
+        marginRight: position === "left" ? 12 : 0,
+        marginLeft: position === "right" ? 12 : 0,
         marginTop: 4,
         color: colors.textSecondary,
         fontSize: 14,
@@ -904,24 +984,24 @@ function Avatar({ icon, isDark, colors, position }: AvatarProps) {
     >
       {icon}
     </div>
-  )
+  );
 }
 
 /**
  * Chat sidebar for conversation history
  */
 interface ChatSidebarProps {
-  conversations: Conversation[]
-  currentConversationId: number | null
-  onSelectConversation: (id: number) => void
-  onNewChat: () => void
-  onDeleteConversation: (id: number) => void
-  onClearAll: () => void
-  collapsed: boolean
-  onToggleCollapse: () => void
-  isDark: boolean
-  colors: ReturnType<typeof useTheme>['colors']
-  isMobile: boolean
+  conversations: Conversation[];
+  currentConversationId: number | null;
+  onSelectConversation: (id: number) => void;
+  onNewChat: () => void;
+  onDeleteConversation: (id: number) => void;
+  onClearAll: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  isDark: boolean;
+  colors: ReturnType<typeof useTheme>["colors"];
+  isMobile: boolean;
 }
 
 function ChatSidebar({
@@ -937,10 +1017,10 @@ function ChatSidebar({
   colors,
   isMobile,
 }: ChatSidebarProps) {
-  const [hoveredId, setHoveredId] = useState<number | null>(null)
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
 
   if (collapsed) {
-    return null
+    return null;
   }
 
   return (
@@ -950,9 +1030,9 @@ function ChatSidebar({
         <div
           onClick={onToggleCollapse}
           style={{
-            position: 'fixed',
+            position: "fixed",
             inset: 0,
-            background: 'rgba(0,0,0,0.4)',
+            background: "rgba(0,0,0,0.4)",
             zIndex: 99,
           }}
         />
@@ -961,31 +1041,33 @@ function ChatSidebar({
       <div
         style={{
           width: isMobile ? 280 : 240,
-          height: isMobile ? 'auto' : '100%',
-          background: 'transparent',
-          display: 'flex',
-          flexDirection: 'column',
-          position: isMobile ? 'fixed' : 'relative',
+          height: isMobile ? "auto" : "100%",
+          background: "transparent",
+          display: "flex",
+          flexDirection: "column",
+          position: isMobile ? "fixed" : "relative",
           left: 0,
           top: isMobile ? 64 : 0,
-          bottom: isMobile ? 0 : 'auto',
+          bottom: isMobile ? 0 : "auto",
           zIndex: isMobile ? 100 : 1,
-          boxShadow: isMobile ? '4px 0 12px rgba(0,0,0,0.15)' : 'none',
+          boxShadow: isMobile ? "4px 0 12px rgba(0,0,0,0.15)" : "none",
         }}
       >
         {/* Header */}
-        <div style={{ padding: '8px 8px 4px 8px' }}>
+        <div style={{ padding: "8px 8px 4px 8px" }}>
           <Button
             onClick={() => {
-              onNewChat()
-              if (isMobile) onToggleCollapse()
+              onNewChat();
+              if (isMobile) onToggleCollapse();
             }}
             style={{
-              width: '100%',
+              width: "100%",
               borderRadius: 8,
               height: 34,
-              background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-              border: 'none',
+              background: isDark
+                ? "rgba(255,255,255,0.06)"
+                : "rgba(0,0,0,0.03)",
+              border: "none",
               color: colors.textSecondary,
               fontWeight: 500,
               fontSize: 13,
@@ -999,51 +1081,62 @@ function ChatSidebar({
         <div
           style={{
             flex: 1,
-            overflow: 'auto',
-            padding: '8px 8px',
+            overflow: "auto",
+            padding: "8px 8px",
           }}
         >
           {conversations.length === 0 ? (
             <div
               style={{
-                padding: '40px 16px',
-                textAlign: 'center',
+                padding: "40px 16px",
+                textAlign: "center",
                 color: colors.textMuted,
                 fontSize: 13,
               }}
             >
-              <MessageOutlined style={{ fontSize: 32, opacity: 0.3, marginBottom: 12, display: 'block' }} />
+              <MessageOutlined
+                style={{
+                  fontSize: 32,
+                  opacity: 0.3,
+                  marginBottom: 12,
+                  display: "block",
+                }}
+              />
               No conversations
             </div>
           ) : (
             conversations.map((conv) => {
-              const isActive = conv.id === currentConversationId
-              const isHovered = hoveredId === conv.id
+              const isActive = conv.id === currentConversationId;
+              const isHovered = hoveredId === conv.id;
 
               return (
                 <div
                   key={conv.id}
                   onClick={() => {
-                    onSelectConversation(conv.id)
-                    if (isMobile) onToggleCollapse()
+                    onSelectConversation(conv.id);
+                    if (isMobile) onToggleCollapse();
                   }}
                   onMouseEnter={() => setHoveredId(conv.id)}
                   onMouseLeave={() => setHoveredId(null)}
                   style={{
-                    padding: '10px 10px',
+                    padding: "10px 10px",
                     borderRadius: 8,
-                    cursor: 'pointer',
+                    cursor: "pointer",
                     marginBottom: 2,
                     background: isActive
-                      ? isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'
+                      ? isDark
+                        ? "rgba(255,255,255,0.1)"
+                        : "rgba(0,0,0,0.06)"
                       : isHovered
-                        ? isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'
-                        : 'transparent',
-                    display: 'flex',
-                    alignItems: 'center',
+                        ? isDark
+                          ? "rgba(255,255,255,0.05)"
+                          : "rgba(0,0,0,0.03)"
+                        : "transparent",
+                    display: "flex",
+                    alignItems: "center",
                     gap: 10,
-                    transition: 'background 0.15s ease',
-                    position: 'relative',
+                    transition: "background 0.15s ease",
+                    position: "relative",
                   }}
                 >
                   <MessageOutlined
@@ -1057,9 +1150,9 @@ function ChatSidebar({
                     style={{
                       flex: 1,
                       minWidth: 0,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                       fontSize: 13,
                       color: isActive ? colors.text : colors.textSecondary,
                     }}
@@ -1072,8 +1165,8 @@ function ChatSidebar({
                       size="small"
                       icon={<DeleteOutlined style={{ fontSize: 12 }} />}
                       onClick={(e) => {
-                        e.stopPropagation()
-                        onDeleteConversation(conv.id)
+                        e.stopPropagation();
+                        onDeleteConversation(conv.id);
                       }}
                       style={{
                         width: 22,
@@ -1084,17 +1177,19 @@ function ChatSidebar({
                         borderRadius: 4,
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.color = '#ef4444'
-                        e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)'
+                        e.currentTarget.style.color = "#ef4444";
+                        e.currentTarget.style.background = isDark
+                          ? "rgba(239,68,68,0.1)"
+                          : "rgba(239,68,68,0.08)";
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.color = colors.textMuted
-                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = colors.textMuted;
+                        e.currentTarget.style.background = "transparent";
                       }}
                     />
                   )}
                 </div>
-              )
+              );
             })
           )}
         </div>
@@ -1103,7 +1198,7 @@ function ChatSidebar({
         {conversations.length > 0 && (
           <div
             style={{
-              padding: '8px 12px',
+              padding: "8px 12px",
               flexShrink: 0,
             }}
           >
@@ -1112,20 +1207,22 @@ function ChatSidebar({
               onConfirm={onClearAll}
               okText="Clear"
               cancelText="Cancel"
-              okButtonProps={{ danger: true, size: 'small' }}
-              cancelButtonProps={{ size: 'small' }}
+              okButtonProps={{ danger: true, size: "small" }}
+              cancelButtonProps={{ size: "small" }}
             >
               <span
                 style={{
                   color: colors.textMuted,
                   fontSize: 12,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
                   gap: 4,
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                onMouseLeave={(e) => e.currentTarget.style.color = colors.textMuted}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.color = colors.textMuted)
+                }
               >
                 <DeleteOutlined style={{ fontSize: 11 }} />
                 Clear all
@@ -1135,5 +1232,5 @@ function ChatSidebar({
         )}
       </div>
     </>
-  )
+  );
 }

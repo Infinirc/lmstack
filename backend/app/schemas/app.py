@@ -1,7 +1,7 @@
 """App schemas for API requests/responses"""
 
 from datetime import datetime
-from typing import Optional, List
+
 from pydantic import BaseModel, Field
 
 
@@ -19,9 +19,10 @@ class AppDeploy(BaseModel):
 
     app_type: str = Field(..., description="App type (e.g., open-webui)")
     worker_id: int = Field(..., description="Worker ID to deploy on")
-    name: Optional[str] = Field(None, description="Custom name for the app")
+    name: str | None = Field(None, description="Custom name for the app")
     use_proxy: bool = Field(
-        True, description="Use LMStack nginx proxy (recommended) or direct worker connection"
+        True,
+        description="Use LMStack nginx proxy (recommended) or direct worker connection",
     )
 
 
@@ -32,17 +33,17 @@ class AppResponse(BaseModel):
     app_type: str
     name: str
     worker_id: int
-    worker_name: Optional[str] = None
-    worker_address: Optional[str] = None
+    worker_name: str | None = None
+    worker_address: str | None = None
     status: str
-    status_message: Optional[str] = None
-    container_id: Optional[str] = None
-    port: Optional[int] = None
+    status_message: str | None = None
+    container_id: str | None = None
+    port: int | None = None
     proxy_path: str
-    proxy_url: Optional[str] = None
+    proxy_url: str | None = None
     use_proxy: bool = True
-    access_url: Optional[str] = None  # The URL to access the app
-    api_key_id: Optional[int] = None
+    access_url: str | None = None  # The URL to access the app
+    api_key_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -52,14 +53,14 @@ class AppResponse(BaseModel):
 class AppListResponse(BaseModel):
     """App list response"""
 
-    items: List[AppResponse]
+    items: list[AppResponse]
     total: int
 
 
 class AvailableAppsResponse(BaseModel):
     """List of available apps that can be deployed"""
 
-    items: List[AppDefinition]
+    items: list[AppDefinition]
 
 
 class AppLogsResponse(BaseModel):

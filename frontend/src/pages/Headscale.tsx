@@ -4,7 +4,7 @@
  * Manage Headscale VPN server for connecting remote workers.
  * Includes status display, server control, preauth key generation, and node management.
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from "react";
 import {
   Button,
   Card,
@@ -25,7 +25,7 @@ import {
   Switch,
   Tooltip,
   Divider,
-} from 'antd'
+} from "antd";
 import {
   PlayCircleOutlined,
   PauseCircleOutlined,
@@ -38,182 +38,206 @@ import {
   CloseCircleOutlined,
   GlobalOutlined,
   NodeIndexOutlined,
-} from '@ant-design/icons'
-import { headscaleApi, type HeadscaleStatus, type HeadscaleNode, type PreauthKeyResponse } from '../services/api'
-import { useAppTheme } from '../hooks/useTheme'
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
+} from "@ant-design/icons";
+import {
+  headscaleApi,
+  type HeadscaleStatus,
+  type HeadscaleNode,
+  type PreauthKeyResponse,
+} from "../services/api";
+import { useAppTheme } from "../hooks/useTheme";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
 
-dayjs.extend(relativeTime)
+dayjs.extend(relativeTime);
 
-const { Text, Paragraph } = Typography
+const { Text, Paragraph } = Typography;
 
-const REFRESH_INTERVAL = 10000 // 10 seconds
+const REFRESH_INTERVAL = 10000; // 10 seconds
 
 export default function Headscale() {
-  const [status, setStatus] = useState<HeadscaleStatus | null>(null)
-  const [nodes, setNodes] = useState<HeadscaleNode[]>([])
-  const [loading, setLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [startModalOpen, setStartModalOpen] = useState(false)
-  const [preauthKeyModal, setPreauthKeyModal] = useState(false)
-  const [generatedKey, setGeneratedKey] = useState<PreauthKeyResponse | null>(null)
-  const [startForm] = Form.useForm()
-  const [preauthForm] = Form.useForm()
-  const { colors } = useAppTheme()
+  const [status, setStatus] = useState<HeadscaleStatus | null>(null);
+  const [nodes, setNodes] = useState<HeadscaleNode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [startModalOpen, setStartModalOpen] = useState(false);
+  const [preauthKeyModal, setPreauthKeyModal] = useState(false);
+  const [generatedKey, setGeneratedKey] = useState<PreauthKeyResponse | null>(
+    null,
+  );
+  const [startForm] = Form.useForm();
+  const [preauthForm] = Form.useForm();
+  const { colors } = useAppTheme();
 
   const fetchStatus = useCallback(async () => {
     try {
-      const data = await headscaleApi.getStatus()
-      setStatus(data)
+      const data = await headscaleApi.getStatus();
+      setStatus(data);
     } catch (error) {
-      console.error('Failed to fetch Headscale status:', error)
+      console.error("Failed to fetch Headscale status:", error);
     }
-  }, [])
+  }, []);
 
   const fetchNodes = useCallback(async () => {
     try {
-      const data = await headscaleApi.listNodes()
-      setNodes(data.items)
+      const data = await headscaleApi.listNodes();
+      setNodes(data.items);
     } catch (error) {
-      console.error('Failed to fetch nodes:', error)
+      console.error("Failed to fetch nodes:", error);
     }
-  }, [])
+  }, []);
 
   const fetchAll = useCallback(async () => {
-    await Promise.all([fetchStatus(), fetchNodes()])
-    setLoading(false)
-  }, [fetchStatus, fetchNodes])
+    await Promise.all([fetchStatus(), fetchNodes()]);
+    setLoading(false);
+  }, [fetchStatus, fetchNodes]);
 
   useEffect(() => {
-    fetchAll()
-    const interval = setInterval(fetchAll, REFRESH_INTERVAL)
-    return () => clearInterval(interval)
-  }, [fetchAll])
+    fetchAll();
+    const interval = setInterval(fetchAll, REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchAll]);
 
-  const handleStart = async (values: { server_url?: string; http_port?: number; grpc_port?: number }) => {
+  const handleStart = async (values: {
+    server_url?: string;
+    http_port?: number;
+    grpc_port?: number;
+  }) => {
     try {
-      setActionLoading('start')
-      await headscaleApi.start(values)
-      message.success('Headscale started successfully')
-      setStartModalOpen(false)
-      startForm.resetFields()
-      fetchAll()
+      setActionLoading("start");
+      await headscaleApi.start(values);
+      message.success("Headscale started successfully");
+      setStartModalOpen(false);
+      startForm.resetFields();
+      fetchAll();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to start Headscale')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to start Headscale");
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const handleStop = async () => {
     try {
-      setActionLoading('stop')
-      await headscaleApi.stop()
-      message.success('Headscale stopped')
-      fetchAll()
+      setActionLoading("stop");
+      await headscaleApi.stop();
+      message.success("Headscale stopped");
+      fetchAll();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to stop Headscale')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to stop Headscale");
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
-  const handleCreatePreauthKey = async (values: { reusable: boolean; ephemeral: boolean; expiration: string }) => {
+  const handleCreatePreauthKey = async (values: {
+    reusable: boolean;
+    ephemeral: boolean;
+    expiration: string;
+  }) => {
     try {
-      setActionLoading('create-key')
-      const result = await headscaleApi.createPreauthKey(values)
-      setGeneratedKey(result)
-      message.success('Pre-auth key created')
-      preauthForm.resetFields()
+      setActionLoading("create-key");
+      const result = await headscaleApi.createPreauthKey(values);
+      setGeneratedKey(result);
+      message.success("Pre-auth key created");
+      preauthForm.resetFields();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to create pre-auth key')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(
+        err.response?.data?.detail || "Failed to create pre-auth key",
+      );
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const handleDeleteNode = async (nodeId: number) => {
     try {
-      setActionLoading(`delete-${nodeId}`)
-      await headscaleApi.deleteNode(nodeId)
-      message.success('Node deleted')
-      fetchNodes()
+      setActionLoading(`delete-${nodeId}`);
+      await headscaleApi.deleteNode(nodeId);
+      message.success("Node deleted");
+      fetchNodes();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to delete node')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to delete node");
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    message.success('Copied to clipboard')
-  }
+    navigator.clipboard.writeText(text);
+    message.success("Copied to clipboard");
+  };
 
   const nodeColumns = [
     {
-      title: 'Name',
-      dataIndex: 'name',
-      key: 'name',
+      title: "Name",
+      dataIndex: "name",
+      key: "name",
       render: (name: string, record: HeadscaleNode) => (
         <div>
           <Text strong>{record.given_name || name}</Text>
           {record.given_name && record.given_name !== name && (
             <div>
-              <Text type="secondary" style={{ fontSize: 12 }}>{name}</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {name}
+              </Text>
             </div>
           )}
         </div>
       ),
     },
     {
-      title: 'IP Address',
-      key: 'ip',
+      title: "IP Address",
+      key: "ip",
       render: (_: unknown, record: HeadscaleNode) => (
         <Space direction="vertical" size={0}>
           {record.ipv4 && <Text code>{record.ipv4}</Text>}
-          {record.ip_addresses?.filter(ip => ip !== record.ipv4).map((ip, idx) => (
-            <Text key={idx} type="secondary" style={{ fontSize: 12 }}>{ip}</Text>
-          ))}
+          {record.ip_addresses
+            ?.filter((ip) => ip !== record.ipv4)
+            .map((ip, idx) => (
+              <Text key={idx} type="secondary" style={{ fontSize: 12 }}>
+                {ip}
+              </Text>
+            ))}
         </Space>
       ),
     },
     {
-      title: 'Status',
-      dataIndex: 'online',
-      key: 'online',
+      title: "Status",
+      dataIndex: "online",
+      key: "online",
       width: 100,
       render: (online: boolean) => (
         <Tag
           icon={online ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-          color={online ? 'success' : 'default'}
+          color={online ? "success" : "default"}
         >
-          {online ? 'Online' : 'Offline'}
+          {online ? "Online" : "Offline"}
         </Tag>
       ),
     },
     {
-      title: 'Last Seen',
-      dataIndex: 'last_seen',
-      key: 'last_seen',
+      title: "Last Seen",
+      dataIndex: "last_seen",
+      key: "last_seen",
       width: 150,
-      render: (time: string | null) => time ? dayjs(time).fromNow() : '-',
+      render: (time: string | null) => (time ? dayjs(time).fromNow() : "-"),
     },
     {
-      title: 'Created',
-      dataIndex: 'created_at',
-      key: 'created_at',
+      title: "Created",
+      dataIndex: "created_at",
+      key: "created_at",
       width: 150,
-      render: (time: string | null) => time ? dayjs(time).format('YYYY-MM-DD HH:mm') : '-',
+      render: (time: string | null) =>
+        time ? dayjs(time).format("YYYY-MM-DD HH:mm") : "-",
     },
     {
-      title: 'Actions',
-      key: 'actions',
+      title: "Actions",
+      key: "actions",
       width: 80,
       render: (_: unknown, record: HeadscaleNode) => (
         <Popconfirm
@@ -233,9 +257,9 @@ export default function Headscale() {
         </Popconfirm>
       ),
     },
-  ]
+  ];
 
-  const onlineCount = nodes.filter(n => n.online).length
+  const onlineCount = nodes.filter((n) => n.online).length;
 
   return (
     <div>
@@ -249,7 +273,11 @@ export default function Headscale() {
         }
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={fetchAll} loading={loading}>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={fetchAll}
+              loading={loading}
+            >
               Refresh
             </Button>
             {status?.running ? (
@@ -263,7 +291,7 @@ export default function Headscale() {
                 <Button
                   danger
                   icon={<PauseCircleOutlined />}
-                  loading={actionLoading === 'stop'}
+                  loading={actionLoading === "stop"}
                 >
                   Stop Server
                 </Button>
@@ -293,9 +321,17 @@ export default function Headscale() {
           <Col xs={12} sm={6}>
             <Statistic
               title="Status"
-              value={status?.running ? 'Running' : 'Stopped'}
-              valueStyle={{ color: status?.running ? '#52c41a' : colors.textMuted }}
-              prefix={status?.running ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
+              value={status?.running ? "Running" : "Stopped"}
+              valueStyle={{
+                color: status?.running ? "#52c41a" : colors.textMuted,
+              }}
+              prefix={
+                status?.running ? (
+                  <CheckCircleOutlined />
+                ) : (
+                  <CloseCircleOutlined />
+                )
+              }
             />
           </Col>
           <Col xs={12} sm={6}>
@@ -309,14 +345,19 @@ export default function Headscale() {
             <Statistic
               title="Online Nodes"
               value={status?.online_nodes ?? 0}
-              valueStyle={{ color: (status?.online_nodes ?? 0) > 0 ? '#52c41a' : colors.textMuted }}
+              valueStyle={{
+                color:
+                  (status?.online_nodes ?? 0) > 0
+                    ? "#52c41a"
+                    : colors.textMuted,
+              }}
               prefix={<CloudServerOutlined />}
             />
           </Col>
           <Col xs={12} sm={6}>
             <Statistic
               title="Server URL"
-              value={status?.server_url || '-'}
+              value={status?.server_url || "-"}
               valueStyle={{ fontSize: 14 }}
             />
           </Col>
@@ -336,8 +377,8 @@ export default function Headscale() {
             type="primary"
             icon={<KeyOutlined />}
             onClick={() => {
-              setGeneratedKey(null)
-              setPreauthKeyModal(true)
+              setGeneratedKey(null);
+              setPreauthKeyModal(true);
             }}
             disabled={!status?.running}
           >
@@ -350,8 +391,11 @@ export default function Headscale() {
           message="Worker Registration"
           description={
             <div>
-              <p>Generate a pre-authentication key for workers to join the VPN network. Workers can then join using the Tailscale client:</p>
-              <ol style={{ paddingLeft: 20, margin: '8px 0' }}>
+              <p>
+                Generate a pre-authentication key for workers to join the VPN
+                network. Workers can then join using the Tailscale client:
+              </p>
+              <ol style={{ paddingLeft: 20, margin: "8px 0" }}>
                 <li>Install Tailscale on the worker machine</li>
                 <li>Run the join command with the pre-auth key</li>
                 <li>The worker will appear in the nodes list below</li>
@@ -385,8 +429,8 @@ export default function Headscale() {
             emptyText: (
               <div style={{ padding: 24, color: colors.textMuted }}>
                 {status?.running
-                  ? 'No nodes have joined yet. Generate a pre-auth key to register workers.'
-                  : 'Start the Headscale server to manage VPN nodes.'}
+                  ? "No nodes have joined yet. Generate a pre-auth key to register workers."
+                  : "Start the Headscale server to manage VPN nodes."}
               </div>
             ),
           }}
@@ -429,24 +473,28 @@ export default function Headscale() {
               <Form.Item
                 name="http_port"
                 label="HTTP Port"
-                rules={[{ required: true, message: 'Required' }]}
+                rules={[{ required: true, message: "Required" }]}
               >
-                <InputNumber style={{ width: '100%' }} min={1} max={65535} />
+                <InputNumber style={{ width: "100%" }} min={1} max={65535} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
                 name="grpc_port"
                 label="gRPC Port"
-                rules={[{ required: true, message: 'Required' }]}
+                rules={[{ required: true, message: "Required" }]}
               >
-                <InputNumber style={{ width: '100%' }} min={1} max={65535} />
+                <InputNumber style={{ width: "100%" }} min={1} max={65535} />
               </Form.Item>
             </Col>
           </Row>
           <Form.Item style={{ marginBottom: 0 }}>
             <Space>
-              <Button type="primary" htmlType="submit" loading={actionLoading === 'start'}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={actionLoading === "start"}
+              >
                 Start Server
               </Button>
               <Button onClick={() => setStartModalOpen(false)}>Cancel</Button>
@@ -460,9 +508,9 @@ export default function Headscale() {
         title="Generate Pre-authentication Key"
         open={preauthKeyModal}
         onCancel={() => {
-          setPreauthKeyModal(false)
-          setGeneratedKey(null)
-          preauthForm.resetFields()
+          setPreauthKeyModal(false);
+          setGeneratedKey(null);
+          preauthForm.resetFields();
         }}
         footer={null}
         width={600}
@@ -475,7 +523,7 @@ export default function Headscale() {
             initialValues={{
               reusable: true,
               ephemeral: false,
-              expiration: '720h',
+              expiration: "720h",
             }}
           >
             <Form.Item
@@ -497,17 +545,23 @@ export default function Headscale() {
             <Form.Item
               name="expiration"
               label="Expiration"
-              rules={[{ required: true, message: 'Required' }]}
+              rules={[{ required: true, message: "Required" }]}
               extra="Key validity period (e.g., 24h, 720h, 8760h)"
             >
               <Input placeholder="720h" />
             </Form.Item>
             <Form.Item style={{ marginBottom: 0 }}>
               <Space>
-                <Button type="primary" htmlType="submit" loading={actionLoading === 'create-key'}>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={actionLoading === "create-key"}
+                >
                   Generate Key
                 </Button>
-                <Button onClick={() => setPreauthKeyModal(false)}>Cancel</Button>
+                <Button onClick={() => setPreauthKeyModal(false)}>
+                  Cancel
+                </Button>
               </Space>
             </Form.Item>
           </Form>
@@ -522,15 +576,19 @@ export default function Headscale() {
             />
 
             <Divider orientation="left">Pre-auth Key</Divider>
-            <div style={{
-              background: colors.cardBg,
-              padding: 12,
-              borderRadius: 8,
-              border: `1px solid ${colors.border}`,
-              marginBottom: 16,
-            }}>
-              <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                <Text code style={{ wordBreak: 'break-all' }}>{generatedKey.key}</Text>
+            <div
+              style={{
+                background: colors.cardBg,
+                padding: 12,
+                borderRadius: 8,
+                border: `1px solid ${colors.border}`,
+                marginBottom: 16,
+              }}
+            >
+              <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                <Text code style={{ wordBreak: "break-all" }}>
+                  {generatedKey.key}
+                </Text>
                 <Tooltip title="Copy key">
                   <Button
                     type="text"
@@ -554,8 +612,8 @@ export default function Headscale() {
                       padding: 12,
                       borderRadius: 4,
                       marginBottom: 0,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-all',
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-all",
                     }}
                   >
                     {generatedKey.join_command}
@@ -565,13 +623,13 @@ export default function Headscale() {
               type="info"
             />
 
-            <div style={{ marginTop: 16, textAlign: 'right' }}>
+            <div style={{ marginTop: 16, textAlign: "right" }}>
               <Button
                 type="primary"
                 onClick={() => {
-                  setPreauthKeyModal(false)
-                  setGeneratedKey(null)
-                  preauthForm.resetFields()
+                  setPreauthKeyModal(false);
+                  setGeneratedKey(null);
+                  preauthForm.resetFields();
                 }}
               >
                 Done
@@ -581,5 +639,5 @@ export default function Headscale() {
         )}
       </Modal>
     </div>
-  )
+  );
 }

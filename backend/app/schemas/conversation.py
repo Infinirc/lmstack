@@ -1,7 +1,7 @@
 """Conversation and Message schemas for API requests/responses"""
 
 from datetime import datetime
-from typing import Optional, List
+
 from pydantic import BaseModel, Field
 
 
@@ -16,9 +16,9 @@ class MessageBase(BaseModel):
 class MessageCreate(MessageBase):
     """Schema for creating a message"""
 
-    thinking: Optional[str] = None
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
+    thinking: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
 
 class MessageResponse(BaseModel):
@@ -27,9 +27,9 @@ class MessageResponse(BaseModel):
     id: int
     role: str
     content: str
-    thinking: Optional[str] = None
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
+    thinking: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -45,14 +45,14 @@ class ConversationBase(BaseModel):
 class ConversationCreate(ConversationBase):
     """Schema for creating a conversation"""
 
-    deployment_id: Optional[int] = None
-    messages: Optional[List[MessageCreate]] = None
+    deployment_id: int | None = None
+    messages: list[MessageCreate] | None = None
 
 
 class ConversationUpdate(BaseModel):
     """Schema for updating a conversation"""
 
-    title: Optional[str] = Field(None, max_length=255)
+    title: str | None = Field(None, max_length=255)
 
 
 class ConversationResponse(BaseModel):
@@ -60,7 +60,7 @@ class ConversationResponse(BaseModel):
 
     id: int
     title: str
-    deployment_id: Optional[int] = None
+    deployment_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -70,13 +70,13 @@ class ConversationResponse(BaseModel):
 class ConversationDetailResponse(ConversationResponse):
     """Conversation response with messages"""
 
-    messages: List[MessageResponse] = []
+    messages: list[MessageResponse] = []
 
 
 class ConversationListResponse(BaseModel):
     """Response for conversation list"""
 
-    items: List[ConversationResponse]
+    items: list[ConversationResponse]
     total: int
 
 
@@ -84,4 +84,4 @@ class ConversationListResponse(BaseModel):
 class AddMessagesRequest(BaseModel):
     """Schema for adding messages to a conversation"""
 
-    messages: List[MessageCreate]
+    messages: list[MessageCreate]

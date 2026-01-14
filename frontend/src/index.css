@@ -13,8 +13,10 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-feature-settings: 'ss01', 'ss02', 'cv01', 'cv02';
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  font-feature-settings: "ss01", "ss02", "cv01", "cv02";
   letter-spacing: -0.01em;
 }
 
@@ -85,7 +87,10 @@ body,
 .ant-menu,
 .ant-card,
 .ant-modal-content {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 
 /* Focus styles */
@@ -121,7 +126,9 @@ body[data-theme="light"] .suggestion-btn:focus-visible {
 
 /* Card hover effect */
 .ant-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 /* Menu item transitions */
@@ -249,7 +256,8 @@ body[data-theme="light"] .ant-popconfirm .ant-popover-inner {
 
 /* Pulse animation for status indicators */
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -271,7 +279,8 @@ body[data-theme="light"] .ant-popconfirm .ant-popover-inner {
 
 /* Glow animation */
 @keyframes glow {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
   }
   50% {
@@ -293,7 +302,8 @@ body[data-theme="light"] .ant-popconfirm .ant-popover-inner {
 
 /* Monospace font for data */
 .mono {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
 }
 
 /* Utility class for status glow */
@@ -368,11 +378,19 @@ body[data-theme="dark"] .model-files-table .ant-table-thead > tr > th {
   color: rgba(255, 255, 255, 0.6) !important;
 }
 
-body[data-theme="dark"] .model-files-table .ant-table-thead > tr > th:first-child {
+body[data-theme="dark"]
+  .model-files-table
+  .ant-table-thead
+  > tr
+  > th:first-child {
   border-top-left-radius: 8px !important;
 }
 
-body[data-theme="dark"] .model-files-table .ant-table-thead > tr > th:last-child {
+body[data-theme="dark"]
+  .model-files-table
+  .ant-table-thead
+  > tr
+  > th:last-child {
   border-top-right-radius: 8px !important;
 }
 
@@ -382,15 +400,27 @@ body[data-theme="dark"] .model-files-table .ant-table-tbody > tr > td {
   padding: 10px 12px !important;
 }
 
-body[data-theme="dark"] .model-files-table .ant-table-tbody > tr:last-child > td {
+body[data-theme="dark"]
+  .model-files-table
+  .ant-table-tbody
+  > tr:last-child
+  > td {
   border-bottom: none !important;
 }
 
-body[data-theme="dark"] .model-files-table .ant-table-tbody > tr:last-child > td:first-child {
+body[data-theme="dark"]
+  .model-files-table
+  .ant-table-tbody
+  > tr:last-child
+  > td:first-child {
   border-bottom-left-radius: 8px !important;
 }
 
-body[data-theme="dark"] .model-files-table .ant-table-tbody > tr:last-child > td:last-child {
+body[data-theme="dark"]
+  .model-files-table
+  .ant-table-tbody
+  > tr:last-child
+  > td:last-child {
   border-bottom-right-radius: 8px !important;
 }
 
@@ -420,11 +450,19 @@ body[data-theme="light"] .model-files-table .ant-table-thead > tr > th {
   color: rgba(0, 0, 0, 0.6) !important;
 }
 
-body[data-theme="light"] .model-files-table .ant-table-thead > tr > th:first-child {
+body[data-theme="light"]
+  .model-files-table
+  .ant-table-thead
+  > tr
+  > th:first-child {
   border-top-left-radius: 8px !important;
 }
 
-body[data-theme="light"] .model-files-table .ant-table-thead > tr > th:last-child {
+body[data-theme="light"]
+  .model-files-table
+  .ant-table-thead
+  > tr
+  > th:last-child {
   border-top-right-radius: 8px !important;
 }
 
@@ -434,15 +472,27 @@ body[data-theme="light"] .model-files-table .ant-table-tbody > tr > td {
   padding: 10px 12px !important;
 }
 
-body[data-theme="light"] .model-files-table .ant-table-tbody > tr:last-child > td {
+body[data-theme="light"]
+  .model-files-table
+  .ant-table-tbody
+  > tr:last-child
+  > td {
   border-bottom: none !important;
 }
 
-body[data-theme="light"] .model-files-table .ant-table-tbody > tr:last-child > td:first-child {
+body[data-theme="light"]
+  .model-files-table
+  .ant-table-tbody
+  > tr:last-child
+  > td:first-child {
   border-bottom-left-radius: 8px !important;
 }
 
-body[data-theme="light"] .model-files-table .ant-table-tbody > tr:last-child > td:last-child {
+body[data-theme="light"]
+  .model-files-table
+  .ant-table-tbody
+  > tr:last-child
+  > td:last-child {
   border-bottom-right-radius: 8px !important;
 }
 

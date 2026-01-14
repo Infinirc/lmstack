@@ -5,11 +5,11 @@ All operations are proxied to the appropriate worker agent.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,7 @@ class PortMapping(BaseModel):
     """Container port mapping."""
 
     container_port: int
-    host_port: Optional[int] = None
+    host_port: int | None = None
     protocol: str = "tcp"
 
 
@@ -51,16 +51,16 @@ class ContainerCreateRequest(BaseModel):
     worker_id: int
     name: str
     image: str
-    command: Optional[list[str]] = None
-    entrypoint: Optional[list[str]] = None
-    env: Optional[dict[str, str]] = None
-    ports: Optional[list[PortMapping]] = None
-    volumes: Optional[list[VolumeMount]] = None
-    gpu_ids: Optional[list[int]] = None
+    command: list[str] | None = None
+    entrypoint: list[str] | None = None
+    env: dict[str, str] | None = None
+    ports: list[PortMapping] | None = None
+    volumes: list[VolumeMount] | None = None
+    gpu_ids: list[int] | None = None
     restart_policy: str = "no"
-    labels: Optional[dict[str, str]] = None
-    cpu_limit: Optional[float] = None
-    memory_limit: Optional[int] = None
+    labels: dict[str, str] | None = None
+    cpu_limit: float | None = None
+    memory_limit: int | None = None
 
 
 class ContainerExecRequest(BaseModel):
@@ -69,9 +69,9 @@ class ContainerExecRequest(BaseModel):
     command: list[str]
     tty: bool = False
     privileged: bool = False
-    user: Optional[str] = None
-    workdir: Optional[str] = None
-    env: Optional[list[str]] = None
+    user: str | None = None
+    workdir: str | None = None
+    env: list[str] | None = None
 
 
 class ContainerResponse(BaseModel):
@@ -85,17 +85,17 @@ class ContainerResponse(BaseModel):
     image_id: str
     state: str
     status: str
-    created_at: Optional[str] = None
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
-    exit_code: Optional[int] = None
+    created_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    exit_code: int | None = None
     ports: list[dict[str, Any]] = []
     volumes: list[dict[str, Any]] = []
-    gpu_ids: Optional[list[str]] = None
-    deployment_id: Optional[int] = None
-    deployment_name: Optional[str] = None
+    gpu_ids: list[str] | None = None
+    deployment_id: int | None = None
+    deployment_name: str | None = None
     is_managed: bool = False
-    env: Optional[list[str]] = None
+    env: list[str] | None = None
 
 
 class ContainerStatsResponse(BaseModel):
@@ -117,8 +117,8 @@ class ContainerLogsResponse(BaseModel):
 
     container_id: str
     logs: str
-    stdout: Optional[str] = None
-    stderr: Optional[str] = None
+    stdout: str | None = None
+    stderr: str | None = None
 
 
 class ContainerExecResponse(BaseModel):
@@ -152,7 +152,8 @@ async def get_worker_or_404(
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
     if worker.status != "online":
         raise HTTPException(
-            status_code=400, detail=f"Worker {worker.name} is not online (status: {worker.status})"
+            status_code=400,
+            detail=f"Worker {worker.name} is not online (status: {worker.status})",
         )
     return worker
 
@@ -172,7 +173,9 @@ async def call_worker_api(
             response = await client.request(method, url, **kwargs)
 
             if response.status_code == 404:
-                raise HTTPException(status_code=404, detail="Container not found on worker")
+                raise HTTPException(
+                    status_code=404, detail="Container not found on worker"
+                )
 
             if response.status_code >= 400:
                 detail = response.json().get("detail", response.text)
@@ -182,10 +185,13 @@ async def call_worker_api(
 
     except httpx.ConnectError:
         raise HTTPException(
-            status_code=503, detail=f"Cannot connect to worker {worker.name} at {worker.address}"
+            status_code=503,
+            detail=f"Cannot connect to worker {worker.name} at {worker.address}",
         )
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail=f"Worker {worker.name} request timed out")
+        raise HTTPException(
+            status_code=504, detail=f"Worker {worker.name} request timed out"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -225,10 +231,10 @@ def container_to_response(container: dict, worker: Worker) -> ContainerResponse:
 
 @router.get("", response_model=ContainerListResponse)
 async def list_containers(
-    worker_id: Optional[int] = Query(None, description="Filter by worker ID"),
+    worker_id: int | None = Query(None, description="Filter by worker ID"),
     all: bool = Query(True, description="Include stopped containers"),
     managed_only: bool = Query(False, description="Only LMStack-managed containers"),
-    state: Optional[str] = Query(None, description="Filter by state"),
+    state: str | None = Query(None, description="Filter by state"),
     db: AsyncSession = Depends(get_db),
 ):
     """List containers across workers.
@@ -262,7 +268,9 @@ async def list_containers(
 
         except HTTPException as e:
             if e.status_code != 503:
-                logger.warning(f"Error listing containers from {worker.name}: {e.detail}")
+                logger.warning(
+                    f"Error listing containers from {worker.name}: {e.detail}"
+                )
         except Exception as e:
             logger.warning(f"Error listing containers from {worker.name}: {e}")
 
@@ -448,8 +456,8 @@ async def get_container_logs(
     container_id: str,
     worker_id: int = Query(..., description="Worker ID where the container is located"),
     tail: int = Query(100, ge=1, le=10000, description="Number of lines from end"),
-    since: Optional[int] = Query(None, description="Unix timestamp to start from"),
-    until: Optional[int] = Query(None, description="Unix timestamp to end at"),
+    since: int | None = Query(None, description="Unix timestamp to start from"),
+    until: int | None = Query(None, description="Unix timestamp to end at"),
     timestamps: bool = Query(True, description="Include timestamps"),
     db: AsyncSession = Depends(get_db),
 ):

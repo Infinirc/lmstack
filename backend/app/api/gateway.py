@@ -1,20 +1,20 @@
 """API Gateway routes - OpenAI-compatible proxy endpoints"""
 
-import logging
 import json
+import logging
 import re
 import time
 import uuid
-from typing import Optional, AsyncGenerator, Any
+from collections.abc import AsyncGenerator
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, BackgroundTasks
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy import select
 
-from app.database import get_db, async_session_maker
+from app.database import async_session_maker, get_db
 from app.models.deployment import Deployment
 from app.services.gateway import gateway_service
 
@@ -27,7 +27,7 @@ HTTP_TIMEOUT = 300.0  # 5 minutes for long-running model requests
 
 
 async def get_api_key_from_header(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Dependency to validate API key from Authorization header."""
@@ -48,7 +48,10 @@ async def get_api_key_from_header(
         raise HTTPException(
             status_code=401,
             detail={
-                "error": {"message": "Invalid API key format", "type": "invalid_request_error"}
+                "error": {
+                    "message": "Invalid API key format",
+                    "type": "invalid_request_error",
+                }
             },
         )
 
@@ -58,7 +61,10 @@ async def get_api_key_from_header(
         raise HTTPException(
             status_code=401,
             detail={
-                "error": {"message": "Invalid or expired API key", "type": "invalid_request_error"}
+                "error": {
+                    "message": "Invalid or expired API key",
+                    "type": "invalid_request_error",
+                }
             },
         )
 
@@ -67,7 +73,7 @@ async def get_api_key_from_header(
 
 @router.get("/models")
 async def list_models(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """List available models (OpenAI-compatible)."""
@@ -90,7 +96,7 @@ async def list_models(
 @router.get("/models/{model_id:path}")
 async def get_model(
     model_id: str,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Get specific model information (OpenAI-compatible)."""
@@ -100,7 +106,10 @@ async def get_model(
         raise HTTPException(
             status_code=404,
             detail={
-                "error": {"message": f"Model '{model_id}' not found", "type": "model_not_found"}
+                "error": {
+                    "message": f"Model '{model_id}' not found",
+                    "type": "model_not_found",
+                }
             },
         )
 
@@ -135,7 +144,7 @@ async def get_model(
 @router.post("/chat/completions")
 async def chat_completions(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Proxy chat completions request (OpenAI-compatible)."""
@@ -148,14 +157,24 @@ async def chat_completions(
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "Invalid JSON body", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "Invalid JSON body",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     model_name = body.get("model")
     if not model_name:
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "model is required", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "model is required",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     # Find deployment for model
@@ -227,7 +246,7 @@ async def chat_completions(
 @router.post("/completions")
 async def completions(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Proxy completions request (OpenAI-compatible)."""
@@ -240,14 +259,24 @@ async def completions(
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "Invalid JSON body", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "Invalid JSON body",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     model_name = body.get("model")
     if not model_name:
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "model is required", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "model is required",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     # Find deployment for model
@@ -354,13 +383,23 @@ async def proxy_request(
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=504,
-            detail={"error": {"message": "Request to model timed out", "type": "timeout_error"}},
+            detail={
+                "error": {
+                    "message": "Request to model timed out",
+                    "type": "timeout_error",
+                }
+            },
         )
     except httpx.RequestError as e:
         logger.error(f"Request error: {e}")
         raise HTTPException(
             status_code=502,
-            detail={"error": {"message": "Failed to connect to model", "type": "connection_error"}},
+            detail={
+                "error": {
+                    "message": "Failed to connect to model",
+                    "type": "connection_error",
+                }
+            },
         )
 
 
@@ -417,22 +456,28 @@ async def proxy_streaming_request(
                                         usage_info["prompt_tokens"] = data["usage"].get(
                                             "prompt_tokens", 0
                                         )
-                                        usage_info["completion_tokens"] = data["usage"].get(
-                                            "completion_tokens", 0
-                                        )
+                                        usage_info["completion_tokens"] = data[
+                                            "usage"
+                                        ].get("completion_tokens", 0)
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             pass  # Expected for binary chunks or incomplete JSON
 
         except httpx.TimeoutException:
             logger.error(f"Streaming timeout for {upstream_url}")
             error_data = {
-                "error": {"message": "Request to model timed out", "type": "timeout_error"}
+                "error": {
+                    "message": "Request to model timed out",
+                    "type": "timeout_error",
+                }
             }
             yield f"data: {json.dumps(error_data)}\n\n".encode()
         except httpx.RequestError as e:
             logger.error(f"Streaming connection error: {e}")
             error_data = {
-                "error": {"message": f"Connection error: {e}", "type": "connection_error"}
+                "error": {
+                    "message": f"Connection error: {e}",
+                    "type": "connection_error",
+                }
             }
             yield f"data: {json.dumps(error_data)}\n\n".encode()
         except Exception as e:
@@ -471,7 +516,7 @@ async def proxy_streaming_request(
 @router.post("/embeddings")
 async def embeddings(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Proxy embeddings request (OpenAI-compatible)."""
@@ -484,14 +529,24 @@ async def embeddings(
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "Invalid JSON body", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "Invalid JSON body",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     model_name = body.get("model")
     if not model_name:
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "model is required", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "model is required",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     # Find deployment for model
@@ -771,7 +826,9 @@ async def proxy_responses_streaming(
                                 {
                                     "type": "message",
                                     "role": "assistant",
-                                    "content": [{"type": "output_text", "text": full_content}],
+                                    "content": [
+                                        {"type": "output_text", "text": full_content}
+                                    ],
                                 }
                             ],
                         },
@@ -780,7 +837,10 @@ async def proxy_responses_streaming(
 
         except Exception as e:
             logger.error(f"Responses streaming error: {e}")
-            error_event = {"type": "error", "error": {"message": str(e), "type": "stream_error"}}
+            error_event = {
+                "type": "error",
+                "error": {"message": str(e), "type": "stream_error"},
+            }
             yield f"event: error\ndata: {json.dumps(error_event)}\n\n".encode()
 
     return StreamingResponse(
@@ -797,7 +857,7 @@ async def proxy_responses_streaming(
 @router.post("/responses")
 async def responses(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """OpenAI Responses API endpoint (converts to Chat Completions internally).
@@ -814,14 +874,24 @@ async def responses(
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "Invalid JSON body", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "Invalid JSON body",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     model_name = body.get("model")
     if not model_name:
         raise HTTPException(
             status_code=400,
-            detail={"error": {"message": "model is required", "type": "invalid_request_error"}},
+            detail={
+                "error": {
+                    "message": "model is required",
+                    "type": "invalid_request_error",
+                }
+            },
         )
 
     # Find deployment for model
@@ -923,7 +993,10 @@ async def responses(
         raise HTTPException(
             status_code=502,
             detail={
-                "error": {"message": f"Backend connection error: {str(e)}", "type": "backend_error"}
+                "error": {
+                    "message": f"Backend connection error: {str(e)}",
+                    "type": "backend_error",
+                }
             },
         )
 

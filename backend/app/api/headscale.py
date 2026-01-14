@@ -4,15 +4,12 @@ Provides endpoints for managing the Headscale VPN server.
 """
 
 import logging
-from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
 from app.api.auth import require_admin
-from app.services.headscale_manager import get_headscale_manager, LMSTACK_USER
+from app.services.headscale_manager import LMSTACK_USER, get_headscale_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,7 +23,7 @@ router = APIRouter()
 class HeadscaleStartRequest(BaseModel):
     """Request to start Headscale."""
 
-    server_url: Optional[str] = Field(
+    server_url: str | None = Field(
         None, description="Server URL (auto-detected if not provided)"
     )
     http_port: int = Field(8080, description="HTTP port for Headscale")
@@ -38,10 +35,10 @@ class HeadscaleStatusResponse(BaseModel):
 
     enabled: bool
     running: bool
-    container_status: Optional[str] = None
-    server_url: Optional[str] = None
-    nodes_count: Optional[int] = None
-    online_nodes: Optional[int] = None
+    container_status: str | None = None
+    server_url: str | None = None
+    nodes_count: int | None = None
+    online_nodes: int | None = None
 
 
 class PreauthKeyRequest(BaseModel):
@@ -50,7 +47,7 @@ class PreauthKeyRequest(BaseModel):
     reusable: bool = Field(True, description="Allow multiple uses")
     ephemeral: bool = Field(False, description="Nodes using this key will be ephemeral")
     expiration: str = Field("720h", description="Key expiration (e.g., 24h, 720h)")
-    tags: Optional[List[str]] = Field(None, description="Tags for nodes using this key")
+    tags: list[str] | None = Field(None, description="Tags for nodes using this key")
 
 
 class PreauthKeyResponse(BaseModel):
@@ -65,18 +62,18 @@ class HeadscaleNodeResponse(BaseModel):
 
     id: int
     name: str
-    given_name: Optional[str] = None
-    ip_addresses: List[str]
-    ipv4: Optional[str] = None
+    given_name: str | None = None
+    ip_addresses: list[str]
+    ipv4: str | None = None
     online: bool
-    last_seen: Optional[str] = None
-    created_at: Optional[str] = None
+    last_seen: str | None = None
+    created_at: str | None = None
 
 
 class HeadscaleNodesResponse(BaseModel):
     """List of Headscale nodes."""
 
-    items: List[HeadscaleNodeResponse]
+    items: list[HeadscaleNodeResponse]
     total: int
 
 
@@ -122,7 +119,7 @@ async def start_headscale(
                 s.connect(("8.8.8.8", 80))
                 host_ip = s.getsockname()[0]
                 s.close()
-            except (OSError, socket.error):
+            except OSError:
                 pass  # Keep localhost if we can't determine actual IP
         server_url = f"http://{host_ip}"
 

@@ -1,8 +1,8 @@
 """API Key model for authentication and access control"""
 
 from datetime import datetime
-from typing import Optional, List
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Index
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -23,7 +23,9 @@ class ApiKey(Base):
 
     # Optional restrictions
     allowed_model_ids = Column(JSON, nullable=True)  # List of model IDs, null = all
-    monthly_token_limit = Column(Integer, nullable=True)  # Monthly token limit, null = unlimited
+    monthly_token_limit = Column(
+        Integer, nullable=True
+    )  # Monthly token limit, null = unlimited
     expires_at = Column(DateTime, nullable=True)
 
     # Metadata

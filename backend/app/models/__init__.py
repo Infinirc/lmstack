@@ -1,12 +1,12 @@
 """Database models"""
 
-from app.models.worker import Worker
-from app.models.llm_model import LLMModel
-from app.models.deployment import Deployment
 from app.models.api_key import ApiKey, Usage
-from app.models.user import User, UserRole
+from app.models.app import APP_DEFINITIONS, App, AppStatus, AppType
 from app.models.conversation import Conversation, Message
-from app.models.app import App, AppType, AppStatus, APP_DEFINITIONS
+from app.models.deployment import Deployment
+from app.models.llm_model import LLMModel
+from app.models.user import User, UserRole
+from app.models.worker import Worker
 
 __all__ = [
     "Worker",

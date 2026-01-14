@@ -2,16 +2,16 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.worker import Worker
     from app.models.api_key import ApiKey
+    from app.models.worker import Worker
 
 
 class AppType(str, Enum):
@@ -125,20 +125,22 @@ class App(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Worker where app is deployed
-    worker_id: Mapped[int] = mapped_column(Integer, ForeignKey("workers.id"), nullable=False)
+    worker_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workers.id"), nullable=False
+    )
 
     # Associated API key (auto-created for the app)
-    api_key_id: Mapped[Optional[int]] = mapped_column(
+    api_key_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("api_keys.id"), nullable=True
     )
 
     # Status
     status: Mapped[str] = mapped_column(String(50), default=AppStatus.PENDING.value)
-    status_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Container info
-    container_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    container_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    port: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Proxy path (e.g., /apps/open-webui)
     proxy_path: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -147,10 +149,12 @@ class App(Base):
     use_proxy: Mapped[bool] = mapped_column(default=True)
 
     # Custom configuration (overrides defaults)
-    config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

@@ -4,7 +4,7 @@
  * System management page for administrators.
  * Includes database backup/restore and statistics management.
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from "react";
 import {
   Button,
   Card,
@@ -16,7 +16,7 @@ import {
   Upload,
   Divider,
   Alert,
-} from 'antd'
+} from "antd";
 import {
   CloudUploadOutlined,
   CloudDownloadOutlined,
@@ -26,151 +26,155 @@ import {
   DatabaseOutlined,
   BarChartOutlined,
   UploadOutlined,
-} from '@ant-design/icons'
-import { systemApi, type BackupInfo } from '../services/api'
-import { useAppTheme } from '../hooks/useTheme'
+} from "@ant-design/icons";
+import { systemApi, type BackupInfo } from "../services/api";
+import { useAppTheme } from "../hooks/useTheme";
 
-const { Text } = Typography
+const { Text } = Typography;
 
 export default function Settings() {
-  const [backups, setBackups] = useState<BackupInfo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const { colors } = useAppTheme()
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const { colors } = useAppTheme();
 
   const fetchBackups = useCallback(async () => {
     try {
-      setLoading(true)
-      const response = await systemApi.listBackups()
-      setBackups(response.items)
+      setLoading(true);
+      const response = await systemApi.listBackups();
+      setBackups(response.items);
     } catch (error) {
-      console.error('Failed to fetch backups:', error)
+      console.error("Failed to fetch backups:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    fetchBackups()
-  }, [fetchBackups])
+    fetchBackups();
+  }, [fetchBackups]);
 
   const handleClearStats = async () => {
     try {
-      setActionLoading('clear-stats')
-      const result = await systemApi.clearStats()
-      message.success(result.message)
+      setActionLoading("clear-stats");
+      const result = await systemApi.clearStats();
+      message.success(result.message);
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to clear statistics')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to clear statistics");
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const handleCreateBackup = async () => {
     try {
-      setActionLoading('create-backup')
-      const result = await systemApi.createBackup()
-      message.success(result.message)
-      fetchBackups()
+      setActionLoading("create-backup");
+      const result = await systemApi.createBackup();
+      message.success(result.message);
+      fetchBackups();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to create backup')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to create backup");
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const handleRestoreBackup = async (filename: string) => {
     try {
-      setActionLoading(`restore-${filename}`)
-      const result = await systemApi.restoreBackup(filename)
-      message.success(result.message)
-      message.info('Please refresh the page or restart the server')
+      setActionLoading(`restore-${filename}`);
+      const result = await systemApi.restoreBackup(filename);
+      message.success(result.message);
+      message.info("Please refresh the page or restart the server");
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to restore backup')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to restore backup");
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const handleDeleteBackup = async (filename: string) => {
     try {
-      setActionLoading(`delete-${filename}`)
-      await systemApi.deleteBackup(filename)
-      message.success('Backup deleted')
-      fetchBackups()
+      setActionLoading(`delete-${filename}`);
+      await systemApi.deleteBackup(filename);
+      message.success("Backup deleted");
+      fetchBackups();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to delete backup')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to delete backup");
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const handleDownloadBackup = (filename: string) => {
-    const url = systemApi.downloadBackup(filename)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
+    const url = systemApi.downloadBackup(filename);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleUploadRestore = async (file: File) => {
     try {
-      setActionLoading('upload-restore')
-      const result = await systemApi.restoreFromUpload(file)
-      message.success(result.message)
-      message.info('Please refresh the page or restart the server')
+      setActionLoading("upload-restore");
+      const result = await systemApi.restoreFromUpload(file);
+      message.success(result.message);
+      message.info("Please refresh the page or restart the server");
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      message.error(err.response?.data?.detail || 'Failed to restore from upload')
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(
+        err.response?.data?.detail || "Failed to restore from upload",
+      );
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-    return false // Prevent default upload behavior
-  }
+    return false; // Prevent default upload behavior
+  };
 
   const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    return date.toLocaleString()
-  }
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+  };
 
   const backupColumns = [
     {
-      title: 'Filename',
-      dataIndex: 'filename',
-      key: 'filename',
+      title: "Filename",
+      dataIndex: "filename",
+      key: "filename",
       render: (filename: string) => (
-        <Text code style={{ fontSize: 13 }}>{filename}</Text>
+        <Text code style={{ fontSize: 13 }}>
+          {filename}
+        </Text>
       ),
     },
     {
-      title: 'Size',
-      dataIndex: 'size',
-      key: 'size',
+      title: "Size",
+      dataIndex: "size",
+      key: "size",
       width: 100,
       render: (size: number) => formatBytes(size),
     },
     {
-      title: 'Created',
-      dataIndex: 'created_at',
-      key: 'created_at',
+      title: "Created",
+      dataIndex: "created_at",
+      key: "created_at",
       width: 180,
       render: (date: string) => formatDate(date),
     },
     {
-      title: 'Actions',
-      key: 'actions',
+      title: "Actions",
+      key: "actions",
       width: 200,
       render: (_: unknown, record: BackupInfo) => (
         <Space size={4}>
@@ -187,8 +191,9 @@ export default function Settings() {
             description={
               <div style={{ maxWidth: 300 }}>
                 <p>This will replace the current database.</p>
-                <p style={{ color: '#faad14' }}>
-                  <WarningOutlined /> The server should be restarted after restore.
+                <p style={{ color: "#faad14" }}>
+                  <WarningOutlined /> The server should be restarted after
+                  restore.
                 </p>
               </div>
             }
@@ -222,7 +227,7 @@ export default function Settings() {
         </Space>
       ),
     },
-  ]
+  ];
 
   return (
     <div>
@@ -253,7 +258,7 @@ export default function Settings() {
           <Button
             danger
             icon={<DeleteOutlined />}
-            loading={actionLoading === 'clear-stats'}
+            loading={actionLoading === "clear-stats"}
           >
             Clear Statistics
           </Button>
@@ -277,7 +282,7 @@ export default function Settings() {
             >
               <Button
                 icon={<UploadOutlined />}
-                loading={actionLoading === 'upload-restore'}
+                loading={actionLoading === "upload-restore"}
               >
                 Upload & Restore
               </Button>
@@ -286,7 +291,7 @@ export default function Settings() {
               type="primary"
               icon={<CloudUploadOutlined />}
               onClick={handleCreateBackup}
-              loading={actionLoading === 'create-backup'}
+              loading={actionLoading === "create-backup"}
             >
               Create Backup
             </Button>
@@ -320,5 +325,5 @@ export default function Settings() {
         />
       </Card>
     </div>
-  )
+  );
 }

@@ -21,20 +21,20 @@ warnings.warn(
 # Re-export all classes for backward compatibility
 try:
     from docker_ops import (
-        GPUDetector,
-        SystemDetector,
-        DockerRunner,
-        ImageManager,
         ContainerManager,
+        DockerRunner,
+        GPUDetector,
+        ImageManager,
+        SystemDetector,
         get_pull_progress,
     )
 except ImportError:
     from worker.docker_ops import (
-        GPUDetector,
-        SystemDetector,
-        DockerRunner,
-        ImageManager,
         ContainerManager,
+        DockerRunner,
+        GPUDetector,
+        ImageManager,
+        SystemDetector,
         get_pull_progress,
     )
 

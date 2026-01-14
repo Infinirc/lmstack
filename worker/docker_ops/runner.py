@@ -9,7 +9,7 @@ import socket
 from typing import Optional
 
 import docker
-from docker.errors import NotFound, APIError
+from docker.errors import APIError, NotFound
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +146,10 @@ class DockerRunner:
                     }
 
                     # Calculate overall progress
-                    total_size = sum(l.get("total", 0) for l in layers.values())
-                    downloaded = sum(l.get("current", 0) for l in layers.values())
+                    total_size = sum(layer.get("total", 0) for layer in layers.values())
+                    downloaded = sum(
+                        layer.get("current", 0) for layer in layers.values()
+                    )
                     overall_progress = (
                         int((downloaded / total_size) * 100) if total_size > 0 else 0
                     )

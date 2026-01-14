@@ -9,9 +9,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 
 try:
-    from models import ImagePullRequest, ImageBuildRequest
+    from models import ImageBuildRequest, ImagePullRequest
 except ImportError:
-    from worker.models import ImagePullRequest, ImageBuildRequest
+    from worker.models import ImageBuildRequest, ImagePullRequest
 
 logger = logging.getLogger(__name__)
 

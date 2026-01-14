@@ -176,8 +176,10 @@ class ImageManager:
                 }
 
                 # Calculate overall progress
-                total_size = sum(l.get("total", 0) for l in layers_progress.values())
-                downloaded = sum(l.get("current", 0) for l in layers_progress.values())
+                total_size = sum(lp.get("total", 0) for lp in layers_progress.values())
+                downloaded = sum(
+                    lp.get("current", 0) for lp in layers_progress.values()
+                )
                 progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
 
                 progress_callback(progress, layers_progress)

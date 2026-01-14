@@ -1,7 +1,7 @@
 """User schemas for API requests/responses"""
 
 from datetime import datetime
-from typing import Optional, List
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -9,8 +9,8 @@ class UserBase(BaseModel):
     """Base user schema"""
 
     username: str = Field(..., min_length=3, max_length=50)
-    email: Optional[EmailStr] = None
-    display_name: Optional[str] = Field(None, max_length=100)
+    email: EmailStr | None = None
+    display_name: str | None = Field(None, max_length=100)
 
 
 class UserCreate(UserBase):
@@ -23,10 +23,10 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     """Schema for updating a user"""
 
-    email: Optional[EmailStr] = None
-    display_name: Optional[str] = Field(None, max_length=100)
-    role: Optional[str] = None
-    is_active: Optional[bool] = None
+    email: EmailStr | None = None
+    display_name: str | None = Field(None, max_length=100)
+    role: str | None = None
+    is_active: bool | None = None
 
 
 class PasswordChange(BaseModel):
@@ -41,12 +41,12 @@ class UserResponse(BaseModel):
 
     id: int
     username: str
-    email: Optional[str]
-    display_name: Optional[str]
+    email: str | None
+    display_name: str | None
     role: str
     is_active: bool
     created_at: datetime
-    last_login_at: Optional[datetime]
+    last_login_at: datetime | None
 
     model_config = {"from_attributes": True}
 
@@ -54,7 +54,7 @@ class UserResponse(BaseModel):
 class UserListResponse(BaseModel):
     """Response for user list"""
 
-    items: List[UserResponse]
+    items: list[UserResponse]
     total: int
 
 
@@ -79,7 +79,7 @@ class SetupRequest(BaseModel):
 
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6, max_length=100)
-    email: Optional[EmailStr] = None
+    email: EmailStr | None = None
 
 
 class SetupStatusResponse(BaseModel):

@@ -59,7 +59,13 @@ select = [
 ignore = [
     "E501",  # line too long (handled by black)
     "B008",  # do not perform function calls in argument defaults
+    "B904",  # raise without from in except (too noisy for HTTPException)
+    "F821",  # undefined name (false positive for SQLAlchemy forward refs)
+    "B007",  # unused loop control variable
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/*.py" = ["E402"]  # migrations need to modify sys.path before imports
 
 [tool.mypy]
 python_version = "3.11"

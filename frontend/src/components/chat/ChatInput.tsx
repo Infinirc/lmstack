@@ -4,18 +4,18 @@
  * Message input area with auto-resize textarea and send/stop button.
  * Supports keyboard shortcuts and disabled states.
  */
-import { useRef, useCallback, useEffect } from 'react'
-import type { ThemeColors } from './types'
+import { useRef, useCallback, useEffect } from "react";
+import type { ThemeColors } from "./types";
 
 interface ChatInputProps {
-  value: string
-  onChange: (value: string) => void
-  onSend: () => void
-  onStop: () => void
-  isStreaming: boolean
-  disabled: boolean
-  isDark: boolean
-  colors: ThemeColors
+  value: string;
+  onChange: (value: string) => void;
+  onSend: () => void;
+  onStop: () => void;
+  isStreaming: boolean;
+  disabled: boolean;
+  isDark: boolean;
+  colors: ThemeColors;
 }
 
 /**
@@ -31,47 +31,47 @@ export function ChatInput({
   isDark,
   colors,
 }: ChatInputProps) {
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       // Don't trigger send during IME composition (Chinese/Japanese/Korean input)
-      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-        e.preventDefault()
-        onSend()
+      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+        e.preventDefault();
+        onSend();
       }
     },
-    [onSend]
-  )
+    [onSend],
+  );
 
   // Auto-resize textarea
   useEffect(() => {
-    const textarea = inputRef.current
+    const textarea = inputRef.current;
     if (textarea) {
-      textarea.style.height = 'auto'
-      const newHeight = Math.min(textarea.scrollHeight, 200) // max 8 rows approx
-      textarea.style.height = `${newHeight}px`
+      textarea.style.height = "auto";
+      const newHeight = Math.min(textarea.scrollHeight, 200); // max 8 rows approx
+      textarea.style.height = `${newHeight}px`;
     }
-  }, [value])
+  }, [value]);
 
-  const canSend = value.trim() && !disabled && !isStreaming
+  const canSend = value.trim() && !disabled && !isStreaming;
 
   return (
     <div
       className="chat-input-container"
       style={{
-        display: 'flex',
-        alignItems: 'flex-end',
+        display: "flex",
+        alignItems: "flex-end",
         gap: 0,
-        padding: '8px 8px 8px 16px',
+        padding: "8px 8px 8px 16px",
         borderRadius: 24,
         border: `1px solid ${colors.inputBorder}`,
         background: colors.inputBg,
-        backdropFilter: 'blur(8px)',
+        backdropFilter: "blur(8px)",
         boxShadow: isDark
-          ? '0 4px 24px rgba(0, 0, 0, 0.3)'
-          : '0 4px 24px rgba(0, 0, 0, 0.08)',
-        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+          ? "0 4px 24px rgba(0, 0, 0, 0.3)"
+          : "0 4px 24px rgba(0, 0, 0, 0.08)",
+        transition: "border-color 0.2s ease, box-shadow 0.2s ease",
       }}
     >
       <textarea
@@ -79,22 +79,22 @@ export function ChatInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={disabled ? 'Select a model first' : 'Send a Message'}
+        placeholder={disabled ? "Select a model first" : "Send a Message"}
         disabled={disabled || isStreaming}
         rows={1}
         style={{
           flex: 1,
-          resize: 'none',
+          resize: "none",
           fontSize: 15,
-          padding: '8px 0',
-          background: 'transparent',
+          padding: "8px 0",
+          background: "transparent",
           color: colors.text,
           lineHeight: 1.5,
-          outline: 'none',
-          boxShadow: 'none',
-          border: 'none',
-          fontFamily: 'inherit',
-          overflow: 'hidden',
+          outline: "none",
+          boxShadow: "none",
+          border: "none",
+          fontFamily: "inherit",
+          overflow: "hidden",
         }}
       />
       <SendButton
@@ -104,23 +104,28 @@ export function ChatInput({
         colors={colors}
       />
     </div>
-  )
+  );
 }
 
 interface SendButtonProps {
-  onClick: () => void
-  isStreaming: boolean
-  disabled: boolean
-  colors: ThemeColors
+  onClick: () => void;
+  isStreaming: boolean;
+  disabled: boolean;
+  colors: ThemeColors;
 }
 
 /**
  * Send/Stop button component
  */
-function SendButton({ onClick, isStreaming, disabled, colors }: SendButtonProps) {
+function SendButton({
+  onClick,
+  isStreaming,
+  disabled,
+  colors,
+}: SendButtonProps) {
   // Always show active style when streaming (for stop button)
-  const isActive = isStreaming || (!disabled && !isStreaming)
-  const showStopIcon = isStreaming
+  const isActive = isStreaming || (!disabled && !isStreaming);
+  const showStopIcon = isStreaming;
 
   return (
     <button
@@ -130,22 +135,22 @@ function SendButton({ onClick, isStreaming, disabled, colors }: SendButtonProps)
       style={{
         width: 36,
         height: 36,
-        borderRadius: '50%',
+        borderRadius: "50%",
         background: isActive ? colors.sendBtnActive : colors.sendBtnDisabled,
-        border: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: disabled && !isStreaming ? 'not-allowed' : 'pointer',
-        transition: 'all 0.15s ease',
+        border: "none",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: disabled && !isStreaming ? "not-allowed" : "pointer",
+        transition: "all 0.15s ease",
         color: isActive ? colors.sendBtnActiveText : colors.sendBtnDisabledText,
         flexShrink: 0,
       }}
-      aria-label={showStopIcon ? 'Stop generation' : 'Send message'}
+      aria-label={showStopIcon ? "Stop generation" : "Send message"}
     >
       {showStopIcon ? <StopIcon /> : <ArrowUpIcon />}
     </button>
-  )
+  );
 }
 
 /**
@@ -165,7 +170,7 @@ function ArrowUpIcon() {
         clipRule="evenodd"
       />
     </svg>
-  )
+  );
 }
 
 /**
@@ -181,5 +186,5 @@ function StopIcon() {
     >
       <rect x="3" y="3" width="10" height="10" rx="1" />
     </svg>
-  )
+  );
 }

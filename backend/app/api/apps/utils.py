@@ -7,7 +7,6 @@ the apps module.
 import hashlib
 import logging
 import secrets
-from typing import Optional
 
 import httpx
 from fastapi import HTTPException, Request
@@ -71,7 +70,8 @@ async def get_worker_or_404(worker_id: int, db: AsyncSession) -> Worker:
 
     if worker.status != "online":
         raise HTTPException(
-            status_code=400, detail=f"Worker {worker.name} is not online (status: {worker.status})"
+            status_code=400,
+            detail=f"Worker {worker.name} is not online (status: {worker.status})",
         )
 
     return worker
@@ -111,7 +111,9 @@ async def call_worker_api(
             response = await client.request(method, url, **kwargs)
 
             if response.status_code == 404:
-                raise HTTPException(status_code=404, detail="Resource not found on worker")
+                raise HTTPException(
+                    status_code=404, detail="Resource not found on worker"
+                )
 
             if response.status_code >= 400:
                 detail = response.json().get("detail", response.text)
@@ -121,10 +123,13 @@ async def call_worker_api(
 
     except httpx.ConnectError:
         raise HTTPException(
-            status_code=503, detail=f"Cannot connect to worker {worker.name} at {worker.address}"
+            status_code=503,
+            detail=f"Cannot connect to worker {worker.name} at {worker.address}",
         )
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail=f"Worker {worker.name} request timed out")
+        raise HTTPException(
+            status_code=504, detail=f"Worker {worker.name} request timed out"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -165,8 +170,10 @@ def get_host_ip(request: Request, worker: Worker) -> str:
                 s.connect((worker_ip, 80))
                 host_ip = s.getsockname()[0]
                 s.close()
-            except (OSError, socket.error) as e:
-                logger.warning(f"Could not determine host IP for worker {worker_ip}: {e}")
+            except OSError as e:
+                logger.warning(
+                    f"Could not determine host IP for worker {worker_ip}: {e}"
+                )
                 host_ip = "host.docker.internal"  # Fallback for Docker Desktop
 
     return host_ip

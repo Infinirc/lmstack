@@ -1,19 +1,17 @@
 """LLM Model API routes"""
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.llm_model import LLMModel
 from app.models.deployment import Deployment
+from app.models.llm_model import LLMModel
 from app.schemas.llm_model import (
     LLMModelCreate,
-    LLMModelUpdate,
-    LLMModelResponse,
     LLMModelListResponse,
+    LLMModelResponse,
+    LLMModelUpdate,
 )
 
 router = APIRouter()
@@ -23,7 +21,7 @@ router = APIRouter()
 async def list_models(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    source: Optional[str] = None,
+    source: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """List all LLM models"""
@@ -44,7 +42,9 @@ async def list_models(
     # Add deployment count
     items = []
     for model in models:
-        deployment_count_query = select(func.count()).where(Deployment.model_id == model.id)
+        deployment_count_query = select(func.count()).where(
+            Deployment.model_id == model.id
+        )
         deployment_count = await db.scalar(deployment_count_query) or 0
 
         model_dict = {
@@ -73,7 +73,9 @@ async def create_model(
     # Check if model with same name exists
     existing = await db.execute(select(LLMModel).where(LLMModel.name == model_in.name))
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Model with this name already exists")
+        raise HTTPException(
+            status_code=400, detail="Model with this name already exists"
+        )
 
     source_value = model_in.source.value if model_in.source else "huggingface"
     # Set default backend based on source for backwards compatibility
@@ -190,9 +192,13 @@ async def delete_model(
         raise HTTPException(status_code=404, detail="Model not found")
 
     # Check if model has active deployments
-    deployment_count = await db.scalar(select(func.count()).where(Deployment.model_id == model_id))
+    deployment_count = await db.scalar(
+        select(func.count()).where(Deployment.model_id == model_id)
+    )
     if deployment_count and deployment_count > 0:
-        raise HTTPException(status_code=400, detail="Cannot delete model with active deployments")
+        raise HTTPException(
+            status_code=400, detail="Cannot delete model with active deployments"
+        )
 
     await db.delete(model)
     await db.commit()

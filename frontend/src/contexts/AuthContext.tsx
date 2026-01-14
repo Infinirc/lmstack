@@ -6,40 +6,47 @@
  *
  * @module contexts/AuthContext
  */
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { STORAGE_KEYS } from '../constants'
-import { authApi } from '../services/api'
-import type { User } from '../types'
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  type ReactNode,
+} from "react";
+import { STORAGE_KEYS } from "../constants";
+import { authApi } from "../services/api";
+import type { User } from "../types";
 
 /**
  * Authentication context value interface
  */
 interface AuthContextValue {
   /** Current authenticated user, null if not logged in */
-  user: User | null
+  user: User | null;
   /** Authentication token */
-  token: string | null
+  token: string | null;
   /** Whether auth state is being loaded */
-  isLoading: boolean
+  isLoading: boolean;
   /** Whether the system has been initialized (admin created) */
-  isInitialized: boolean | null
+  isInitialized: boolean | null;
   /** Log in a user with token and user data */
-  login: (token: string, user: User) => void
+  login: (token: string, user: User) => void;
   /** Log out the current user */
-  logout: () => void
+  logout: () => void;
   /** Re-check authentication status */
-  checkAuth: () => Promise<void>
+  checkAuth: () => Promise<void>;
   /** Check if system has been initialized */
-  checkSetupStatus: () => Promise<boolean>
+  checkSetupStatus: () => Promise<boolean>;
 }
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 /**
  * Authentication provider props
  */
 interface AuthProviderProps {
-  children: ReactNode
+  children: ReactNode;
 }
 
 /**
@@ -59,77 +66,77 @@ interface AuthProviderProps {
  * ```
  */
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
 
   /**
    * Store credentials and update state after successful login
    */
   const login = useCallback((newToken: string, newUser: User) => {
-    localStorage.setItem(STORAGE_KEYS.TOKEN, newToken)
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser))
-    setToken(newToken)
-    setUser(newUser)
-    setIsInitialized(true)
-  }, [])
+    localStorage.setItem(STORAGE_KEYS.TOKEN, newToken);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
+    setToken(newToken);
+    setUser(newUser);
+    setIsInitialized(true);
+  }, []);
 
   /**
    * Clear credentials and reset state on logout
    */
   const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEYS.TOKEN)
-    localStorage.removeItem(STORAGE_KEYS.USER)
-    setToken(null)
-    setUser(null)
-  }, [])
+    localStorage.removeItem(STORAGE_KEYS.TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.USER);
+    setToken(null);
+    setUser(null);
+  }, []);
 
   /**
    * Verify stored token is still valid
    */
   const checkAuth = useCallback(async () => {
-    const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN)
+    const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
 
     if (!storedToken) {
-      setIsLoading(false)
-      return
+      setIsLoading(false);
+      return;
     }
 
     try {
-      const currentUser = await authApi.getCurrentUser()
-      setToken(storedToken)
-      setUser(currentUser)
+      const currentUser = await authApi.getCurrentUser();
+      setToken(storedToken);
+      setUser(currentUser);
     } catch {
       // Token is invalid or expired
-      localStorage.removeItem(STORAGE_KEYS.TOKEN)
-      localStorage.removeItem(STORAGE_KEYS.USER)
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.USER);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [])
+  }, []);
 
   /**
    * Check if the system has been initialized with an admin user
    */
   const checkSetupStatus = useCallback(async (): Promise<boolean> => {
     try {
-      const status = await authApi.getSetupStatus()
-      setIsInitialized(status.initialized)
-      return status.initialized
+      const status = await authApi.getSetupStatus();
+      setIsInitialized(status.initialized);
+      return status.initialized;
     } catch {
-      return false
+      return false;
     }
-  }, [])
+  }, []);
 
   // Initialize auth state on mount
   useEffect(() => {
     const init = async () => {
-      await checkSetupStatus()
-      await checkAuth()
-    }
-    init()
-  }, [checkSetupStatus, checkAuth])
+      await checkSetupStatus();
+      await checkAuth();
+    };
+    init();
+  }, [checkSetupStatus, checkAuth]);
 
   const value: AuthContextValue = {
     user,
@@ -140,9 +147,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     logout,
     checkAuth,
     checkSetupStatus,
-  }
+  };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 /**
@@ -166,11 +173,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
  * ```
  */
 export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
 
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
+    throw new Error("useAuth must be used within an AuthProvider");
   }
 
-  return context
+  return context;
 }

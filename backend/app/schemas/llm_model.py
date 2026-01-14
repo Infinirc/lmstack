@@ -1,7 +1,6 @@
 """LLM Model Pydantic schemas"""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -14,9 +13,9 @@ class LLMModelBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     model_id: str = Field(..., min_length=1, max_length=512)
     source: ModelSource = ModelSource.HUGGINGFACE
-    description: Optional[str] = None
-    default_params: Optional[dict] = None
-    docker_image: Optional[str] = None
+    description: str | None = None
+    default_params: dict | None = None
+    docker_image: str | None = None
 
 
 class LLMModelCreate(LLMModelBase):
@@ -28,12 +27,12 @@ class LLMModelCreate(LLMModelBase):
 class LLMModelUpdate(BaseModel):
     """Schema for updating an LLM model"""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    model_id: Optional[str] = Field(None, min_length=1, max_length=512)
-    source: Optional[ModelSource] = None
-    description: Optional[str] = None
-    default_params: Optional[dict] = None
-    docker_image: Optional[str] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    model_id: str | None = Field(None, min_length=1, max_length=512)
+    source: ModelSource | None = None
+    description: str | None = None
+    default_params: dict | None = None
+    docker_image: str | None = None
 
 
 class LLMModelResponse(LLMModelBase):

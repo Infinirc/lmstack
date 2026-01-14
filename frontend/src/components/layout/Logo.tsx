@@ -3,8 +3,8 @@
  */
 
 interface LogoIconProps {
-  color: string
-  size?: number
+  color: string;
+  size?: number;
 }
 
 export function LogoIcon({ color, size = 18 }: LogoIconProps) {
@@ -32,5 +32,5 @@ export function LogoIcon({ color, size = 18 }: LogoIconProps) {
         strokeLinejoin="round"
       />
     </svg>
-  )
+  );
 }

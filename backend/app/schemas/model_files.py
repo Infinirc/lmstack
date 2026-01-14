@@ -6,7 +6,6 @@ aggregated from deployment data. A model "exists" on a worker when
 there is (or has been) a deployment for it.
 """
 
-from typing import Optional
 from pydantic import BaseModel
 
 
@@ -16,7 +15,7 @@ class ModelFileDeployment(BaseModel):
     id: int
     name: str
     status: str
-    port: Optional[int] = None
+    port: int | None = None
 
 
 class ModelFileView(BaseModel):

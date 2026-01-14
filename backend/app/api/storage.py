@@ -5,7 +5,6 @@ Operations are proxied to the worker agent, or run locally for local workers.
 """
 
 import logging
-from typing import Optional
 
 import docker
 import httpx
@@ -136,10 +135,13 @@ async def call_worker(
 
     except httpx.ConnectError:
         raise HTTPException(
-            status_code=503, detail=f"Cannot connect to worker {worker.name} at {worker.address}"
+            status_code=503,
+            detail=f"Cannot connect to worker {worker.name} at {worker.address}",
         )
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail=f"Request to worker {worker.name} timed out")
+        raise HTTPException(
+            status_code=504, detail=f"Request to worker {worker.name} timed out"
+        )
 
 
 # =============================================================================
@@ -188,18 +190,33 @@ def _get_local_disk_usage() -> dict:
 
     total_size = image_size + container_size + volume_size + cache_size
     total_reclaimable = (
-        image_reclaimable + container_reclaimable + volume_reclaimable + cache_reclaimable
+        image_reclaimable
+        + container_reclaimable
+        + volume_reclaimable
+        + cache_reclaimable
     )
 
     return {
-        "images": {"count": image_count, "size": image_size, "reclaimable": image_reclaimable},
+        "images": {
+            "count": image_count,
+            "size": image_size,
+            "reclaimable": image_reclaimable,
+        },
         "containers": {
             "count": container_count,
             "size": container_size,
             "reclaimable": container_reclaimable,
         },
-        "volumes": {"count": volume_count, "size": volume_size, "reclaimable": volume_reclaimable},
-        "build_cache": {"count": cache_count, "size": cache_size, "reclaimable": cache_reclaimable},
+        "volumes": {
+            "count": volume_count,
+            "size": volume_size,
+            "reclaimable": volume_reclaimable,
+        },
+        "build_cache": {
+            "count": cache_count,
+            "size": cache_size,
+            "reclaimable": cache_reclaimable,
+        },
         "total_size": total_size,
         "total_reclaimable": total_reclaimable,
     }
@@ -233,7 +250,9 @@ def _delete_local_volume(volume_name: str, force: bool = False) -> dict:
     return {"status": "deleted"}
 
 
-def _prune_local_storage(images: bool, containers: bool, volumes: bool, build_cache: bool) -> dict:
+def _prune_local_storage(
+    images: bool, containers: bool, volumes: bool, build_cache: bool
+) -> dict:
     """Prune local Docker resources."""
     client = docker.from_env()
     result = {
@@ -277,7 +296,7 @@ def _prune_local_storage(images: bool, containers: bool, volumes: bool, build_ca
 
 @router.get("/disk-usage", response_model=list[DiskUsageResponse])
 async def get_disk_usage(
-    worker_id: Optional[int] = Query(None, description="Filter by worker ID"),
+    worker_id: int | None = Query(None, description="Filter by worker ID"),
     db: AsyncSession = Depends(get_db),
 ):
     """Get Docker disk usage for all workers or a specific worker."""
@@ -321,7 +340,7 @@ async def get_disk_usage(
 
 @router.get("/volumes", response_model=list[VolumeResponse])
 async def list_volumes(
-    worker_id: Optional[int] = Query(None, description="Filter by worker ID"),
+    worker_id: int | None = Query(None, description="Filter by worker ID"),
     db: AsyncSession = Depends(get_db),
 ):
     """List Docker volumes across workers."""
@@ -342,7 +361,9 @@ async def list_volumes(
                 vols = _get_local_volumes()
                 logger.info(f"Local worker {worker.name} has {len(vols)} volumes")
             else:
-                logger.info(f"Fetching volumes from worker {worker.name} at {worker.address}")
+                logger.info(
+                    f"Fetching volumes from worker {worker.name} at {worker.address}"
+                )
                 data = await call_worker(worker, "GET", "/storage/volumes")
                 vols = data.get("items", [])
                 logger.info(f"Worker {worker.name} returned {len(vols)} volumes")
@@ -395,7 +416,7 @@ async def delete_volume(
 @router.post("/prune", response_model=list[PruneResponse])
 async def prune_storage(
     request: PruneRequest,
-    worker_id: Optional[int] = Query(None, description="Filter by worker ID"),
+    worker_id: int | None = Query(None, description="Filter by worker ID"),
     db: AsyncSession = Depends(get_db),
 ):
     """Prune unused Docker resources."""

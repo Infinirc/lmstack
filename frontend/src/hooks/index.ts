@@ -13,6 +13,6 @@ export {
   type AppColors,
   type AuthColors,
   type UseThemeReturn,
-} from './useTheme'
+} from "./useTheme";
 
-export { useResponsive } from './useResponsive'
+export { useResponsive } from "./useResponsive";

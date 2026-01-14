@@ -7,7 +7,6 @@ import logging
 import platform
 import socket
 import subprocess
-from typing import Optional
 
 import psutil
 
@@ -28,7 +27,7 @@ def get_local_ip() -> str:
         ip = s.getsockname()[0]
         s.close()
         return ip
-    except (OSError, socket.error) as e:
+    except OSError as e:
         logger.debug(f"Could not determine local IP: {e}")
         return "127.0.0.1"
 
@@ -59,7 +58,9 @@ def get_gpu_info() -> list[dict]:
                         {
                             "index": int(parts[0]),
                             "name": parts[1],
-                            "memory_total": int(float(parts[2]) * 1024 * 1024),  # MB to bytes
+                            "memory_total": int(
+                                float(parts[2]) * 1024 * 1024
+                            ),  # MB to bytes
                             "memory_used": int(float(parts[3]) * 1024 * 1024),
                             "memory_free": int(float(parts[4]) * 1024 * 1024),
                             "utilization": int(parts[5]) if parts[5] != "[N/A]" else 0,

@@ -9,51 +9,54 @@
  */
 
 // Client
-export { api, default } from './client'
-export type { ApiErrorResponse } from './client'
+export { api, default } from "./client";
+export type { ApiErrorResponse } from "./client";
 
 // API Services
-export { workersApi } from './workers'
-export { modelsApi } from './models'
-export { deploymentsApi } from './deployments'
-export { authApi } from './auth'
-export { usersApi } from './users'
-export { apiKeysApi } from './apiKeys'
-export { imagesApi } from './images'
-export { containersApi } from './containers'
-export { storageApi } from './storage'
-export { dashboardApi } from './dashboard'
-export { modelFilesApi } from './modelFiles'
-export { systemApi } from './system'
-export { huggingfaceApi } from './huggingface'
-export { ollamaApi } from './ollama'
-export { conversationsApi } from './conversations'
-export { appsApi } from './apps'
-export { headscaleApi } from './headscale'
+export { workersApi } from "./workers";
+export { modelsApi } from "./models";
+export { deploymentsApi } from "./deployments";
+export { authApi } from "./auth";
+export { usersApi } from "./users";
+export { apiKeysApi } from "./apiKeys";
+export { imagesApi } from "./images";
+export { containersApi } from "./containers";
+export { storageApi } from "./storage";
+export { dashboardApi } from "./dashboard";
+export { modelFilesApi } from "./modelFiles";
+export { systemApi } from "./system";
+export { huggingfaceApi } from "./huggingface";
+export { ollamaApi } from "./ollama";
+export { conversationsApi } from "./conversations";
+export { appsApi } from "./apps";
+export { headscaleApi } from "./headscale";
 
 // Types - Workers
-export type { WorkerListParams } from './workers'
+export type { WorkerListParams } from "./workers";
 
 // Types - Models
-export type { ModelListParams } from './models'
+export type { ModelListParams } from "./models";
 
 // Types - Deployments
-export type { DeploymentListParams, DeploymentLogsResponse } from './deployments'
+export type {
+  DeploymentListParams,
+  DeploymentLogsResponse,
+} from "./deployments";
 
 // Types - Auth
-export type { ChangePasswordRequest } from './auth'
+export type { ChangePasswordRequest } from "./auth";
 
 // Types - Users
-export type { UserListParams } from './users'
+export type { UserListParams } from "./users";
 
 // Types - API Keys
-export type { ApiKeyListParams, ApiKeyStats } from './apiKeys'
+export type { ApiKeyListParams, ApiKeyStats } from "./apiKeys";
 
 // Types - Images
-export type { ImageListParams, ImageSearchResult } from './images'
+export type { ImageListParams, ImageSearchResult } from "./images";
 
 // Types - Containers
-export type { ContainerListParams } from './containers'
+export type { ContainerListParams } from "./containers";
 
 // Types - Storage
 export type {
@@ -62,13 +65,16 @@ export type {
   Volume,
   PruneRequest,
   PruneResult,
-} from './storage'
+} from "./storage";
 
 // Types - Model Files
-export type { ModelFileListParams, ModelFileDeleteResponse } from './modelFiles'
+export type {
+  ModelFileListParams,
+  ModelFileDeleteResponse,
+} from "./modelFiles";
 
 // Types - System
-export type { BackupInfo, BackupListResponse, MessageResponse } from './system'
+export type { BackupInfo, BackupListResponse, MessageResponse } from "./system";
 
 // Types - HuggingFace
 export type {
@@ -76,10 +82,10 @@ export type {
   VRAMEstimate,
   HFModelFile,
   HFSearchResult,
-} from './huggingface'
+} from "./huggingface";
 
 // Types - Ollama
-export type { OllamaModel, OllamaTagInfo } from './ollama'
+export type { OllamaModel, OllamaTagInfo } from "./ollama";
 
 // Types - Conversations
 export type {
@@ -88,7 +94,7 @@ export type {
   ConversationListParams,
   ConversationCreateData,
   AddMessagesData,
-} from './conversations'
+} from "./conversations";
 
 // Types - Apps
 export type {
@@ -96,11 +102,11 @@ export type {
   DeployedApp,
   AppDeployRequest,
   DeployProgress,
-} from './apps'
+} from "./apps";
 
 // Types - Headscale
 export type {
   HeadscaleStatus,
   HeadscaleNode,
   PreauthKeyResponse,
-} from './headscale'
+} from "./headscale";

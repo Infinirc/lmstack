@@ -3,22 +3,22 @@
 from fastapi import APIRouter
 
 from app.api import (
-    auth,
-    workers,
-    images,
-    containers,
-    storage,
-    models,
-    deployments,
-    model_files,
-    dashboard,
     api_keys,
-    system,
-    huggingface,
-    ollama,
-    conversations,
     apps,
+    auth,
+    containers,
+    conversations,
+    dashboard,
+    deployments,
     headscale,
+    huggingface,
+    images,
+    model_files,
+    models,
+    ollama,
+    storage,
+    system,
+    workers,
 )
 
 api_router = APIRouter()
@@ -34,8 +34,12 @@ api_router.include_router(storage.router, prefix="/storage", tags=["storage"])
 
 # AI/ML management
 api_router.include_router(models.router, prefix="/models", tags=["models"])
-api_router.include_router(deployments.router, prefix="/deployments", tags=["deployments"])
-api_router.include_router(model_files.router, prefix="/model-files", tags=["model-files"])
+api_router.include_router(
+    deployments.router, prefix="/deployments", tags=["deployments"]
+)
+api_router.include_router(
+    model_files.router, prefix="/model-files", tags=["model-files"]
+)
 
 # Dashboard and access control
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -45,13 +49,17 @@ api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"]
 api_router.include_router(system.router, prefix="/system", tags=["system"])
 
 # HuggingFace integration
-api_router.include_router(huggingface.router, prefix="/huggingface", tags=["huggingface"])
+api_router.include_router(
+    huggingface.router, prefix="/huggingface", tags=["huggingface"]
+)
 
 # Ollama library integration
 api_router.include_router(ollama.router, prefix="/ollama", tags=["ollama"])
 
 # Chat conversations
-api_router.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
+api_router.include_router(
+    conversations.router, prefix="/conversations", tags=["conversations"]
+)
 
 # Deploy Apps
 api_router.include_router(apps.router, prefix="/apps", tags=["apps"])

@@ -1,24 +1,22 @@
 """Deployment API routes"""
 
-from typing import Optional
-
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from sqlalchemy import select, func
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.deployment import Deployment, DeploymentStatus
-from app.models.worker import Worker
 from app.models.llm_model import LLMModel
+from app.models.worker import Worker
 from app.schemas.deployment import (
     DeploymentCreate,
-    DeploymentUpdate,
-    DeploymentResponse,
     DeploymentListResponse,
     DeploymentLogsResponse,
-    WorkerSummary,
+    DeploymentResponse,
+    DeploymentUpdate,
     ModelSummary,
+    WorkerSummary,
 )
 from app.services.deployer import DeployerService
 
@@ -68,9 +66,9 @@ def deployment_to_response(deployment: Deployment) -> DeploymentResponse:
 async def list_deployments(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    status: Optional[str] = None,
-    worker_id: Optional[int] = None,
-    model_id: Optional[int] = None,
+    status: str | None = None,
+    worker_id: int | None = None,
+    model_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """List all deployments"""
@@ -116,24 +114,32 @@ async def create_deployment(
 ):
     """Create a new deployment"""
     # Check if deployment with same name exists
-    existing = await db.execute(select(Deployment).where(Deployment.name == deployment_in.name))
+    existing = await db.execute(
+        select(Deployment).where(Deployment.name == deployment_in.name)
+    )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Deployment with this name already exists")
+        raise HTTPException(
+            status_code=400, detail="Deployment with this name already exists"
+        )
 
     # Verify worker exists
-    worker_result = await db.execute(select(Worker).where(Worker.id == deployment_in.worker_id))
+    worker_result = await db.execute(
+        select(Worker).where(Worker.id == deployment_in.worker_id)
+    )
     worker = worker_result.scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
 
     # Verify model exists
-    model_result = await db.execute(select(LLMModel).where(LLMModel.id == deployment_in.model_id))
+    model_result = await db.execute(
+        select(LLMModel).where(LLMModel.id == deployment_in.model_id)
+    )
     model = model_result.scalar_one_or_none()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
     # Validate backend compatibility with model source
-    from app.models.llm_model import ModelSource, BackendType
+    from app.models.llm_model import BackendType, ModelSource
 
     backend_value = (
         deployment_in.backend.value
@@ -145,7 +151,8 @@ async def create_deployment(
         # Ollama models can only use Ollama backend
         if backend_value != BackendType.OLLAMA.value:
             raise HTTPException(
-                status_code=400, detail="Ollama models can only be deployed with Ollama backend"
+                status_code=400,
+                detail="Ollama models can only be deployed with Ollama backend",
             )
     elif model.source == ModelSource.HUGGINGFACE.value:
         # HuggingFace models can use vLLM or SGLang, not Ollama
@@ -321,8 +328,13 @@ async def start_deployment(
     if not deployment:
         raise HTTPException(status_code=404, detail="Deployment not found")
 
-    if deployment.status not in [DeploymentStatus.STOPPED.value, DeploymentStatus.ERROR.value]:
-        raise HTTPException(status_code=400, detail="Deployment is not stopped or in error state")
+    if deployment.status not in [
+        DeploymentStatus.STOPPED.value,
+        DeploymentStatus.ERROR.value,
+    ]:
+        raise HTTPException(
+            status_code=400, detail="Deployment is not stopped or in error state"
+        )
 
     # Reset status and start deployment
     deployment.status = DeploymentStatus.PENDING.value

@@ -5,11 +5,9 @@ This allows users to access apps via a single LMStack URL.
 """
 
 import logging
-from typing import Optional, AsyncIterator
 
 import httpx
-from fastapi import APIRouter, Request, Response, HTTPException, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +21,7 @@ router = APIRouter()
 PROXY_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 
 
-async def get_app_by_type(app_type: str, db: AsyncSession) -> Optional[App]:
+async def get_app_by_type(app_type: str, db: AsyncSession) -> App | None:
     """Get running app by type."""
     result = await db.execute(
         select(App).where(
@@ -138,7 +136,8 @@ async def proxy_to_app(
 
     if not app:
         raise HTTPException(
-            status_code=404, detail=f"App '{app_type_name}' is not deployed or not running"
+            status_code=404,
+            detail=f"App '{app_type_name}' is not deployed or not running",
         )
 
     # Load worker relationship

@@ -6,8 +6,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.deployment import Deployment, DeploymentStatus
+from app.models.llm_model import BackendType, LLMModel
 from app.models.worker import Worker, WorkerStatus
-from app.models.llm_model import LLMModel, BackendType
 
 
 @pytest.fixture

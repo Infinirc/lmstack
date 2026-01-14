@@ -8,14 +8,11 @@ import asyncio
 import json
 import logging
 import os
-import yaml
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Optional, List
+from datetime import datetime
 
 import docker
-from docker.errors import NotFound, APIError
-import httpx
+import yaml
+from docker.errors import APIError, NotFound
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +32,7 @@ HEADSCALE_GRPC_PORT = 50443
 LMSTACK_USER = "lmstack"
 
 
-def _parse_timestamp(value) -> Optional[str]:
+def _parse_timestamp(value) -> str | None:
     """Parse timestamp from various formats to ISO string."""
     if value is None:
         return None
@@ -60,10 +57,12 @@ class HeadscaleNode:
         self.ip_addresses = data.get("ipAddresses") or data.get("ip_addresses", [])
         self.online = data.get("online", False)
         self.last_seen = _parse_timestamp(data.get("lastSeen") or data.get("last_seen"))
-        self.created_at = _parse_timestamp(data.get("createdAt") or data.get("created_at"))
+        self.created_at = _parse_timestamp(
+            data.get("createdAt") or data.get("created_at")
+        )
 
     @property
-    def ipv4(self) -> Optional[str]:
+    def ipv4(self) -> str | None:
         """Get the first IPv4 address."""
         for ip in self.ip_addresses:
             if "." in ip:
@@ -74,11 +73,13 @@ class HeadscaleNode:
 class HeadscaleManager:
     """Manages Headscale VPN server."""
 
-    def __init__(self, server_url: str = "http://localhost", http_port: int = HEADSCALE_HTTP_PORT):
-        self._client: Optional[docker.DockerClient] = None
+    def __init__(
+        self, server_url: str = "http://localhost", http_port: int = HEADSCALE_HTTP_PORT
+    ):
+        self._client: docker.DockerClient | None = None
         self.server_url = server_url
         self.http_port = http_port
-        self._api_key: Optional[str] = None
+        self._api_key: str | None = None
         self._ensure_data_dir()
 
     def _ensure_data_dir(self):
@@ -98,7 +99,7 @@ class HeadscaleManager:
         """Get Headscale API base URL."""
         return f"http://localhost:{self.http_port}"
 
-    def _get_container(self) -> Optional[docker.models.containers.Container]:
+    def _get_container(self) -> docker.models.containers.Container | None:
         """Get Headscale container if exists."""
         try:
             return self.client.containers.get(HEADSCALE_CONTAINER_NAME)
@@ -123,7 +124,10 @@ class HeadscaleManager:
             },
             "disable_check_updates": True,
             "ephemeral_node_inactivity_timeout": "30m",
-            "database": {"type": "sqlite3", "sqlite": {"path": "/etc/headscale/db.sqlite"}},
+            "database": {
+                "type": "sqlite3",
+                "sqlite": {"path": "/etc/headscale/db.sqlite"},
+            },
             "log": {"format": "text", "level": "info"},
             "dns": {
                 "magic_dns": True,
@@ -186,7 +190,10 @@ class HeadscaleManager:
                 detach=True,
                 volumes={
                     HEADSCALE_DATA_DIR: {"bind": "/etc/headscale", "mode": "rw"},
-                    f"{HEADSCALE_DATA_DIR}/run": {"bind": "/var/run/headscale", "mode": "rw"},
+                    f"{HEADSCALE_DATA_DIR}/run": {
+                        "bind": "/var/run/headscale",
+                        "mode": "rw",
+                    },
                 },
                 ports={
                     f"{http_port}/tcp": ("0.0.0.0", http_port),
@@ -246,9 +253,11 @@ class HeadscaleManager:
         logger.error(f"Failed to create user: {output}")
         return False
 
-    async def _get_user_id(self, username: str) -> Optional[int]:
+    async def _get_user_id(self, username: str) -> int | None:
         """Get user ID by username."""
-        exit_code, output = await self._exec_command("users", "list", "--output", "json")
+        exit_code, output = await self._exec_command(
+            "users", "list", "--output", "json"
+        )
         if exit_code == 0:
             try:
                 users = json.loads(output)
@@ -266,8 +275,8 @@ class HeadscaleManager:
         reusable: bool = True,
         ephemeral: bool = False,
         expiration: str = "24h",
-        tags: Optional[List[str]] = None,
-    ) -> Optional[str]:
+        tags: list[str] | None = None,
+    ) -> str | None:
         """Create a pre-authentication key for joining nodes."""
         # Get user ID (newer Headscale versions require user ID instead of name)
         user_id = await self._get_user_id(user)
@@ -311,9 +320,11 @@ class HeadscaleManager:
         logger.error(f"Failed to create preauth key: {output}")
         return None
 
-    async def list_nodes(self, user: str = LMSTACK_USER) -> List[HeadscaleNode]:
+    async def list_nodes(self, user: str = LMSTACK_USER) -> list[HeadscaleNode]:
         """List all nodes (newer Headscale versions don't support --user filter)."""
-        exit_code, output = await self._exec_command("nodes", "list", "--output", "json")
+        exit_code, output = await self._exec_command(
+            "nodes", "list", "--output", "json"
+        )
 
         if exit_code == 0:
             try:
@@ -328,7 +339,7 @@ class HeadscaleManager:
         logger.error(f"Failed to list nodes: {output}")
         return []
 
-    async def get_node(self, node_id: int) -> Optional[HeadscaleNode]:
+    async def get_node(self, node_id: int) -> HeadscaleNode | None:
         """Get a specific node by ID."""
         nodes = await self.list_nodes()
         for node in nodes:
@@ -336,7 +347,7 @@ class HeadscaleManager:
                 return node
         return None
 
-    async def get_node_by_name(self, name: str) -> Optional[HeadscaleNode]:
+    async def get_node_by_name(self, name: str) -> HeadscaleNode | None:
         """Get a node by name."""
         nodes = await self.list_nodes()
         for node in nodes:
@@ -366,7 +377,7 @@ class HeadscaleManager:
         logger.error(f"Failed to rename node: {output}")
         return False
 
-    def get_join_command(self, preauth_key: str, server_url: Optional[str] = None) -> str:
+    def get_join_command(self, preauth_key: str, server_url: str | None = None) -> str:
         """Get the command for a node to join the network."""
         url = server_url or f"{self.server_url}:{self.http_port}"
         return f"tailscale up --login-server {url} --authkey {preauth_key}"
@@ -391,7 +402,7 @@ class HeadscaleManager:
 
 
 # Global instance
-_headscale_manager: Optional[HeadscaleManager] = None
+_headscale_manager: HeadscaleManager | None = None
 
 
 def get_headscale_manager() -> HeadscaleManager:

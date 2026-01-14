@@ -1,25 +1,24 @@
 """Dashboard API routes"""
 
-from datetime import datetime, timedelta, date
-from typing import List
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.worker import Worker
-from app.models.llm_model import LLMModel
-from app.models.deployment import Deployment, DeploymentStatus
 from app.models.api_key import ApiKey, Usage
+from app.models.deployment import Deployment, DeploymentStatus
+from app.models.llm_model import LLMModel
+from app.models.worker import Worker
 from app.schemas.dashboard import (
     DashboardResponse,
-    ResourceCounts,
     GPUSummary,
-    UsageSummary,
-    UsagePoint,
-    TopModel,
+    ResourceCounts,
     TopApiKey,
+    TopModel,
+    UsagePoint,
+    UsageSummary,
 )
 
 router = APIRouter()
@@ -82,8 +81,12 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     gpu_summary = GPUSummary(
         total_memory_gb=round(total_memory / (1024**3), 2) if total_memory else 0,
         used_memory_gb=round(used_memory / (1024**3), 2) if used_memory else 0,
-        utilization_avg=round(total_utilization / gpu_with_util, 1) if gpu_with_util else 0,
-        temperature_avg=round(total_temperature / gpu_with_temp, 1) if gpu_with_temp else 0,
+        utilization_avg=(
+            round(total_utilization / gpu_with_util, 1) if gpu_with_util else 0
+        ),
+        temperature_avg=(
+            round(total_temperature / gpu_with_temp, 1) if gpu_with_temp else 0
+        ),
         temperature_max=max_temperature,
     )
 
@@ -102,8 +105,12 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     )
     usage_rows = usage_result.all()
 
-    request_history = [UsagePoint(date=row.day, value=row.requests or 0) for row in usage_rows]
-    token_history = [UsagePoint(date=row.day, value=row.tokens or 0) for row in usage_rows]
+    request_history = [
+        UsagePoint(date=row.day, value=row.requests or 0) for row in usage_rows
+    ]
+    token_history = [
+        UsagePoint(date=row.day, value=row.tokens or 0) for row in usage_rows
+    ]
 
     # Total usage
     total_result = await db.execute(

@@ -6,40 +6,39 @@ Lifecycle endpoints (start/stop/delete/logs) are in lifecycle.py.
 
 import logging
 import secrets
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks
-from sqlalchemy import select, func
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.models.app import App, AppType, AppStatus, APP_DEFINITIONS
-from app.models.worker import Worker
-from app.models.api_key import ApiKey
-from app.models.deployment import Deployment
-from app.models.llm_model import LLMModel
-from app.schemas.app import (
-    AppDefinition,
-    AppDeploy,
-    AppResponse,
-    AppListResponse,
-    AvailableAppsResponse,
-)
-from app.api.apps.utils import (
-    API_KEY_PREFIX,
-    generate_access_key,
-    generate_secret_key,
-    hash_secret,
-    get_worker_or_404,
-    app_to_response,
-    get_host_ip,
-)
 from app.api.apps.deployment import (
     deploy_app_background,
     get_deployment_progress,
     set_deployment_progress,
 )
 from app.api.apps.lifecycle import router as lifecycle_router
+from app.api.apps.utils import (
+    API_KEY_PREFIX,
+    app_to_response,
+    generate_access_key,
+    generate_secret_key,
+    get_host_ip,
+    get_worker_or_404,
+    hash_secret,
+)
+from app.database import get_db
+from app.models.api_key import ApiKey
+from app.models.app import APP_DEFINITIONS, App, AppStatus, AppType
+from app.models.deployment import Deployment
+from app.models.llm_model import LLMModel
+from app.models.worker import Worker
+from app.schemas.app import (
+    AppDefinition,
+    AppDeploy,
+    AppListResponse,
+    AppResponse,
+    AvailableAppsResponse,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,7 +80,9 @@ async def list_apps(
     total = await db.scalar(select(func.count()).select_from(App))
 
     # Get paginated results with worker relationship
-    result = await db.execute(select(App).offset(skip).limit(limit).order_by(App.created_at.desc()))
+    result = await db.execute(
+        select(App).offset(skip).limit(limit).order_by(App.created_at.desc())
+    )
     apps = result.scalars().all()
 
     # Load worker relationships
@@ -140,7 +141,9 @@ async def deploy_app(
     try:
         app_type = AppType(deploy_request.app_type)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid app type: {deploy_request.app_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid app type: {deploy_request.app_type}"
+        )
 
     app_def = APP_DEFINITIONS[app_type]
 
@@ -156,7 +159,8 @@ async def deploy_app(
     )
     if existing.scalar_one_or_none():
         raise HTTPException(
-            status_code=400, detail=f"{app_def['name']} is already deployed on worker {worker.name}"
+            status_code=400,
+            detail=f"{app_def['name']} is already deployed on worker {worker.name}",
         )
 
     # Generate app name
@@ -227,13 +231,15 @@ async def _create_api_key_if_needed(
     db: AsyncSession,
     app_name: str,
     app_def: dict,
-) -> tuple[Optional[ApiKey], str]:
+) -> tuple[ApiKey | None, str]:
     """Create API key for apps that need it.
 
     Returns:
         Tuple of (ApiKey or None, full_key string)
     """
-    needs_api_key = any(v == "{api_key}" for v in app_def.get("env_template", {}).values())
+    needs_api_key = any(
+        v == "{api_key}" for v in app_def.get("env_template", {}).values()
+    )
 
     if not needs_api_key:
         return None, ""

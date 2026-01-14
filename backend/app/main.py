@@ -3,19 +3,19 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from app.api import api_router
-from app.api.gateway import router as gateway_router
 from app.api.app_proxy import router as app_proxy_router
+from app.api.gateway import router as gateway_router
 from app.config import get_settings
 from app.core.exceptions import LMStackError
-from app.database import init_db, async_session_maker
+from app.database import async_session_maker, init_db
 from app.models.worker import Worker, WorkerStatus
 
 # Configure logging
@@ -39,7 +39,7 @@ async def check_worker_status():
 
             async with async_session_maker() as db:
                 # Find workers that haven't sent heartbeat within timeout
-                timeout_threshold = datetime.now(timezone.utc) - timedelta(
+                timeout_threshold = datetime.now(UTC) - timedelta(
                     seconds=settings.worker_timeout
                 )
 

@@ -22,7 +22,9 @@ from app.config import get_settings
 async def table_exists(conn, table_name: str) -> bool:
     """Check if a table exists (SQLite compatible)"""
     result = await conn.execute(
-        text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+        text(
+            f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+        )
     )
     return result.fetchone() is not None
 

@@ -4,11 +4,11 @@
  * CSS-in-JS styles for chat components.
  * Organized by component for maintainability.
  */
-import type { ThemeColors } from './types'
+import type { ThemeColors } from "./types";
 
 interface StyleConfig {
-  isDark: boolean
-  colors: ThemeColors
+  isDark: boolean;
+  colors: ThemeColors;
 }
 
 /**
@@ -24,17 +24,17 @@ export function getChatStyles({ isDark, colors }: StyleConfig): string {
       background: transparent;
     }
     .chat-page .messages-container::-webkit-scrollbar-thumb {
-      background: ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'};
+      background: ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"};
       border-radius: 3px;
     }
     .chat-page .messages-container::-webkit-scrollbar-thumb:hover {
-      background: ${isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'};
+      background: ${isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)"};
     }
 
     /* Input container focus state */
     .chat-page .chat-input-container:focus-within {
-      border-color: ${isDark ? 'rgba(200, 200, 200, 0.4)' : 'rgba(200, 200, 200, 0.6)'};
-      box-shadow: ${isDark ? '0 4px 32px rgba(0, 0, 0, 0.4)' : '0 4px 32px rgba(0, 0, 0, 0.12)'};
+      border-color: ${isDark ? "rgba(200, 200, 200, 0.4)" : "rgba(200, 200, 200, 0.6)"};
+      box-shadow: ${isDark ? "0 4px 32px rgba(0, 0, 0, 0.4)" : "0 4px 32px rgba(0, 0, 0, 0.12)"};
     }
 
     /* Send button hover */
@@ -54,7 +54,7 @@ export function getChatStyles({ isDark, colors }: StyleConfig): string {
 
     .chat-page .suggestion-btn:hover {
       background: ${colors.hoverBg} !important;
-      border-color: ${isDark ? '#3f3f46' : '#d4d4d8'} !important;
+      border-color: ${isDark ? "#3f3f46" : "#d4d4d8"} !important;
       color: ${colors.text} !important;
     }
 
@@ -159,15 +159,15 @@ export function getChatStyles({ isDark, colors }: StyleConfig): string {
     }
 
     .markdown-body th {
-      background: ${isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'};
+      background: ${isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)"};
       font-weight: 600;
     }
 
     .markdown-body blockquote {
       margin: 12px 0;
       padding: 8px 16px;
-      border-left: 3px solid ${isDark ? '#3f3f46' : '#d4d4d8'};
-      background: ${isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'};
+      border-left: 3px solid ${isDark ? "#3f3f46" : "#d4d4d8"};
+      background: ${isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)"};
       border-radius: 0 8px 8px 0;
       color: ${colors.textSecondary};
     }
@@ -191,7 +191,7 @@ export function getChatStyles({ isDark, colors }: StyleConfig): string {
     }
 
     .markdown-body a {
-      color: ${isDark ? '#60a5fa' : '#2563eb'};
+      color: ${isDark ? "#60a5fa" : "#2563eb"};
       text-decoration: none;
     }
 
@@ -202,5 +202,5 @@ export function getChatStyles({ isDark, colors }: StyleConfig): string {
     .markdown-body strong {
       font-weight: 600;
     }
-  `
+  `;
 }

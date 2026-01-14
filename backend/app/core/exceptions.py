@@ -4,7 +4,7 @@ This module provides standardized exceptions for consistent error handling
 across the application.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 
 class LMStackError(Exception):
@@ -15,7 +15,7 @@ class LMStackError(Exception):
         message: str,
         status_code: int = 500,
         error_type: str = "internal_error",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ):
         self.message = message
         self.status_code = status_code
@@ -52,7 +52,7 @@ class NotFoundError(LMStackError):
 class ValidationError(LMStackError):
     """Request validation failed."""
 
-    def __init__(self, message: str, field: Optional[str] = None):
+    def __init__(self, message: str, field: str | None = None):
         details = {"field": field} if field else {}
         super().__init__(
             message=message,
@@ -87,7 +87,7 @@ class AuthorizationError(LMStackError):
 class ConflictError(LMStackError):
     """Resource conflict (e.g., duplicate name)."""
 
-    def __init__(self, message: str, resource: Optional[str] = None):
+    def __init__(self, message: str, resource: str | None = None):
         details = {"resource": resource} if resource else {}
         super().__init__(
             message=message,
@@ -100,7 +100,7 @@ class ConflictError(LMStackError):
 class WorkerError(LMStackError):
     """Worker communication or operation error."""
 
-    def __init__(self, message: str, worker_id: Optional[int] = None):
+    def __init__(self, message: str, worker_id: int | None = None):
         details = {"worker_id": worker_id} if worker_id else {}
         super().__init__(
             message=message,
@@ -113,7 +113,7 @@ class WorkerError(LMStackError):
 class DeploymentError(LMStackError):
     """Deployment operation error."""
 
-    def __init__(self, message: str, deployment_id: Optional[int] = None):
+    def __init__(self, message: str, deployment_id: int | None = None):
         details = {"deployment_id": deployment_id} if deployment_id else {}
         super().__init__(
             message=message,
@@ -126,7 +126,7 @@ class DeploymentError(LMStackError):
 class DockerError(LMStackError):
     """Docker operation error."""
 
-    def __init__(self, message: str, container_id: Optional[str] = None):
+    def __init__(self, message: str, container_id: str | None = None):
         details = {"container_id": container_id} if container_id else {}
         super().__init__(
             message=message,

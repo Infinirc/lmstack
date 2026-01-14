@@ -4,15 +4,12 @@ Manages nginx reverse proxy for deployed apps.
 Runs nginx container on the LMStack controller to proxy requests to worker apps.
 """
 
-import asyncio
 import logging
 import os
-import tempfile
 from pathlib import Path
-from typing import Optional
 
 import docker
-from docker.errors import NotFound, APIError
+from docker.errors import APIError, NotFound
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +90,7 @@ class AppProxyManager:
     """Manages nginx reverse proxy for deployed apps."""
 
     def __init__(self):
-        self._client: Optional[docker.DockerClient] = None
+        self._client: docker.DockerClient | None = None
         self._setup_config_dir()
 
     def _setup_config_dir(self):
@@ -110,7 +107,7 @@ class AppProxyManager:
             self._client = get_docker_client()
         return self._client
 
-    def _get_container(self) -> Optional[docker.models.containers.Container]:
+    def _get_container(self) -> docker.models.containers.Container | None:
         """Get nginx container if exists."""
         try:
             return self.client.containers.get(NGINX_CONTAINER_NAME)
@@ -272,7 +269,7 @@ class AppProxyManager:
 
 
 # Global instance
-_proxy_manager: Optional[AppProxyManager] = None
+_proxy_manager: AppProxyManager | None = None
 
 
 def get_proxy_manager() -> AppProxyManager:

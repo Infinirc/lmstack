@@ -7,9 +7,9 @@ This package contains the FastAPI route handlers organized by domain:
 - storage.py: Storage and volume management endpoints
 """
 
+from .containers import router as containers_router
 from .deployment import router as deployment_router
 from .images import router as images_router
-from .containers import router as containers_router
 from .storage import router as storage_router
 
 __all__ = [

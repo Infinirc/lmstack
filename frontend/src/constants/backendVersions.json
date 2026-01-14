@@ -2,7 +2,11 @@
   "vllm": {
     "description": "vLLM - High-throughput LLM inference engine",
     "versions": [
-      { "version": "latest", "image": "vllm/vllm-openai:latest", "recommended": true },
+      {
+        "version": "latest",
+        "image": "vllm/vllm-openai:latest",
+        "recommended": true
+      },
       { "version": "v0.13.0", "image": "vllm/vllm-openai:v0.13.0" },
       { "version": "v0.12.0", "image": "vllm/vllm-openai:v0.12.0" },
       { "version": "v0.11.2", "image": "vllm/vllm-openai:v0.11.2" },
@@ -37,7 +41,11 @@
   "sglang": {
     "description": "SGLang - Fast serving framework for LLMs",
     "versions": [
-      { "version": "latest", "image": "lmsysorg/sglang:latest", "recommended": true },
+      {
+        "version": "latest",
+        "image": "lmsysorg/sglang:latest",
+        "recommended": true
+      },
       { "version": "v0.5.7", "image": "lmsysorg/sglang:v0.5.7" },
       { "version": "v0.5.6.post2", "image": "lmsysorg/sglang:v0.5.6.post2" },
       { "version": "v0.5.6.post1", "image": "lmsysorg/sglang:v0.5.6.post1" },
@@ -65,7 +73,11 @@
   "ollama": {
     "description": "Ollama - Run LLMs locally",
     "versions": [
-      { "version": "latest", "image": "ollama/ollama:latest", "recommended": true },
+      {
+        "version": "latest",
+        "image": "ollama/ollama:latest",
+        "recommended": true
+      },
       { "version": "0.13.5", "image": "ollama/ollama:0.13.5" },
       { "version": "0.13.4", "image": "ollama/ollama:0.13.4" },
       { "version": "0.13.3", "image": "ollama/ollama:0.13.3" },

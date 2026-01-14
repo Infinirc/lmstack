@@ -8,7 +8,7 @@ import logging
 from typing import Any, Optional
 
 import docker
-from docker.errors import NotFound, APIError
+from docker.errors import APIError, NotFound
 
 logger = logging.getLogger(__name__)
 

@@ -4,35 +4,40 @@
  * Renders message content with Markdown support, code highlighting,
  * and thinking block visualization.
  */
-import { useMemo } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { CodeBlock, InlineCode } from './CodeBlock'
-import { ThinkingBlock, ThinkingIndicator } from './ThinkingBlock'
-import { parseThinkingContent, type ThemeColors } from './types'
+import { useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CodeBlock, InlineCode } from "./CodeBlock";
+import { ThinkingBlock, ThinkingIndicator } from "./ThinkingBlock";
+import { parseThinkingContent, type ThemeColors } from "./types";
 
 interface MessageContentProps {
-  content: string
-  isStreaming: boolean
-  isDark: boolean
-  colors: ThemeColors
+  content: string;
+  isStreaming: boolean;
+  isDark: boolean;
+  colors: ThemeColors;
 }
 
 /**
  * Main message content renderer
  */
-export function MessageContent({ content, isStreaming, isDark, colors }: MessageContentProps) {
-  const parsed = useMemo(() => parseThinkingContent(content), [content])
+export function MessageContent({
+  content,
+  isStreaming,
+  isDark,
+  colors,
+}: MessageContentProps) {
+  const parsed = useMemo(() => parseThinkingContent(content), [content]);
 
   // Create markdown components with current theme
   const markdownComponents = useMemo(
     () => createMarkdownComponents(isDark, colors),
-    [isDark, colors]
-  )
+    [isDark, colors],
+  );
 
   // Show indicator when streaming with no content
   if (isStreaming && !content) {
-    return <ThinkingIndicator isDark={isDark} />
+    return <ThinkingIndicator isDark={isDark} />;
   }
 
   return (
@@ -50,7 +55,10 @@ export function MessageContent({ content, isStreaming, isDark, colors }: Message
       {/* Main response content */}
       {parsed.response ? (
         <div className="markdown-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={markdownComponents}
+          >
             {parsed.response}
           </ReactMarkdown>
         </div>
@@ -58,7 +66,7 @@ export function MessageContent({ content, isStreaming, isDark, colors }: Message
         // Show cursor when thinking but no response yet
         parsed.thinking &&
         !parsed.isThinkingComplete && (
-          <div style={{ display: 'flex', alignItems: 'center', marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", marginTop: 8 }}>
             <BlinkingCursor color={colors.text} />
           </div>
         )
@@ -69,12 +77,12 @@ export function MessageContent({ content, isStreaming, isDark, colors }: Message
         <BlinkingCursor color={colors.text} style={{ marginLeft: 2 }} />
       )}
     </div>
-  )
+  );
 }
 
 interface BlinkingCursorProps {
-  color: string
-  style?: React.CSSProperties
+  color: string;
+  style?: React.CSSProperties;
 }
 
 /**
@@ -85,15 +93,15 @@ function BlinkingCursor({ color, style }: BlinkingCursorProps) {
     <span
       className="cursor-blink"
       style={{
-        display: 'inline-block',
+        display: "inline-block",
         width: 2,
         height: 18,
         background: color,
-        verticalAlign: 'text-bottom',
+        verticalAlign: "text-bottom",
         ...style,
       }}
     />
-  )
+  );
 }
 
 /**
@@ -103,8 +111,8 @@ function createMarkdownComponents(isDark: boolean, colors: ThemeColors) {
   return {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     code({ inline, className, children, ...props }: any) {
-      const match = /language-(\w+)/.exec(className || '')
-      const code = String(children).replace(/\n$/, '')
+      const match = /language-(\w+)/.exec(className || "");
+      const code = String(children).replace(/\n$/, "");
 
       // Block code with syntax highlighting
       if (!inline && match) {
@@ -115,7 +123,7 @@ function createMarkdownComponents(isDark: boolean, colors: ThemeColors) {
             isDark={isDark}
             colors={colors}
           />
-        )
+        );
       }
 
       // Inline code
@@ -123,7 +131,7 @@ function createMarkdownComponents(isDark: boolean, colors: ThemeColors) {
         <InlineCode isDark={isDark} {...props}>
           {children}
         </InlineCode>
-      )
+      );
     },
-  }
+  };
 }

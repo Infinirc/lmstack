@@ -1,13 +1,12 @@
 """Authentication service for user login and JWT management"""
 
-import logging
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional
 
 from jose import JWTError, jwt
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -53,7 +52,7 @@ class AuthService:
         user_id: int,
         username: str,
         role: str,
-        expires_delta: Optional[timedelta] = None,
+        expires_delta: timedelta | None = None,
     ) -> str:
         """Create a JWT access token."""
         if expires_delta:
@@ -71,7 +70,7 @@ class AuthService:
         return encoded_jwt
 
     @staticmethod
-    def decode_token(token: str) -> Optional[dict]:
+    def decode_token(token: str) -> dict | None:
         """Decode and validate a JWT token."""
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -85,7 +84,7 @@ class AuthService:
         db: AsyncSession,
         username: str,
         password: str,
-    ) -> Optional[User]:
+    ) -> User | None:
         """Authenticate a user with username and password."""
         result = await db.execute(select(User).where(User.username == username))
         user = result.scalar_one_or_none()
@@ -106,13 +105,13 @@ class AuthService:
         return user
 
     @staticmethod
-    async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
+    async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
         """Get a user by ID."""
         result = await db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
+    async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
         """Get a user by username."""
         result = await db.execute(select(User).where(User.username == username))
         return result.scalar_one_or_none()
@@ -123,8 +122,8 @@ class AuthService:
         username: str,
         password: str,
         role: str = UserRole.VIEWER.value,
-        email: Optional[str] = None,
-        display_name: Optional[str] = None,
+        email: str | None = None,
+        display_name: str | None = None,
     ) -> User:
         """Create a new user."""
         user = User(
@@ -143,7 +142,9 @@ class AuthService:
     async def is_initialized(db: AsyncSession) -> bool:
         """Check if the system has been initialized (has at least one admin)."""
         count = await db.scalar(
-            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN.value)
+            select(func.count())
+            .select_from(User)
+            .where(User.role == UserRole.ADMIN.value)
         )
         return count > 0
 
@@ -152,7 +153,7 @@ class AuthService:
         db: AsyncSession,
         username: str,
         password: str,
-        email: Optional[str] = None,
+        email: str | None = None,
     ) -> User:
         """Initialize the first admin user."""
         # Check if already initialized

@@ -1,7 +1,6 @@
 """Deployment Pydantic schemas"""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -16,8 +15,8 @@ class DeploymentBase(BaseModel):
     model_id: int
     worker_id: int
     backend: BackendType = BackendType.VLLM
-    gpu_indexes: Optional[list[int]] = None
-    extra_params: Optional[dict] = None
+    gpu_indexes: list[int] | None = None
+    extra_params: dict | None = None
 
 
 class DeploymentCreate(DeploymentBase):
@@ -29,14 +28,14 @@ class DeploymentCreate(DeploymentBase):
 class DeploymentUpdate(BaseModel):
     """Schema for updating a deployment"""
 
-    name: Optional[str] = None
-    backend: Optional[BackendType] = None
-    status: Optional[DeploymentStatus] = None
-    status_message: Optional[str] = None
-    container_id: Optional[str] = None
-    port: Optional[int] = None
-    gpu_indexes: Optional[list[int]] = None
-    extra_params: Optional[dict] = None
+    name: str | None = None
+    backend: BackendType | None = None
+    status: DeploymentStatus | None = None
+    status_message: str | None = None
+    container_id: str | None = None
+    port: int | None = None
+    gpu_indexes: list[int] | None = None
+    extra_params: dict | None = None
 
 
 class WorkerSummary(BaseModel):
@@ -68,13 +67,13 @@ class DeploymentResponse(DeploymentBase):
 
     id: int
     status: str
-    status_message: Optional[str] = None
-    container_id: Optional[str] = None
-    port: Optional[int] = None
+    status_message: str | None = None
+    container_id: str | None = None
+    port: int | None = None
     created_at: datetime
     updated_at: datetime
-    worker: Optional[WorkerSummary] = None
-    model: Optional[ModelSummary] = None
+    worker: WorkerSummary | None = None
+    model: ModelSummary | None = None
 
     class Config:
         from_attributes = True

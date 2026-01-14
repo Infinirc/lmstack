@@ -4,7 +4,7 @@
  * Displays HuggingFace model info and VRAM estimation
  * for deployment compatibility checking.
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from "react";
 import {
   Card,
   Space,
@@ -14,8 +14,8 @@ import {
   Tooltip,
   Descriptions,
   Button,
-} from 'antd'
-import Loading from './Loading'
+} from "antd";
+import Loading from "./Loading";
 import {
   CheckCircleOutlined,
   WarningOutlined,
@@ -24,122 +24,130 @@ import {
   HeartOutlined,
   InfoCircleOutlined,
   ThunderboltOutlined,
-} from '@ant-design/icons'
-import { huggingfaceApi, type HFModelInfo, type VRAMEstimate } from '../services/api'
-import { useAppTheme } from '../hooks/useTheme'
+} from "@ant-design/icons";
+import {
+  huggingfaceApi,
+  type HFModelInfo,
+  type VRAMEstimate,
+} from "../services/api";
+import { useAppTheme } from "../hooks/useTheme";
 
 interface ModelCompatibilityCheckProps {
-  modelId: string // HuggingFace model ID (e.g., "Qwen/Qwen2.5-7B-Instruct")
-  precision?: string // fp32, fp16, bf16, int8, int4
-  gpuMemoryGb?: number // Available GPU memory for compatibility check
-  contextLength?: number
-  backend?: 'vllm' | 'sglang' | 'ollama'
+  modelId: string; // HuggingFace model ID (e.g., "Qwen/Qwen2.5-7B-Instruct")
+  precision?: string; // fp32, fp16, bf16, int8, int4
+  gpuMemoryGb?: number; // Available GPU memory for compatibility check
+  contextLength?: number;
+  backend?: "vllm" | "sglang" | "ollama";
 }
 
-const { Text, Title } = Typography
+const { Text, Title } = Typography;
 
 export default function ModelCompatibilityCheck({
   modelId,
-  precision = 'fp16',
+  precision = "fp16",
   gpuMemoryGb,
   contextLength = 4096,
-  backend = 'vllm',
+  backend = "vllm",
 }: ModelCompatibilityCheckProps) {
-  const [loading, setLoading] = useState(false)
-  const [modelInfo, setModelInfo] = useState<HFModelInfo | null>(null)
-  const [vramEstimate, setVramEstimate] = useState<VRAMEstimate | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const { isDark, colors } = useAppTheme()
+  const [loading, setLoading] = useState(false);
+  const [modelInfo, setModelInfo] = useState<HFModelInfo | null>(null);
+  const [vramEstimate, setVramEstimate] = useState<VRAMEstimate | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { isDark, colors } = useAppTheme();
 
   const fetchModelData = useCallback(async () => {
-    if (!modelId || backend === 'ollama') {
+    if (!modelId || backend === "ollama") {
       // Ollama doesn't use HuggingFace models
-      setModelInfo(null)
-      setVramEstimate(null)
-      setError(null)
-      return
+      setModelInfo(null);
+      setVramEstimate(null);
+      setError(null);
+      return;
     }
 
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
 
     try {
       // Fetch model info and VRAM estimation in parallel
       const [info, estimate] = await Promise.all([
         huggingfaceApi.getModelInfo(modelId).catch(() => null),
-        huggingfaceApi.estimateVRAM(modelId, {
-          precision,
-          context_length: contextLength,
-          gpu_memory_gb: gpuMemoryGb,
-        }).catch(() => null),
-      ])
+        huggingfaceApi
+          .estimateVRAM(modelId, {
+            precision,
+            context_length: contextLength,
+            gpu_memory_gb: gpuMemoryGb,
+          })
+          .catch(() => null),
+      ]);
 
-      setModelInfo(info)
-      setVramEstimate(estimate)
+      setModelInfo(info);
+      setVramEstimate(estimate);
 
       if (!info && !estimate) {
-        setError('Could not fetch model information')
+        setError("Could not fetch model information");
       }
     } catch (err) {
-      setError('Failed to evaluate model compatibility')
-      console.error('Model compatibility check error:', err)
+      setError("Failed to evaluate model compatibility");
+      console.error("Model compatibility check error:", err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [modelId, precision, gpuMemoryGb, contextLength, backend])
+  }, [modelId, precision, gpuMemoryGb, contextLength, backend]);
 
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
-      fetchModelData()
-    }, 500) // Debounce to avoid too many API calls
+      fetchModelData();
+    }, 500); // Debounce to avoid too many API calls
 
-    return () => clearTimeout(debounceTimer)
-  }, [fetchModelData])
+    return () => clearTimeout(debounceTimer);
+  }, [fetchModelData]);
 
   // Don't show anything for Ollama or if no model ID
-  if (backend === 'ollama' || !modelId) {
-    return null
+  if (backend === "ollama" || !modelId) {
+    return null;
   }
 
   const formatNumber = (num: number): string => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
-    return num.toString()
-  }
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+    return num.toString();
+  };
 
   const formatBytes = (bytes: number): string => {
-    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
+    if (bytes >= 1024 * 1024 * 1024)
+      return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  };
 
   const getCompatibilityStatus = () => {
-    if (!vramEstimate) return null
+    if (!vramEstimate) return null;
 
     if (vramEstimate.compatible) {
-      const hasWarning = vramEstimate.messages.some(m => m.includes('90%'))
+      const hasWarning = vramEstimate.messages.some((m) => m.includes("90%"));
       return {
         icon: hasWarning ? <WarningOutlined /> : <CheckCircleOutlined />,
-        color: hasWarning ? '#faad14' : '#52c41a',
-        status: hasWarning ? 'warning' : 'success',
-        text: hasWarning ? 'Compatible (High Usage)' : 'Compatible',
-      }
+        color: hasWarning ? "#faad14" : "#52c41a",
+        status: hasWarning ? "warning" : "success",
+        text: hasWarning ? "Compatible (High Usage)" : "Compatible",
+      };
     } else {
       return {
         icon: <CloseCircleOutlined />,
-        color: '#ff4d4f',
-        status: 'error',
-        text: 'Insufficient VRAM',
-      }
+        color: "#ff4d4f",
+        status: "error",
+        text: "Insufficient VRAM",
+      };
     }
-  }
+  };
 
-  const compatStatus = getCompatibilityStatus()
+  const compatStatus = getCompatibilityStatus();
 
   // Calculate VRAM usage percentage for progress bar
-  const vramPercentage = gpuMemoryGb && vramEstimate
-    ? Math.min(100, (vramEstimate.estimated_vram_gb / gpuMemoryGb) * 100)
-    : null
+  const vramPercentage =
+    gpuMemoryGb && vramEstimate
+      ? Math.min(100, (vramEstimate.estimated_vram_gb / gpuMemoryGb) * 100)
+      : null;
 
   return (
     <Card
@@ -147,34 +155,43 @@ export default function ModelCompatibilityCheck({
       style={{
         marginTop: 12,
         marginBottom: 12,
-        background: isDark ? '#1a1a1a' : '#fafafa',
-        border: `1px solid ${isDark ? '#303030' : '#e8e8e8'}`,
+        background: isDark ? "#1a1a1a" : "#fafafa",
+        border: `1px solid ${isDark ? "#303030" : "#e8e8e8"}`,
       }}
     >
       {loading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 0', gap: 8 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px 0",
+            gap: 8,
+          }}
+        >
           <Loading size="small" />
-          <Text type="secondary">
-            Evaluating model compatibility...
-          </Text>
+          <Text type="secondary">Evaluating model compatibility...</Text>
         </div>
       ) : error ? (
-        <div style={{ padding: '12px 16px' }}>
+        <div style={{ padding: "12px 16px" }}>
           <Space>
-            <InfoCircleOutlined style={{ color: '#888' }} />
+            <InfoCircleOutlined style={{ color: "#888" }} />
             <div>
               <Text type="secondary" style={{ fontSize: 13 }}>
                 {error}
               </Text>
               <br />
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Model ID: <Text code style={{ fontSize: 11 }}>{modelId}</Text>
+                Model ID:{" "}
+                <Text code style={{ fontSize: 11 }}>
+                  {modelId}
+                </Text>
               </Text>
               <br />
               <Button
                 type="link"
                 size="small"
-                style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                style={{ padding: 0, height: "auto", fontSize: 12 }}
                 href={`https://huggingface.co/${modelId}`}
                 target="_blank"
               >
@@ -188,7 +205,14 @@ export default function ModelCompatibilityCheck({
           {/* Model Info Header */}
           {modelInfo && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
                 <Title level={5} style={{ margin: 0, fontSize: 14 }}>
                   {modelInfo.model_id}
                 </Title>
@@ -228,13 +252,13 @@ export default function ModelCompatibilityCheck({
               {/* Tags */}
               {modelInfo.tags.length > 0 && (
                 <div style={{ marginTop: 4 }}>
-                  {modelInfo.tags.slice(0, 5).map(tag => (
+                  {modelInfo.tags.slice(0, 5).map((tag) => (
                     <Tag key={tag} style={{ fontSize: 10, marginBottom: 4 }}>
                       {tag}
                     </Tag>
                   ))}
                   {modelInfo.tags.length > 5 && (
-                    <Tooltip title={modelInfo.tags.slice(5).join(', ')}>
+                    <Tooltip title={modelInfo.tags.slice(5).join(", ")}>
                       <Tag style={{ fontSize: 10, marginBottom: 4 }}>
                         +{modelInfo.tags.length - 5} more
                       </Tag>
@@ -250,20 +274,31 @@ export default function ModelCompatibilityCheck({
             <div
               style={{
                 padding: 12,
-                background: isDark ? '#141414' : '#fff',
+                background: isDark ? "#141414" : "#fff",
                 borderRadius: 6,
                 border: `1px solid ${compatStatus?.color || colors.border}`,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                }}
+              >
                 <Space>
-                  <ThunderboltOutlined style={{ color: '#1890ff' }} />
-                  <Text strong style={{ fontSize: 13 }}>VRAM Estimation</Text>
+                  <ThunderboltOutlined style={{ color: "#1890ff" }} />
+                  <Text strong style={{ fontSize: 13 }}>
+                    VRAM Estimation
+                  </Text>
                 </Space>
                 {compatStatus && (
                   <Tag
                     icon={compatStatus.icon}
-                    color={compatStatus.status as 'success' | 'warning' | 'error'}
+                    color={
+                      compatStatus.status as "success" | "warning" | "error"
+                    }
                   >
                     {compatStatus.text}
                   </Tag>
@@ -277,11 +312,15 @@ export default function ModelCompatibilityCheck({
                     percent={Math.round(vramPercentage)}
                     size="small"
                     status={
-                      vramPercentage > 100 ? 'exception' :
-                      vramPercentage > 90 ? 'active' :
-                      'success'
+                      vramPercentage > 100
+                        ? "exception"
+                        : vramPercentage > 90
+                          ? "active"
+                          : "success"
                     }
-                    format={() => `${vramEstimate.estimated_vram_gb.toFixed(1)} / ${gpuMemoryGb} GB`}
+                    format={() =>
+                      `${vramEstimate.estimated_vram_gb.toFixed(1)} / ${gpuMemoryGb} GB`
+                    }
                   />
                 </div>
               )}
@@ -289,10 +328,14 @@ export default function ModelCompatibilityCheck({
               {/* VRAM Details */}
               <Descriptions size="small" column={2} style={{ marginTop: 8 }}>
                 <Descriptions.Item label="Total VRAM">
-                  <Text strong>{vramEstimate.estimated_vram_gb.toFixed(2)} GB</Text>
+                  <Text strong>
+                    {vramEstimate.estimated_vram_gb.toFixed(2)} GB
+                  </Text>
                 </Descriptions.Item>
                 <Descriptions.Item label="Precision">
-                  <Tag color="cyan" style={{ fontSize: 11 }}>{vramEstimate.precision.toUpperCase()}</Tag>
+                  <Tag color="cyan" style={{ fontSize: 11 }}>
+                    {vramEstimate.precision.toUpperCase()}
+                  </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="Model Weights">
                   {vramEstimate.breakdown.model_weights.toFixed(2)} GB
@@ -314,8 +357,8 @@ export default function ModelCompatibilityCheck({
                   {vramEstimate.messages.map((msg, idx) => (
                     <Text
                       key={idx}
-                      type={vramEstimate.compatible ? 'secondary' : 'danger'}
-                      style={{ display: 'block', fontSize: 12 }}
+                      type={vramEstimate.compatible ? "secondary" : "danger"}
+                      style={{ display: "block", fontSize: 12 }}
                     >
                       {msg}
                     </Text>
@@ -327,5 +370,5 @@ export default function ModelCompatibilityCheck({
         </div>
       )}
     </Card>
-  )
+  );
 }

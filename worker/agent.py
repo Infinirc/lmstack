@@ -22,41 +22,25 @@ from fastapi import FastAPI
 
 # Import from docker_ops package - support both direct run and module run
 try:
-    from docker_ops import (
-        GPUDetector,
-        SystemDetector,
-        DockerRunner,
-        ImageManager,
-        ContainerManager,
-    )
-    from routes import (
-        deployment_router,
-        images_router,
-        containers_router,
-        storage_router,
-    )
+    from docker_ops import ContainerManager, DockerRunner, GPUDetector, ImageManager, SystemDetector
+    from routes import containers_router, deployment_router, images_router, storage_router
+    from routes.containers import set_agent as set_containers_agent
     from routes.deployment import set_agent as set_deployment_agent
     from routes.images import set_agent as set_images_agent
-    from routes.containers import set_agent as set_containers_agent
     from routes.storage import set_agent as set_storage_agent
 except ImportError:
     # Fallback for when running as package
     from worker.docker_ops import (
-        GPUDetector,
-        SystemDetector,
-        DockerRunner,
-        ImageManager,
         ContainerManager,
+        DockerRunner,
+        GPUDetector,
+        ImageManager,
+        SystemDetector,
     )
-    from worker.routes import (
-        deployment_router,
-        images_router,
-        containers_router,
-        storage_router,
-    )
+    from worker.routes import containers_router, deployment_router, images_router, storage_router
+    from worker.routes.containers import set_agent as set_containers_agent
     from worker.routes.deployment import set_agent as set_deployment_agent
     from worker.routes.images import set_agent as set_images_agent
-    from worker.routes.containers import set_agent as set_containers_agent
     from worker.routes.storage import set_agent as set_storage_agent
 
 # Configure logging

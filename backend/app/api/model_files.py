@@ -5,7 +5,6 @@ Provides a virtual view of model files on workers by aggregating deployment data
 A model "exists" on a worker when there's any deployment for it on that worker.
 """
 
-from typing import Optional
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,11 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.deployment import Deployment, DeploymentStatus
-from app.schemas.model_files import (
-    ModelFileView,
-    ModelFileListResponse,
-    ModelFileDeployment,
-)
+from app.schemas.model_files import ModelFileDeployment, ModelFileListResponse, ModelFileView
 
 router = APIRouter()
 
@@ -28,8 +23,8 @@ router = APIRouter()
 async def list_model_files(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    worker_id: Optional[int] = None,
-    model_id: Optional[int] = None,
+    worker_id: int | None = None,
+    model_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -71,8 +66,12 @@ async def list_model_files(
         first_dep = deps[0]
 
         # Determine overall status based on deployment states
-        running_count = sum(1 for d in deps if d.status == DeploymentStatus.RUNNING.value)
-        downloading_count = sum(1 for d in deps if d.status == DeploymentStatus.DOWNLOADING.value)
+        running_count = sum(
+            1 for d in deps if d.status == DeploymentStatus.RUNNING.value
+        )
+        downloading_count = sum(
+            1 for d in deps if d.status == DeploymentStatus.DOWNLOADING.value
+        )
         starting_count = sum(
             1
             for d in deps

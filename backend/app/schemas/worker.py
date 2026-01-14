@@ -1,11 +1,10 @@
 """Worker Pydantic schemas"""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.models.worker import WorkerStatus, ConnectionType
+from app.models.worker import ConnectionType, WorkerStatus
 
 
 class GPUInfo(BaseModel):
@@ -49,9 +48,9 @@ class DiskInfo(BaseModel):
 class SystemInfo(BaseModel):
     """System information schema (CPU, Memory, Disk)"""
 
-    cpu: Optional[CPUInfo] = None
-    memory: Optional[MemoryInfo] = None
-    disk: Optional[DiskInfo] = None
+    cpu: CPUInfo | None = None
+    memory: MemoryInfo | None = None
+    disk: DiskInfo | None = None
 
 
 class WorkerBase(BaseModel):
@@ -59,35 +58,42 @@ class WorkerBase(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     address: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
-    labels: Optional[dict] = None
+    description: str | None = None
+    labels: dict | None = None
     connection_type: str = Field(
-        default=ConnectionType.DIRECT.value, description="Connection type: direct or tailscale"
+        default=ConnectionType.DIRECT.value,
+        description="Connection type: direct or tailscale",
     )
 
 
 class WorkerCreate(WorkerBase):
     """Schema for creating a worker"""
 
-    gpu_info: Optional[list[GPUInfo]] = None
-    system_info: Optional[SystemInfo] = None
-    tailscale_ip: Optional[str] = Field(None, description="IP address in Tailscale network")
-    headscale_node_id: Optional[int] = Field(None, description="Node ID in Headscale")
+    gpu_info: list[GPUInfo] | None = None
+    system_info: SystemInfo | None = None
+    tailscale_ip: str | None = Field(
+        None, description="IP address in Tailscale network"
+    )
+    headscale_node_id: int | None = Field(None, description="Node ID in Headscale")
 
 
 class WorkerUpdate(BaseModel):
     """Schema for updating a worker"""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    address: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
-    labels: Optional[dict] = None
-    status: Optional[WorkerStatus] = None
-    gpu_info: Optional[list[GPUInfo]] = None
-    system_info: Optional[SystemInfo] = None
-    connection_type: Optional[str] = Field(None, description="Connection type: direct or tailscale")
-    tailscale_ip: Optional[str] = Field(None, description="IP address in Tailscale network")
-    headscale_node_id: Optional[int] = Field(None, description="Node ID in Headscale")
+    name: str | None = Field(None, min_length=1, max_length=255)
+    address: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    labels: dict | None = None
+    status: WorkerStatus | None = None
+    gpu_info: list[GPUInfo] | None = None
+    system_info: SystemInfo | None = None
+    connection_type: str | None = Field(
+        None, description="Connection type: direct or tailscale"
+    )
+    tailscale_ip: str | None = Field(
+        None, description="IP address in Tailscale network"
+    )
+    headscale_node_id: int | None = Field(None, description="Node ID in Headscale")
 
 
 class WorkerResponse(WorkerBase):
@@ -95,14 +101,14 @@ class WorkerResponse(WorkerBase):
 
     id: int
     status: str
-    gpu_info: Optional[list[dict]] = None
-    system_info: Optional[dict] = None
-    tailscale_ip: Optional[str] = None
-    headscale_node_id: Optional[int] = None
-    effective_address: Optional[str] = None  # The actual address to use for connections
+    gpu_info: list[dict] | None = None
+    system_info: dict | None = None
+    tailscale_ip: str | None = None
+    headscale_node_id: int | None = None
+    effective_address: str | None = None  # The actual address to use for connections
     created_at: datetime
     updated_at: datetime
-    last_heartbeat: Optional[datetime] = None
+    last_heartbeat: datetime | None = None
     deployment_count: int = 0
 
     class Config:
@@ -120,6 +126,6 @@ class WorkerHeartbeat(BaseModel):
     """Schema for worker heartbeat"""
 
     worker_id: int
-    gpu_info: Optional[list[GPUInfo]] = None
-    system_info: Optional[SystemInfo] = None
+    gpu_info: list[GPUInfo] | None = None
+    system_info: SystemInfo | None = None
     status: WorkerStatus = WorkerStatus.ONLINE
