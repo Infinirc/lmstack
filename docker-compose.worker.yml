@@ -1,0 +1,39 @@
+# LMStack Worker Docker Compose Configuration
+# Usage on GPU nodes: docker compose -f docker-compose.worker.yml up -d
+#
+# Prerequisites:
+# - Docker installed
+# - NVIDIA Container Toolkit installed
+# - Network access to LMStack backend
+
+version: '3.8'
+
+services:
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: lmstack-worker
+    environment:
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8000}
+      WORKER_TOKEN: ${WORKER_TOKEN:-}
+      WORKER_NAME: ${WORKER_NAME:-gpu-worker}
+      AGENT_PORT: ${AGENT_PORT:-8080}
+    volumes:
+      # Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # HuggingFace model cache (optional, for persistence)
+      - ${HF_CACHE_DIR:-~/.cache/huggingface}:/root/.cache/huggingface
+    ports:
+      - "${AGENT_PORT:-8080}:8080"
+    # GPU support - requires NVIDIA Container Toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    # Privileged mode required for Docker-in-Docker operations
+    privileged: true

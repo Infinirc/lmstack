@@ -1,0 +1,760 @@
+import { useEffect, useState, useCallback } from 'react'
+import {
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Space,
+  Table,
+  Tag,
+  message,
+  Popconfirm,
+  Descriptions,
+  Progress,
+  Row,
+  Col,
+  Statistic,
+  Tooltip,
+  Typography,
+} from 'antd'
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  EyeOutlined,
+  ReloadOutlined,
+  ThunderboltOutlined,
+  CheckCircleOutlined,
+  SyncOutlined,
+  CloseCircleOutlined,
+  DatabaseOutlined,
+  DesktopOutlined,
+} from '@ant-design/icons'
+import { workersApi, modelFilesApi } from '../services/api'
+import type { Worker, WorkerCreate, GPUInfo, SystemInfo, ModelFileView } from '../types'
+import { useResponsive } from '../hooks'
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+
+dayjs.extend(utc)
+
+const { Text } = Typography
+
+const REFRESH_INTERVAL = 5000 // 5 seconds
+
+export default function Workers() {
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [loading, setLoading] = useState(true)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [detailModal, setDetailModal] = useState<Worker | null>(null)
+  const [modelFiles, setModelFiles] = useState<ModelFileView[]>([])
+  const [modelFilesLoading, setModelFilesLoading] = useState(false)
+  const [modelFilesModal, setModelFilesModal] = useState<Worker | null>(null)
+  const [form] = Form.useForm()
+  const { isMobile } = useResponsive()
+
+  const fetchWorkers = useCallback(async () => {
+    try {
+      const response = await workersApi.list()
+      setWorkers(response.items)
+    } catch (error) {
+      console.error('Failed to fetch workers:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchWorkers()
+
+    // Auto refresh
+    const interval = setInterval(fetchWorkers, REFRESH_INTERVAL)
+    return () => clearInterval(interval)
+  }, [fetchWorkers])
+
+  // Update detail modal data when workers update
+  useEffect(() => {
+    if (detailModal) {
+      const updated = workers.find(w => w.id === detailModal.id)
+      if (updated) {
+        setDetailModal(updated)
+      }
+    }
+  }, [workers, detailModal])
+
+  const handleCreate = async (values: WorkerCreate) => {
+    try {
+      await workersApi.create(values)
+      message.success('Worker created successfully')
+      setModalOpen(false)
+      form.resetFields()
+      fetchWorkers()
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } }
+      message.error(err.response?.data?.detail || 'Failed to create worker')
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    try {
+      await workersApi.delete(id)
+      message.success('Worker deleted successfully')
+      fetchWorkers()
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } }
+      message.error(err.response?.data?.detail || 'Failed to delete worker')
+    }
+  }
+
+  const [registeringLocal, setRegisteringLocal] = useState(false)
+
+  const handleRegisterLocal = async () => {
+    setRegisteringLocal(true)
+    try {
+      await workersApi.registerLocal()
+      message.success('Local worker registered successfully')
+      fetchWorkers()
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } }
+      message.error(err.response?.data?.detail || 'Failed to register local worker')
+    } finally {
+      setRegisteringLocal(false)
+    }
+  }
+
+  // Open model files modal for a worker
+  const openModelFilesModal = (worker: Worker) => {
+    setModelFilesModal(worker)
+    fetchModelFilesForWorker(worker.id)
+  }
+
+  // Fetch model files for a specific worker (for modal)
+  const fetchModelFilesForWorker = async (workerId: number) => {
+    setModelFilesLoading(true)
+    try {
+      const response = await modelFilesApi.list({ worker_id: workerId })
+      setModelFiles(response.items)
+    } catch (error) {
+      console.error('Failed to fetch model files:', error)
+    } finally {
+      setModelFilesLoading(false)
+    }
+  }
+
+  const formatBytes = (bytes: number) => {
+    const gb = bytes / (1024 * 1024 * 1024)
+    return `${gb.toFixed(1)} GB`
+  }
+
+  const getUtilizationColor = (util: number) => {
+    if (util < 30) return '#52c41a'
+    if (util < 70) return '#1677ff'
+    return '#faad14'
+  }
+
+  const getTemperatureColor = (temp: number) => {
+    if (temp < 50) return '#52c41a'
+    if (temp < 70) return '#faad14'
+    return '#ff4d4f'
+  }
+
+
+  // Delete model files from worker
+  const handleDeleteModelFile = async (modelId: number, workerId: number, modelName: string) => {
+    try {
+      await modelFilesApi.delete(modelId, workerId)
+      message.success(`Model "${modelName}" files deleted`)
+      if (modelFilesModal) {
+        fetchModelFilesForWorker(modelFilesModal.id)
+      }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } }
+      message.error(err.response?.data?.detail || 'Failed to delete model files')
+    }
+  }
+
+  // Get status tag for model file
+  const getModelStatusTag = (status: string) => {
+    switch (status) {
+      case 'ready':
+        return (
+          <Tag icon={<CheckCircleOutlined />} color="success">
+            Ready
+          </Tag>
+        )
+      case 'starting':
+        return (
+          <Tag icon={<SyncOutlined spin />} color="processing">
+            Starting
+          </Tag>
+        )
+      case 'downloading':
+        return (
+          <Tag icon={<SyncOutlined spin />} color="warning">
+            Downloading
+          </Tag>
+        )
+      case 'stopped':
+        return (
+          <Tag icon={<CloseCircleOutlined />} color="default">
+            Stopped
+          </Tag>
+        )
+      default:
+        return <Tag>{status}</Tag>
+    }
+  }
+
+
+  // Mobile columns (simplified)
+  const mobileColumns = [
+    {
+      title: 'Worker',
+      key: 'worker',
+      render: (_: unknown, record: Worker) => (
+        <div>
+          <div style={{ fontWeight: 500 }}>{record.name}</div>
+          <div style={{ fontSize: 12, color: '#888' }}>{record.address}</div>
+          <Tag
+            color={record.status === 'online' ? 'green' : 'default'}
+            style={{ marginTop: 4 }}
+          >
+            {record.status.toUpperCase()}
+          </Tag>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+            {record.status === 'offline'
+              ? 'Offline'
+              : `${record.gpu_info?.length || 0} GPU(s) · ${record.deployment_count} deployments`}
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 100,
+      render: (_: unknown, record: Worker) => (
+        <Space size={4}>
+          <Button
+            type="text"
+            size="small"
+            icon={<DatabaseOutlined />}
+            onClick={() => openModelFilesModal(record)}
+          />
+          <Button
+            type="text"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => setDetailModal(record)}
+          />
+          <Popconfirm
+            title="Delete this worker?"
+            description="This action cannot be undone."
+            onConfirm={() => handleDelete(record.id)}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ]
+
+  // Desktop columns (full)
+  const desktopColumns = [
+    {
+      title: 'Name',
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: 'Address',
+      dataIndex: 'address',
+      key: 'address',
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => {
+        const colorMap: Record<string, string> = {
+          online: 'green',
+          offline: 'default',
+          error: 'red',
+        }
+        return <Tag color={colorMap[status]}>{status.toUpperCase()}</Tag>
+      },
+    },
+    {
+      title: 'GPUs',
+      dataIndex: 'gpu_info',
+      key: 'gpu_info',
+      width: 350,
+      render: (gpuInfo: GPUInfo[] | null, record: Worker) => {
+        if (record.status === 'offline') {
+          return <Text type="secondary" style={{ fontSize: 12 }}>Offline</Text>
+        }
+        if (!gpuInfo || gpuInfo.length === 0) return '-'
+        return (
+          <div>
+            {gpuInfo.map((gpu, idx) => {
+              const memUsed = gpu.memory_total - gpu.memory_free
+              const memPercent = Math.round((memUsed / gpu.memory_total) * 100)
+              return (
+                <div key={idx} style={{ marginBottom: idx < gpuInfo.length - 1 ? 8 : 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12 }}>{gpu.name}</span>
+                    <Space size={4}>
+                      <Tooltip title="GPU Utilization">
+                        <Tag
+                          color={getUtilizationColor(gpu.utilization || 0)}
+                          style={{ margin: 0 }}
+                        >
+                          <ThunderboltOutlined /> {gpu.utilization || 0}%
+                        </Tag>
+                      </Tooltip>
+                      <Tooltip title="Temperature">
+                        <Tag
+                          color={getTemperatureColor(gpu.temperature || 0)}
+                          style={{ margin: 0 }}
+                        >
+                          {gpu.temperature || 0}°C
+                        </Tag>
+                      </Tooltip>
+                    </Space>
+                  </div>
+                  <Tooltip title={`${formatBytes(memUsed)} / ${formatBytes(gpu.memory_total)}`}>
+                    <Progress
+                      percent={memPercent}
+                      size="small"
+                      strokeColor={memPercent > 90 ? '#ff4d4f' : '#1677ff'}
+                      showInfo={false}
+                      style={{ marginTop: 4 }}
+                    />
+                  </Tooltip>
+                </div>
+              )
+            })}
+          </div>
+        )
+      },
+    },
+    {
+      title: 'System',
+      dataIndex: 'system_info',
+      key: 'system_info',
+      width: 200,
+      render: (systemInfo: SystemInfo | null, record: Worker) => {
+        if (record.status === 'offline') {
+          return <Text type="secondary" style={{ fontSize: 12 }}>Offline</Text>
+        }
+        if (!systemInfo) return '-'
+        return (
+          <div style={{ fontSize: 12 }}>
+            {systemInfo.cpu && (
+              <Tooltip title={`${systemInfo.cpu.count} cores @ ${Math.round(systemInfo.cpu.freq_mhz)} MHz`}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span>CPU</span>
+                  <Tag color={getUtilizationColor(systemInfo.cpu.percent)} style={{ margin: 0 }}>
+                    {Math.round(systemInfo.cpu.percent)}%
+                  </Tag>
+                </div>
+              </Tooltip>
+            )}
+            {systemInfo.memory && (
+              <Tooltip title={`${formatBytes(systemInfo.memory.used)} / ${formatBytes(systemInfo.memory.total)}`}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span>RAM</span>
+                  <Tag color={getUtilizationColor(systemInfo.memory.percent)} style={{ margin: 0 }}>
+                    {Math.round(systemInfo.memory.percent)}%
+                  </Tag>
+                </div>
+              </Tooltip>
+            )}
+            {systemInfo.disk && (
+              <Tooltip title={`${formatBytes(systemInfo.disk.used)} / ${formatBytes(systemInfo.disk.total)}`}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Disk</span>
+                  <Tag color={getUtilizationColor(systemInfo.disk.percent)} style={{ margin: 0 }}>
+                    {Math.round(systemInfo.disk.percent)}%
+                  </Tag>
+                </div>
+              </Tooltip>
+            )}
+          </div>
+        )
+      },
+    },
+    {
+      title: 'Deployments',
+      dataIndex: 'deployment_count',
+      key: 'deployment_count',
+      width: 100,
+    },
+    {
+      title: 'Last Heartbeat',
+      dataIndex: 'last_heartbeat',
+      key: 'last_heartbeat',
+      render: (time: string | null) =>
+        time ? dayjs(time).local().format('HH:mm:ss') : '-',
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 120,
+      render: (_: unknown, record: Worker) => (
+        <Space size={4}>
+          <Tooltip title="Model Files">
+            <Button
+              type="text"
+              icon={<DatabaseOutlined />}
+              onClick={() => openModelFilesModal(record)}
+              size="small"
+            />
+          </Tooltip>
+          <Tooltip title="Details">
+            <Button
+              type="text"
+              icon={<EyeOutlined />}
+              onClick={() => setDetailModal(record)}
+              size="small"
+            />
+          </Tooltip>
+          <Popconfirm
+            title="Delete this worker?"
+            description="This action cannot be undone."
+            onConfirm={() => handleDelete(record.id)}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ]
+
+  return (
+    <div>
+      <Card
+        style={{ borderRadius: 12 }}
+        title={
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+            <span>Workers</span>
+            <Tag color="processing" style={{ borderRadius: 6 }}>{workers.length}</Tag>
+            <Tag color="success" style={{ borderRadius: 6 }}>{workers.filter(w => w.status === 'online').length} online</Tag>
+          </div>
+        }
+        extra={
+          <Space wrap>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={fetchWorkers}
+              size={isMobile ? 'small' : 'middle'}
+            >
+              {!isMobile && 'Refresh'}
+            </Button>
+            <Button
+              icon={<DesktopOutlined />}
+              onClick={handleRegisterLocal}
+              loading={registeringLocal}
+              size={isMobile ? 'small' : 'middle'}
+            >
+              {isMobile ? 'Local' : 'Add Local'}
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setModalOpen(true)}
+              size={isMobile ? 'small' : 'middle'}
+            >
+              {isMobile ? 'Add' : 'Add Worker'}
+            </Button>
+          </Space>
+        }
+      >
+        <Table
+          dataSource={workers}
+          columns={isMobile ? mobileColumns : desktopColumns}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 10 }}
+          scroll={isMobile ? undefined : { x: 900 }}
+          size={isMobile ? 'small' : 'middle'}
+        />
+      </Card>
+
+      <Modal
+        title="Add Worker"
+        open={modalOpen}
+        onCancel={() => {
+          setModalOpen(false)
+          form.resetFields()
+        }}
+        footer={null}
+        width={isMobile ? '100%' : 520}
+        style={isMobile ? { top: 20, maxWidth: '100%', margin: '0 8px' } : undefined}
+      >
+        <Form form={form} layout="vertical" onFinish={handleCreate}>
+          <Form.Item
+            name="name"
+            label="Worker Name"
+            rules={[{ required: true, message: 'Please enter worker name' }]}
+          >
+            <Input placeholder="e.g., gpu-worker-01" />
+          </Form.Item>
+          <Form.Item
+            name="address"
+            label="Address"
+            rules={[{ required: true, message: 'Please enter worker address' }]}
+            extra="IP:Port of the worker agent (e.g., 192.168.1.100:8080)"
+          >
+            <Input placeholder="e.g., 192.168.1.100:8080" />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea placeholder="Optional description" rows={2} />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit">
+                Create
+              </Button>
+              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Worker: ${detailModal?.name}`}
+        open={!!detailModal}
+        onCancel={() => setDetailModal(null)}
+        footer={null}
+        width={isMobile ? '100%' : 800}
+        style={isMobile ? { top: 20, maxWidth: '100%', margin: '0 8px' } : undefined}
+      >
+        {detailModal && (
+          <div>
+            <Descriptions
+              column={isMobile ? 1 : 2}
+              bordered
+              size="small"
+              labelStyle={isMobile ? { width: 100 } : undefined}
+            >
+              <Descriptions.Item label="ID">{detailModal.id}</Descriptions.Item>
+              <Descriptions.Item label="Status">
+                <Tag color={detailModal.status === 'online' ? 'green' : 'default'}>
+                  {detailModal.status.toUpperCase()}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Address">{detailModal.address}</Descriptions.Item>
+              <Descriptions.Item label="Deployments">
+                {detailModal.deployment_count}
+              </Descriptions.Item>
+              <Descriptions.Item label="Created">
+                {dayjs(detailModal.created_at).format('YYYY-MM-DD HH:mm:ss')}
+              </Descriptions.Item>
+              <Descriptions.Item label="Last Heartbeat">
+                {detailModal.last_heartbeat
+                  ? dayjs(detailModal.last_heartbeat).format('YYYY-MM-DD HH:mm:ss')
+                  : '-'}
+              </Descriptions.Item>
+            </Descriptions>
+
+            {detailModal.system_info && (
+              <div style={{ marginTop: 16 }}>
+                <h4>System Information</h4>
+                <Row gutter={[16, 16]}>
+                  {detailModal.system_info.cpu && (
+                    <Col xs={24} sm={8}>
+                      <Card size="small" title="CPU">
+                        <Statistic
+                          title={`${detailModal.system_info.cpu.count} cores`}
+                          value={Math.round(detailModal.system_info.cpu.percent)}
+                          suffix="%"
+                          valueStyle={{ color: getUtilizationColor(detailModal.system_info.cpu.percent), fontSize: isMobile ? 18 : 24 }}
+                        />
+                        <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+                          {Math.round(detailModal.system_info.cpu.freq_mhz)} MHz
+                        </div>
+                      </Card>
+                    </Col>
+                  )}
+                  {detailModal.system_info.memory && (
+                    <Col xs={24} sm={8}>
+                      <Card size="small" title="Memory (RAM)">
+                        <Statistic
+                          title={`${formatBytes(detailModal.system_info.memory.used)} / ${formatBytes(detailModal.system_info.memory.total)}`}
+                          value={Math.round(detailModal.system_info.memory.percent)}
+                          suffix="%"
+                          valueStyle={{ color: getUtilizationColor(detailModal.system_info.memory.percent), fontSize: isMobile ? 18 : 24 }}
+                        />
+                        <Progress
+                          percent={Math.round(detailModal.system_info.memory.percent)}
+                          strokeColor={detailModal.system_info.memory.percent > 90 ? '#ff4d4f' : '#1677ff'}
+                          showInfo={false}
+                          style={{ marginTop: 8 }}
+                        />
+                      </Card>
+                    </Col>
+                  )}
+                  {detailModal.system_info.disk && (
+                    <Col xs={24} sm={8}>
+                      <Card size="small" title="Disk">
+                        <Statistic
+                          title={`${formatBytes(detailModal.system_info.disk.used)} / ${formatBytes(detailModal.system_info.disk.total)}`}
+                          value={Math.round(detailModal.system_info.disk.percent)}
+                          suffix="%"
+                          valueStyle={{ color: getUtilizationColor(detailModal.system_info.disk.percent), fontSize: isMobile ? 18 : 24 }}
+                        />
+                        <Progress
+                          percent={Math.round(detailModal.system_info.disk.percent)}
+                          strokeColor={detailModal.system_info.disk.percent > 90 ? '#ff4d4f' : '#1677ff'}
+                          showInfo={false}
+                          style={{ marginTop: 8 }}
+                        />
+                      </Card>
+                    </Col>
+                  )}
+                </Row>
+              </div>
+            )}
+
+            {detailModal.gpu_info && detailModal.gpu_info.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4>GPU Information</h4>
+                <Row gutter={[16, 16]}>
+                  {detailModal.gpu_info.map((gpu, idx) => {
+                    const memUsed = gpu.memory_total - gpu.memory_free
+                    const memPercent = Math.round((memUsed / gpu.memory_total) * 100)
+                    return (
+                      <Col xs={24} sm={12} key={idx}>
+                        <Card size="small" title={`GPU ${gpu.index}: ${gpu.name}`}>
+                          <Row gutter={16}>
+                            <Col span={12}>
+                              <Statistic
+                                title="Utilization"
+                                value={gpu.utilization || 0}
+                                suffix="%"
+                                valueStyle={{ color: getUtilizationColor(gpu.utilization || 0), fontSize: isMobile ? 18 : 24 }}
+                              />
+                            </Col>
+                            <Col span={12}>
+                              <Statistic
+                                title="Temperature"
+                                value={gpu.temperature || 0}
+                                suffix="°C"
+                                valueStyle={{ color: getTemperatureColor(gpu.temperature || 0), fontSize: isMobile ? 18 : 24 }}
+                              />
+                            </Col>
+                          </Row>
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ marginBottom: 4, fontSize: isMobile ? 12 : 14 }}>
+                              Memory: {formatBytes(memUsed)} / {formatBytes(gpu.memory_total)}
+                            </div>
+                            <Progress
+                              percent={memPercent}
+                              strokeColor={memPercent > 90 ? '#ff4d4f' : '#1677ff'}
+                              status="active"
+                            />
+                          </div>
+                        </Card>
+                      </Col>
+                    )
+                  })}
+                </Row>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Model Files Modal */}
+      <Modal
+        title={
+          <Space>
+            <DatabaseOutlined />
+            <span>Model Files: {modelFilesModal?.name}</span>
+          </Space>
+        }
+        open={!!modelFilesModal}
+        onCancel={() => setModelFilesModal(null)}
+        footer={null}
+        width={isMobile ? '100%' : 600}
+        style={isMobile ? { top: 20, maxWidth: '100%', margin: '0 8px' } : undefined}
+      >
+        {modelFilesLoading ? (
+          <div style={{ textAlign: 'center', padding: 24 }}>Loading...</div>
+        ) : modelFiles.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 24, color: '#888' }}>
+            No model files on this worker
+          </div>
+        ) : (
+          <Table
+            dataSource={modelFiles}
+            rowKey={(mf) => `${mf.model_id}-${mf.worker_id}`}
+            size="small"
+            pagination={false}
+            columns={[
+              {
+                title: 'Model',
+                key: 'model',
+                render: (_: unknown, mf: ModelFileView) => (
+                  <div>
+                    <Text strong>{mf.model_name}</Text>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {mf.model_source}
+                    </Text>
+                  </div>
+                ),
+              },
+              {
+                title: 'Status',
+                key: 'status',
+                width: 100,
+                render: (_: unknown, mf: ModelFileView) => getModelStatusTag(mf.status),
+              },
+              {
+                title: 'Deployments',
+                key: 'deployments',
+                width: 100,
+                render: (_: unknown, mf: ModelFileView) => (
+                  <Tag color={mf.running_count > 0 ? 'green' : 'default'}>
+                    {mf.running_count} / {mf.deployment_count}
+                  </Tag>
+                ),
+              },
+              {
+                title: '',
+                key: 'actions',
+                width: 60,
+                render: (_: unknown, mf: ModelFileView) => (
+                  <Popconfirm
+                    title="Delete model files?"
+                    description={
+                      mf.running_count > 0
+                        ? 'Warning: This model has running deployments!'
+                        : 'This will delete cached model files.'
+                    }
+                    onConfirm={() => handleDeleteModelFile(mf.model_id, mf.worker_id, mf.model_name)}
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                    />
+                  </Popconfirm>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Modal>
+    </div>
+  )
+}

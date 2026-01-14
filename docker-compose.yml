@@ -1,0 +1,68 @@
+# LMStack Docker Compose Configuration
+# Usage: docker compose up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: lmstack-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lmstack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lmstack}
+      POSTGRES_DB: ${POSTGRES_DB:-lmstack}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lmstack}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - lmstack
+
+  # Backend API Server
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lmstack-backend
+    environment:
+      LMSTACK_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lmstack}:${POSTGRES_PASSWORD:-lmstack}@db:5432/${POSTGRES_DB:-lmstack}
+      LMSTACK_SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      LMSTACK_DEBUG: ${DEBUG:-false}
+      LMSTACK_CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - lmstack
+
+  # Frontend Web UI
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    container_name: lmstack-frontend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - lmstack
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  lmstack:
+    driver: bridge

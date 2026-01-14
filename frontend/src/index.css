@@ -1,0 +1,471 @@
+/* LMStack - Global Styles with Theme Support */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-feature-settings: 'ss01', 'ss02', 'cv01', 'cv02';
+  letter-spacing: -0.01em;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar - Dark theme */
+body[data-theme="dark"] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+body[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+body[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Custom scrollbar - Light theme */
+body[data-theme="light"] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+body[data-theme="light"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+body[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Selection styling */
+body[data-theme="dark"] ::selection {
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+}
+
+body[data-theme="light"] ::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
+/* Smooth transitions for theme switching */
+body,
+.ant-layout,
+.ant-layout-sider,
+.ant-layout-header,
+.ant-layout-content,
+.ant-menu,
+.ant-card,
+.ant-modal-content {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* Focus styles */
+body[data-theme="dark"] *:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 2px;
+}
+
+body[data-theme="light"] *:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}
+
+/* Remove focus outline for chat elements */
+body[data-theme="dark"] .chat-input-container,
+body[data-theme="dark"] .chat-input-container:focus-within,
+body[data-theme="dark"] .chat-input-container *:focus-visible,
+body[data-theme="light"] .chat-input-container,
+body[data-theme="light"] .chat-input-container:focus-within,
+body[data-theme="light"] .chat-input-container *:focus-visible,
+body[data-theme="dark"] .chat-send-btn:focus-visible,
+body[data-theme="light"] .chat-send-btn:focus-visible,
+body[data-theme="dark"] .suggestion-btn:focus-visible,
+body[data-theme="light"] .suggestion-btn:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
+/* Button hover transitions */
+.ant-btn {
+  transition: all 0.2s ease;
+}
+
+/* Card hover effect */
+.ant-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Menu item transitions */
+.ant-menu-item {
+  transition: all 0.15s ease !important;
+}
+
+/* Table row transitions */
+.ant-table-row {
+  transition: background-color 0.15s ease;
+}
+
+/* Progress bar animation */
+.ant-progress-bg {
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Modal backdrop blur */
+.ant-modal-mask {
+  backdrop-filter: blur(4px);
+}
+
+/* Tag styling */
+.ant-tag {
+  border-radius: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Input focus glow */
+body[data-theme="dark"] .ant-input:focus,
+body[data-theme="dark"] .ant-input-affix-wrapper:focus,
+body[data-theme="dark"] .ant-select-focused .ant-select-selector {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
+}
+
+body[data-theme="light"] .ant-input:focus,
+body[data-theme="light"] .ant-input-affix-wrapper:focus,
+body[data-theme="light"] .ant-select-focused .ant-select-selector {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Dropdown menu styling */
+.ant-dropdown-menu {
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+
+.ant-dropdown-menu-item {
+  border-radius: 8px !important;
+  margin: 4px 8px !important;
+}
+
+/* Tooltip styling */
+.ant-tooltip-inner {
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+/* Spin indicator color */
+body[data-theme="dark"] .ant-spin-dot-item {
+  background-color: #ffffff !important;
+}
+
+body[data-theme="light"] .ant-spin-dot-item {
+  background-color: #3b82f6 !important;
+}
+
+/* Empty state styling */
+body[data-theme="dark"] .ant-empty-description {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+body[data-theme="light"] .ant-empty-description {
+  color: #64748b;
+}
+
+/* Switch styling */
+body[data-theme="dark"] .ant-switch {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+body[data-theme="dark"] .ant-switch-checked {
+  background: #3b82f6 !important;
+}
+
+body[data-theme="light"] .ant-switch {
+  background: #cbd5e1 !important;
+}
+
+body[data-theme="light"] .ant-switch-checked {
+  background: #0f172a !important;
+}
+
+/* Popconfirm / Popover styling */
+body[data-theme="dark"] .ant-popover-inner,
+body[data-theme="dark"] .ant-popconfirm .ant-popover-inner {
+  background: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+}
+
+body[data-theme="dark"] .ant-popover-arrow::before,
+body[data-theme="dark"] .ant-popconfirm .ant-popover-arrow::before {
+  background: #18181b !important;
+}
+
+body[data-theme="dark"] .ant-popover-arrow::after,
+body[data-theme="dark"] .ant-popconfirm .ant-popover-arrow::after {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+body[data-theme="dark"] .ant-popconfirm-message-title,
+body[data-theme="dark"] .ant-popconfirm-description {
+  color: #ffffff !important;
+}
+
+body[data-theme="light"] .ant-popover-inner,
+body[data-theme="light"] .ant-popconfirm .ant-popover-inner {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Pulse animation for status indicators */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Glow animation */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+  }
+}
+
+/* Slide in from right */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Monospace font for data */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+/* Utility class for status glow */
+.status-online {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Chat input container - remove focus outline */
+.chat-input-container,
+.chat-input-container:focus,
+.chat-input-container:focus-within,
+.chat-input-container:focus-visible {
+  outline: none !important;
+  outline-width: 0 !important;
+  outline-offset: 0 !important;
+}
+
+/* Chat textarea - remove all focus outlines */
+textarea.chat-textarea-no-outline,
+textarea.chat-textarea-no-outline:focus,
+textarea.chat-textarea-no-outline:active,
+textarea.chat-textarea-no-outline:focus-visible,
+.chat-textarea-no-outline.ant-input,
+.chat-textarea-no-outline.ant-input:focus,
+.chat-textarea-no-outline.ant-input:active,
+.chat-textarea-no-outline.ant-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.chat-send-btn,
+.chat-send-btn:focus,
+.chat-send-btn:focus-visible {
+  outline: none !important;
+}
+
+.suggestion-btn:focus,
+.suggestion-btn:focus-visible {
+  outline: none !important;
+}
+
+/* Model files table in Workers page - Dark theme */
+body[data-theme="dark"] .model-files-table {
+  margin: 0 !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table {
+  background: transparent !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 8px 12px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table-thead > tr > th:first-child {
+  border-top-left-radius: 8px !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table-thead > tr > th:last-child {
+  border-top-right-radius: 8px !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table-tbody > tr > td {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  padding: 10px 12px !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: none !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table-tbody > tr:last-child > td:first-child {
+  border-bottom-left-radius: 8px !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table-tbody > tr:last-child > td:last-child {
+  border-bottom-right-radius: 8px !important;
+}
+
+body[data-theme="dark"] .model-files-table .ant-table-tbody > tr:hover > td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Model files table in Workers page - Light theme */
+body[data-theme="light"] .model-files-table {
+  margin: 0 !important;
+  background: rgba(0, 0, 0, 0.02) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table {
+  background: transparent !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table-thead > tr > th {
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  padding: 8px 12px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: rgba(0, 0, 0, 0.6) !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table-thead > tr > th:first-child {
+  border-top-left-radius: 8px !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table-thead > tr > th:last-child {
+  border-top-right-radius: 8px !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table-tbody > tr > td {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04) !important;
+  padding: 10px 12px !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: none !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table-tbody > tr:last-child > td:first-child {
+  border-bottom-left-radius: 8px !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table-tbody > tr:last-child > td:last-child {
+  border-bottom-right-radius: 8px !important;
+}
+
+body[data-theme="light"] .model-files-table .ant-table-tbody > tr:hover > td {
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Expanded row styling - Dark theme */
+body[data-theme="dark"] .ant-table-expanded-row > td {
+  background: transparent !important;
+  padding: 12px 16px 16px !important;
+}
+
+body[data-theme="dark"] .ant-table-expanded-row .model-files-table {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Expanded row styling - Light theme */
+body[data-theme="light"] .ant-table-expanded-row > td {
+  background: transparent !important;
+  padding: 12px 16px 16px !important;
+}
+
+body[data-theme="light"] .ant-table-expanded-row .model-files-table {
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}

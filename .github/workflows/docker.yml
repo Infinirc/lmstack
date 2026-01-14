@@ -1,0 +1,105 @@
+# Docker Build and Push Pipeline
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      push_images:
+        description: "Push images to Docker Hub"
+        required: true
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: docker.io
+  # Change this to your Docker Hub username/organization
+  DOCKERHUB_NAMESPACE: infinirc
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          - image: lmstack-backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+          - image: lmstack-frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+          - image: lmstack-worker
+            context: ./worker
+            dockerfile: ./worker/Dockerfile
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.image }}
+          tags: |
+            # Set latest tag for main branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            # Tag with branch name
+            type=ref,event=branch
+            # Tag with version (v1.0.0 -> 1.0.0)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # Tag with short SHA
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' && (github.event.inputs.push_images != 'false') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # Notify on completion
+  notify:
+    name: Notify Build Status
+    runs-on: self-hosted
+    needs: build-and-push
+    if: always()
+
+    steps:
+      - name: Build Success
+        if: ${{ needs.build-and-push.result == 'success' }}
+        run: |
+          echo "✅ All Docker images built and pushed successfully!"
+          echo "Images:"
+          echo "  - ${{ env.DOCKERHUB_NAMESPACE }}/lmstack-backend"
+          echo "  - ${{ env.DOCKERHUB_NAMESPACE }}/lmstack-frontend"
+          echo "  - ${{ env.DOCKERHUB_NAMESPACE }}/lmstack-worker"
+
+      - name: Build Failed
+        if: ${{ needs.build-and-push.result == 'failure' }}
+        run: |
+          echo "❌ Docker build failed!"
+          exit 1
