@@ -150,7 +150,7 @@ def get_host_ip(request: Request, worker: Worker) -> str:
     """
     import socket
 
-    lmstack_host = request.headers.get("host", "localhost:8000")
+    lmstack_host = request.headers.get("host", "localhost:8088")
     host_ip = lmstack_host.split(":")[0] if ":" in lmstack_host else lmstack_host
 
     # If host is localhost, try alternatives
@@ -196,7 +196,7 @@ def app_to_response(app: App, request: Request) -> AppResponse:
     if app.status == AppStatus.RUNNING.value and app.port:
         if app.use_proxy:
             # Use LMStack host with app port (nginx proxy)
-            host = request.headers.get("host", "localhost:8000").split(":")[0]
+            host = request.headers.get("host", "localhost:8088").split(":")[0]
             access_url = f"http://{host}:{app.port}"
         else:
             # Direct connection to worker

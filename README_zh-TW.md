@@ -71,7 +71,7 @@ docker run -d \
 5. 使用 OpenAI 相容 API：
 
 ```bash
-curl http://localhost:8000/v1/chat/completions \
+curl http://localhost:8088/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"model": "llama3.2:3b", "messages": [{"role": "user", "content": "你好！"}]}'
@@ -118,18 +118,18 @@ npm run dev
 # 終端機 2 - 後端
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8088 --reload
 
 # 終端機 3 - Worker（在 GPU 機器上）
 cd worker
 pip install -r requirements.txt
-python agent.py --name gpu-worker-01 --server-url http://你的伺服器IP:8000
+python agent.py --name gpu-worker-01 --server-url http://你的伺服器IP:8088
 ```
 
 ## API 文件
 
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+- Swagger UI: http://localhost:8088/docs
+- ReDoc: http://localhost:8088/redoc
 
 ## 授權條款
 

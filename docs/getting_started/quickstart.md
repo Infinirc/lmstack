@@ -47,7 +47,7 @@ Click "Deploy" and monitor the progress in the Deployments page.
 
 ```bash
 # Create an API key via the UI or API
-curl -X POST http://localhost:8000/api/api-keys \
+curl -X POST http://localhost:8088/api/api-keys \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "my-api-key"}'
@@ -56,7 +56,7 @@ curl -X POST http://localhost:8000/api/api-keys \
 ### 2. Create Deployment
 
 ```bash
-curl -X POST http://localhost:8000/api/deployments \
+curl -X POST http://localhost:8088/api/deployments \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -74,7 +74,7 @@ curl -X POST http://localhost:8000/api/deployments \
 ### 3. Check Deployment Status
 
 ```bash
-curl http://localhost:8000/api/deployments/DEPLOYMENT_ID \
+curl http://localhost:8088/api/deployments/DEPLOYMENT_ID \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -85,7 +85,7 @@ Once deployed, you can interact with your model using the OpenAI-compatible API.
 ### Chat Completion
 
 ```bash
-curl http://localhost:8000/v1/chat/completions \
+curl http://localhost:8088/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -99,7 +99,7 @@ curl http://localhost:8000/v1/chat/completions \
 ### Streaming Response
 
 ```bash
-curl http://localhost:8000/v1/chat/completions \
+curl http://localhost:8088/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -118,7 +118,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="YOUR_API_KEY",
-    base_url="http://localhost:8000/v1"
+    base_url="http://localhost:8088/v1"
 )
 
 response = client.chat.completions.create(
@@ -144,7 +144,7 @@ LMStack includes a built-in chat interface for testing models:
 ### View Deployment Logs
 
 ```bash
-curl http://localhost:8000/api/deployments/DEPLOYMENT_ID/logs \
+curl http://localhost:8088/api/deployments/DEPLOYMENT_ID/logs \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -153,7 +153,7 @@ curl http://localhost:8000/api/deployments/DEPLOYMENT_ID/logs \
 Monitor GPU utilization through the Workers page or via API:
 
 ```bash
-curl http://localhost:8000/api/workers/WORKER_ID \
+curl http://localhost:8088/api/workers/WORKER_ID \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 

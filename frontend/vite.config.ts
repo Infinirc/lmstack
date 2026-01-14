@@ -9,11 +9,21 @@ export default defineConfig({
     proxy: {
       // Use regex to match /api/ paths only (not /api-keys)
       "^/api/": {
-        target: "http://localhost:8000",
+        target: "http://localhost:8088",
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            // Forward original host for URL generation
+            const host = req.headers.host;
+            if (host) {
+              proxyReq.setHeader("X-Forwarded-Host", host);
+              proxyReq.setHeader("X-Forwarded-Proto", "http");
+            }
+          });
+        },
       },
       "/v1": {
-        target: "http://localhost:8000",
+        target: "http://localhost:8088",
         changeOrigin: true,
       },
     },

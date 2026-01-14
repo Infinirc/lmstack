@@ -233,7 +233,7 @@ export default function Headscale() {
       key: "created_at",
       width: 150,
       render: (time: string | null) =>
-        time ? dayjs(time).format("YYYY-MM-DD HH:mm") : "-",
+        time ? dayjs(time).local().format("YYYY-MM-DD HH:mm") : "-",
     },
     {
       title: "Actions",

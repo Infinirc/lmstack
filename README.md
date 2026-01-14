@@ -71,7 +71,7 @@ docker run -d \
 5. Use OpenAI-compatible API:
 
 ```bash
-curl http://localhost:8000/v1/chat/completions \
+curl http://localhost:8088/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"model": "llama3.2:3b", "messages": [{"role": "user", "content": "Hello!"}]}'
@@ -118,18 +118,18 @@ npm run dev
 # Terminal 2 - Backend
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8088 --reload
 
 # Terminal 3 - Worker (on GPU machine)
 cd worker
 pip install -r requirements.txt
-python agent.py --name gpu-worker-01 --server-url http://YOUR_SERVER_IP:8000
+python agent.py --name gpu-worker-01 --server-url http://YOUR_SERVER_IP:8088
 ```
 
 ## API Docs
 
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+- Swagger UI: http://localhost:8088/docs
+- ReDoc: http://localhost:8088/redoc
 
 ## License
 

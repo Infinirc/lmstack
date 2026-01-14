@@ -315,7 +315,7 @@ export default function Models() {
       dataIndex: "created_at",
       key: "created_at",
       width: 160,
-      render: (time: string) => dayjs(time).format("YYYY-MM-DD HH:mm"),
+      render: (time: string) => dayjs(time).local().format("YYYY-MM-DD HH:mm"),
     },
     {
       title: "Actions",

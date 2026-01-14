@@ -36,7 +36,7 @@ services:
       LMSTACK_DEBUG: ${DEBUG:-false}
       LMSTACK_CORS_ORIGINS: ${CORS_ORIGINS:-*}
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-8088}:8088"
     depends_on:
       db:
         condition: service_healthy
@@ -67,7 +67,7 @@ services:
       dockerfile: Dockerfile
     container_name: lmstack-worker
     environment:
-      BACKEND_URL: http://backend:8000
+      BACKEND_URL: http://backend:8088
       WORKER_TOKEN: ${WORKER_TOKEN:-}
       WORKER_NAME: ${WORKER_NAME:-local-worker}
       AGENT_PORT: 8080

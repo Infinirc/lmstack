@@ -106,7 +106,7 @@ async def start_headscale(
     # Auto-detect server URL if not provided
     server_url = data.server_url
     if not server_url:
-        host = request.headers.get("host", "localhost:8000")
+        host = request.headers.get("host", "localhost:8088")
         host_ip = host.split(":")[0]
         if host_ip in ("localhost", "127.0.0.1"):
             # Try to get actual IP

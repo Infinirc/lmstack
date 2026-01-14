@@ -304,10 +304,10 @@ export default function ApiKeys() {
   const { isMobile } = useResponsive();
   const { isDark } = useAppTheme();
 
-  // Get base URL for API Gateway (always port 8000)
+  // Get base URL for API Gateway (always port 8088)
   const baseUrl = useMemo(() => {
     const { protocol, hostname } = window.location;
-    return `${protocol}//${hostname}:8000`;
+    return `${protocol}//${hostname}:8088`;
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -600,7 +600,7 @@ export default function ApiKeys() {
       width: 100,
       render: (date: string) => (
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {dayjs(date).format("MMM D, YYYY")}
+          {dayjs(date).local().format("MMM D, YYYY")}
         </Text>
       ),
     },

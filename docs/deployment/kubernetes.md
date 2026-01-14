@@ -281,7 +281,7 @@ spec:
           image: lmstack/worker:latest
           env:
             - name: BACKEND_URL
-              value: http://backend:8000
+              value: http://backend:8088
             - name: WORKER_TOKEN
               valueFrom:
                 secretKeyRef:

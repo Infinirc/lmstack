@@ -97,14 +97,62 @@ async def create_worker(
     if not token:
         raise HTTPException(status_code=401, detail="Invalid registration token")
 
-    if not token.is_valid:
-        if token.is_used:
+    # Check if worker with same name exists
+    existing_result = await db.execute(select(Worker).where(Worker.name == worker_in.name))
+    existing_worker = existing_result.scalar_one_or_none()
+
+    # If token is used, check if it's for reconnecting the same worker or if worker was deleted
+    if token.is_used:
+        # Check if the original worker still exists
+        original_worker_result = await db.execute(
+            select(Worker).where(Worker.id == token.used_by_worker_id)
+        )
+        original_worker = original_worker_result.scalar_one_or_none()
+
+        if existing_worker and token.used_by_worker_id == existing_worker.id:
+            # Allow reconnection - update existing worker
+            existing_worker.address = worker_in.address
+            existing_worker.gpu_info = (
+                [gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None
+            )
+            existing_worker.system_info = (
+                worker_in.system_info.model_dump() if worker_in.system_info else None
+            )
+            existing_worker.status = WorkerStatus.ONLINE.value
+            existing_worker.last_heartbeat = datetime.now(UTC)
+
+            await db.commit()
+            await db.refresh(existing_worker)
+
+            return WorkerResponse(
+                id=existing_worker.id,
+                name=existing_worker.name,
+                address=existing_worker.address,
+                description=existing_worker.description,
+                labels=existing_worker.labels,
+                status=existing_worker.status,
+                gpu_info=existing_worker.gpu_info,
+                system_info=existing_worker.system_info,
+                created_at=existing_worker.created_at,
+                updated_at=existing_worker.updated_at,
+                last_heartbeat=existing_worker.last_heartbeat,
+                deployment_count=0,
+            )
+        elif original_worker is None:
+            # Original worker was deleted, allow re-registration with new worker
+            # Reset token for reuse
+            token.is_used = False
+            token.used_at = None
+            token.used_by_worker_id = None
+            await db.commit()
+            # Continue to create new worker below
+        else:
             raise HTTPException(status_code=401, detail="Registration token has already been used")
+
+    if not token.is_valid:
         raise HTTPException(status_code=401, detail="Registration token has expired")
 
-    # Check if worker with same name exists
-    existing = await db.execute(select(Worker).where(Worker.name == worker_in.name))
-    if existing.scalar_one_or_none():
+    if existing_worker:
         raise HTTPException(status_code=400, detail="Worker with this name already exists")
 
     worker = Worker(
@@ -368,6 +416,14 @@ def _get_backend_url(request: Request) -> str:
     settings = get_settings()
     if settings.external_url:
         return settings.external_url.rstrip("/")
+    # Check X-Forwarded headers (from nginx/vite proxy)
+    forwarded_host = request.headers.get("X-Forwarded-Host")
+    if forwarded_host:
+        proto = request.headers.get("X-Forwarded-Proto", "http")
+        # Replace port with backend's actual port (for dev mode where frontend is on different port)
+        host_parts = forwarded_host.split(":")
+        hostname = host_parts[0]
+        return f"{proto}://{hostname}:{settings.port}"
     # Fallback to request URL
     return str(request.base_url).rstrip("/")
 

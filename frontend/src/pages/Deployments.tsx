@@ -608,7 +608,7 @@ export default function Deployments() {
       title: "Created",
       dataIndex: "created_at",
       key: "created_at",
-      render: (time: string) => dayjs(time).format("YYYY-MM-DD HH:mm"),
+      render: (time: string) => dayjs(time).local().format("YYYY-MM-DD HH:mm"),
     },
     {
       title: "Actions",

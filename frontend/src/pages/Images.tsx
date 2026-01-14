@@ -219,7 +219,9 @@ export default function Images() {
       title: "Created",
       key: "created",
       render: (_: unknown, record: ContainerImage) => (
-        <Tooltip title={dayjs(record.created_at).format("YYYY-MM-DD HH:mm:ss")}>
+        <Tooltip
+          title={dayjs(record.created_at).local().format("YYYY-MM-DD HH:mm:ss")}
+        >
           {dayjs(record.created_at).fromNow()}
         </Tooltip>
       ),
@@ -479,9 +481,9 @@ export default function Images() {
                 <div>
                   <div style={{ fontSize: 12, color: "#888" }}>Created</div>
                   <span>
-                    {dayjs(detailModal.created_at).format(
-                      "YYYY-MM-DD HH:mm:ss",
-                    )}
+                    {dayjs(detailModal.created_at)
+                      .local()
+                      .format("YYYY-MM-DD HH:mm:ss")}
                   </span>
                 </div>
               </div>

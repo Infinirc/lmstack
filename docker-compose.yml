@@ -35,7 +35,7 @@ services:
       LMSTACK_DEBUG: ${DEBUG:-false}
       LMSTACK_CORS_ORIGINS: ${CORS_ORIGINS:-*}
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-8088}:8088"
     depends_on:
       db:
         condition: service_healthy

@@ -15,7 +15,7 @@ The `/v1` endpoints mirror the OpenAI API specification, enabling seamless integ
 ## Base URL
 
 ```
-http://localhost:8000/v1
+http://localhost:8088/v1
 ```
 
 ## Authentication
@@ -27,7 +27,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="your-lmstack-api-key",
-    base_url="http://localhost:8000/v1"
+    base_url="http://localhost:8088/v1"
 )
 ```
 
@@ -184,7 +184,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="your-api-key",
-    base_url="http://localhost:8000/v1"
+    base_url="http://localhost:8088/v1"
 )
 
 # Chat completion
@@ -208,7 +208,7 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({
   apiKey: 'your-api-key',
-  baseURL: 'http://localhost:8000/v1'
+  baseURL: 'http://localhost:8088/v1'
 });
 
 const response = await openai.chat.completions.create({
@@ -224,7 +224,7 @@ console.log(response.choices[0].message.content);
 ### cURL
 
 ```bash
-curl http://localhost:8000/v1/chat/completions \
+curl http://localhost:8088/v1/chat/completions \
   -H "Authorization: Bearer your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -241,7 +241,7 @@ from langchain_openai import ChatOpenAI
 llm = ChatOpenAI(
     model="llama2-7b",
     openai_api_key="your-api-key",
-    openai_api_base="http://localhost:8000/v1"
+    openai_api_base="http://localhost:8088/v1"
 )
 
 response = llm.invoke("Explain machine learning")
@@ -256,7 +256,7 @@ from llama_index.llms.openai import OpenAI
 llm = OpenAI(
     model="llama2-7b",
     api_key="your-api-key",
-    api_base="http://localhost:8000/v1"
+    api_base="http://localhost:8088/v1"
 )
 
 response = llm.complete("The capital of France is")

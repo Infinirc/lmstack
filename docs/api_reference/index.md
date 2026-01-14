@@ -22,7 +22,7 @@ Include the API key in the `Authorization` header:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:8000/api/deployments
+  http://localhost:8088/api/deployments
 ```
 
 ### Creating API Keys
@@ -30,7 +30,7 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 API keys can be created via the web UI or API:
 
 ```bash
-curl -X POST http://localhost:8000/api/api-keys \
+curl -X POST http://localhost:8088/api/api-keys \
   -H "Authorization: Bearer ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "my-api-key"}'
@@ -38,7 +38,7 @@ curl -X POST http://localhost:8000/api/api-keys \
 
 ## Base URL
 
-- Development: `http://localhost:8000`
+- Development: `http://localhost:8088`
 - Production: `https://api.yourdomain.com`
 
 ## Response Format
@@ -106,7 +106,7 @@ Real-time updates are available via WebSocket:
 import httpx
 
 client = httpx.Client(
-    base_url="http://localhost:8000",
+    base_url="http://localhost:8088",
     headers={"Authorization": f"Bearer {api_key}"}
 )
 
@@ -118,7 +118,7 @@ deployments = response.json()
 ### JavaScript/TypeScript
 
 ```typescript
-const response = await fetch('http://localhost:8000/api/deployments', {
+const response = await fetch('http://localhost:8088/api/deployments', {
   headers: {
     'Authorization': `Bearer ${apiKey}`
   }

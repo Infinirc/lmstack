@@ -252,7 +252,7 @@ export default function Users() {
       dataIndex: "last_login_at",
       key: "last_login_at",
       render: (date: string) =>
-        date ? dayjs(date).format("YYYY-MM-DD HH:mm") : "Never",
+        date ? dayjs(date).local().format("YYYY-MM-DD HH:mm") : "Never",
     },
     {
       title: "Actions",
