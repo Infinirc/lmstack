@@ -18,9 +18,9 @@ from app.models.api_key import Usage
 router = APIRouter()
 settings = get_settings()
 
-# Backup directory
-BACKUP_DIR = Path("./backups")
-BACKUP_DIR.mkdir(exist_ok=True)
+# Backup directory - use data_dir for proper permissions in Docker
+BACKUP_DIR = settings.data_dir / "backups"
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class BackupInfo(BaseModel):
