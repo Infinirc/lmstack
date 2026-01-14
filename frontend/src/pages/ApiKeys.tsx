@@ -309,10 +309,10 @@ export default function ApiKeys() {
   const { isDark } = useAppTheme();
   const { canEdit } = useAuth();
 
-  // Get base URL for API Gateway (always port 8088)
+  // Get base URL for API Gateway (always port 52000)
   const baseUrl = useMemo(() => {
     const { protocol, hostname } = window.location;
-    return `${protocol}//${hostname}:8088`;
+    return `${protocol}//${hostname}:52000`;
   }, []);
 
   const fetchData = useCallback(async () => {

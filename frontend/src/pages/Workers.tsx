@@ -758,7 +758,7 @@ export default function Workers() {
 pip install -r requirements.txt
 python agent.py \\
   --name ${generatedToken.name} \\
-  --server-url ${window.location.protocol}//${window.location.hostname}:8088 \\
+  --server-url ${window.location.protocol}//${window.location.hostname}:52000 \\
   --registration-token ${generatedToken.token}`}
                 </pre>
                 <Button
@@ -770,7 +770,7 @@ python agent.py \\
 pip install -r requirements.txt
 python agent.py \\
   --name ${generatedToken.name} \\
-  --server-url ${window.location.protocol}//${window.location.hostname}:8088 \\
+  --server-url ${window.location.protocol}//${window.location.hostname}:52000 \\
   --registration-token ${generatedToken.token}`;
                     if (navigator.clipboard && window.isSecureContext) {
                       navigator.clipboard.writeText(devCommand);

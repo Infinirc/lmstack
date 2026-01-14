@@ -32,8 +32,8 @@ RUN mkdir -p /app/data
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; r=httpx.get('http://127.0.0.1:8088/health'); exit(0 if r.status_code==200 else 1)"
+    CMD python -c "import httpx; r=httpx.get('http://127.0.0.1:52000/health'); exit(0 if r.status_code==200 else 1)"
 
-EXPOSE 8088
+EXPOSE 52000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8088", "--workers", "4"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "52000", "--workers", "4"]
