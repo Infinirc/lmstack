@@ -114,26 +114,18 @@ async def create_deployment(
 ):
     """Create a new deployment"""
     # Check if deployment with same name exists
-    existing = await db.execute(
-        select(Deployment).where(Deployment.name == deployment_in.name)
-    )
+    existing = await db.execute(select(Deployment).where(Deployment.name == deployment_in.name))
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="Deployment with this name already exists"
-        )
+        raise HTTPException(status_code=400, detail="Deployment with this name already exists")
 
     # Verify worker exists
-    worker_result = await db.execute(
-        select(Worker).where(Worker.id == deployment_in.worker_id)
-    )
+    worker_result = await db.execute(select(Worker).where(Worker.id == deployment_in.worker_id))
     worker = worker_result.scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
 
     # Verify model exists
-    model_result = await db.execute(
-        select(LLMModel).where(LLMModel.id == deployment_in.model_id)
-    )
+    model_result = await db.execute(select(LLMModel).where(LLMModel.id == deployment_in.model_id))
     model = model_result.scalar_one_or_none()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -332,9 +324,7 @@ async def start_deployment(
         DeploymentStatus.STOPPED.value,
         DeploymentStatus.ERROR.value,
     ]:
-        raise HTTPException(
-            status_code=400, detail="Deployment is not stopped or in error state"
-        )
+        raise HTTPException(status_code=400, detail="Deployment is not stopped or in error state")
 
     # Reset status and start deployment
     deployment.status = DeploymentStatus.PENDING.value

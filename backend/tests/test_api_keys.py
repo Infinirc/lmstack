@@ -32,9 +32,7 @@ class TestApiKeyModel:
         assert raw_key.startswith("lmsk_")
 
     @pytest.mark.asyncio
-    async def test_api_key_verification(
-        self, db_session: AsyncSession, test_user: User
-    ):
+    async def test_api_key_verification(self, db_session: AsyncSession, test_user: User):
         """Test API key verification."""
         api_key = ApiKey(
             name="verify-test-key",
@@ -57,9 +55,7 @@ class TestApiKeyEndpoints:
     """Test API key management endpoints."""
 
     @pytest.mark.asyncio
-    async def test_list_api_keys_empty(
-        self, async_client: AsyncClient, auth_headers: dict
-    ):
+    async def test_list_api_keys_empty(self, async_client: AsyncClient, auth_headers: dict):
         """Test listing API keys when none exist."""
         response = await async_client.get("/api/api-keys", headers=auth_headers)
 
@@ -83,9 +79,7 @@ class TestApiKeyEndpoints:
     @pytest.mark.asyncio
     async def test_create_api_key_unauthorized(self, async_client: AsyncClient):
         """Test creating API key without authentication."""
-        response = await async_client.post(
-            "/api/api-keys", json={"name": "unauthorized-key"}
-        )
+        response = await async_client.post("/api/api-keys", json={"name": "unauthorized-key"})
 
         assert response.status_code == 401
 
@@ -109,19 +103,13 @@ class TestApiKeyEndpoints:
         await db_session.refresh(api_key)
 
         # Delete the key
-        response = await async_client.delete(
-            f"/api/api-keys/{api_key.id}", headers=auth_headers
-        )
+        response = await async_client.delete(f"/api/api-keys/{api_key.id}", headers=auth_headers)
 
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_delete_nonexistent_api_key(
-        self, async_client: AsyncClient, auth_headers: dict
-    ):
+    async def test_delete_nonexistent_api_key(self, async_client: AsyncClient, auth_headers: dict):
         """Test deleting a nonexistent API key."""
-        response = await async_client.delete(
-            "/api/api-keys/99999", headers=auth_headers
-        )
+        response = await async_client.delete("/api/api-keys/99999", headers=auth_headers)
 
         assert response.status_code == 404

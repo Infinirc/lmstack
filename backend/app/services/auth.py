@@ -142,9 +142,7 @@ class AuthService:
     async def is_initialized(db: AsyncSession) -> bool:
         """Check if the system has been initialized (has at least one admin)."""
         count = await db.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(User.role == UserRole.ADMIN.value)
+            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN.value)
         )
         return count > 0
 

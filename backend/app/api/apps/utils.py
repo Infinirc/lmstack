@@ -111,9 +111,7 @@ async def call_worker_api(
             response = await client.request(method, url, **kwargs)
 
             if response.status_code == 404:
-                raise HTTPException(
-                    status_code=404, detail="Resource not found on worker"
-                )
+                raise HTTPException(status_code=404, detail="Resource not found on worker")
 
             if response.status_code >= 400:
                 detail = response.json().get("detail", response.text)
@@ -127,9 +125,7 @@ async def call_worker_api(
             detail=f"Cannot connect to worker {worker.name} at {worker.address}",
         )
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504, detail=f"Worker {worker.name} request timed out"
-        )
+        raise HTTPException(status_code=504, detail=f"Worker {worker.name} request timed out")
     except HTTPException:
         raise
     except Exception as e:
@@ -171,9 +167,7 @@ def get_host_ip(request: Request, worker: Worker) -> str:
                 host_ip = s.getsockname()[0]
                 s.close()
             except OSError as e:
-                logger.warning(
-                    f"Could not determine host IP for worker {worker_ip}: {e}"
-                )
+                logger.warning(f"Could not determine host IP for worker {worker_ip}: {e}")
                 host_ip = "host.docker.internal"  # Fallback for Docker Desktop
 
     return host_ip

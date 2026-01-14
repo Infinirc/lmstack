@@ -57,9 +57,7 @@ class HeadscaleNode:
         self.ip_addresses = data.get("ipAddresses") or data.get("ip_addresses", [])
         self.online = data.get("online", False)
         self.last_seen = _parse_timestamp(data.get("lastSeen") or data.get("last_seen"))
-        self.created_at = _parse_timestamp(
-            data.get("createdAt") or data.get("created_at")
-        )
+        self.created_at = _parse_timestamp(data.get("createdAt") or data.get("created_at"))
 
     @property
     def ipv4(self) -> str | None:
@@ -73,9 +71,7 @@ class HeadscaleNode:
 class HeadscaleManager:
     """Manages Headscale VPN server."""
 
-    def __init__(
-        self, server_url: str = "http://localhost", http_port: int = HEADSCALE_HTTP_PORT
-    ):
+    def __init__(self, server_url: str = "http://localhost", http_port: int = HEADSCALE_HTTP_PORT):
         self._client: docker.DockerClient | None = None
         self.server_url = server_url
         self.http_port = http_port
@@ -255,9 +251,7 @@ class HeadscaleManager:
 
     async def _get_user_id(self, username: str) -> int | None:
         """Get user ID by username."""
-        exit_code, output = await self._exec_command(
-            "users", "list", "--output", "json"
-        )
+        exit_code, output = await self._exec_command("users", "list", "--output", "json")
         if exit_code == 0:
             try:
                 users = json.loads(output)
@@ -322,9 +316,7 @@ class HeadscaleManager:
 
     async def list_nodes(self, user: str = LMSTACK_USER) -> list[HeadscaleNode]:
         """List all nodes (newer Headscale versions don't support --user filter)."""
-        exit_code, output = await self._exec_command(
-            "nodes", "list", "--output", "json"
-        )
+        exit_code, output = await self._exec_command("nodes", "list", "--output", "json")
 
         if exit_code == 0:
             try:

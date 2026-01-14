@@ -74,9 +74,7 @@ async def create_api_key(
     # Check for duplicate name
     existing = await db.execute(select(ApiKey).where(ApiKey.name == api_key_in.name))
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="API key with this name already exists"
-        )
+        raise HTTPException(status_code=400, detail="API key with this name already exists")
 
     # Generate keys
     access_key = generate_access_key()
@@ -150,13 +148,9 @@ async def update_api_key(
 
     # Check for duplicate name
     if api_key_in.name and api_key_in.name != api_key.name:
-        existing = await db.execute(
-            select(ApiKey).where(ApiKey.name == api_key_in.name)
-        )
+        existing = await db.execute(select(ApiKey).where(ApiKey.name == api_key_in.name))
         if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=400, detail="API key with this name already exists"
-            )
+            raise HTTPException(status_code=400, detail="API key with this name already exists")
 
     # Update fields
     update_data = api_key_in.model_dump(exclude_unset=True)
@@ -221,9 +215,7 @@ async def get_api_key_stats(
         "total_prompt_tokens": row.total_prompt_tokens or 0 if row else 0,
         "total_completion_tokens": row.total_completion_tokens or 0 if row else 0,
         "total_tokens": (
-            (row.total_prompt_tokens or 0) + (row.total_completion_tokens or 0)
-            if row
-            else 0
+            (row.total_prompt_tokens or 0) + (row.total_completion_tokens or 0) if row else 0
         ),
     }
 
@@ -268,12 +260,9 @@ async def get_all_api_keys_stats(
     return {
         "total_requests": total_row.total_requests or 0 if total_row else 0,
         "total_prompt_tokens": total_row.total_prompt_tokens or 0 if total_row else 0,
-        "total_completion_tokens": (
-            total_row.total_completion_tokens or 0 if total_row else 0
-        ),
+        "total_completion_tokens": (total_row.total_completion_tokens or 0 if total_row else 0),
         "total_tokens": (
-            (total_row.total_prompt_tokens or 0)
-            + (total_row.total_completion_tokens or 0)
+            (total_row.total_prompt_tokens or 0) + (total_row.total_completion_tokens or 0)
             if total_row
             else 0
         ),

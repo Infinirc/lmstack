@@ -90,9 +90,7 @@ class DeployerService:
 
                         if response.status_code != 200:
                             deployment.status = DeploymentStatus.ERROR.value
-                            deployment.status_message = (
-                                f"Worker returned error: {response.text}"
-                            )
+                            deployment.status_message = f"Worker returned error: {response.text}"
                             await db.commit()
                             return
 
@@ -102,9 +100,7 @@ class DeployerService:
 
                 # Container started, now waiting for model to load
                 deployment.status = DeploymentStatus.STARTING.value
-                deployment.status_message = (
-                    "Downloading model and Loading model into GPU memory..."
-                )
+                deployment.status_message = "Downloading model and Loading model into GPU memory..."
                 await db.commit()
 
                 # For Ollama, we need to pull the model first
@@ -207,9 +203,7 @@ class DeployerService:
 
                                 # Check for completion
                                 if status == "success":
-                                    logger.info(
-                                        f"Ollama model {model_id} pulled successfully"
-                                    )
+                                    logger.info(f"Ollama model {model_id} pulled successfully")
                                     return True
 
                             except Exception as e:
@@ -253,13 +247,9 @@ class DeployerService:
         elapsed = 0
         check_count = 0
 
-        logger.info(
-            f"Waiting for API to be ready at {health_endpoint} (backend={backend})"
-        )
+        logger.info(f"Waiting for API to be ready at {health_endpoint} (backend={backend})")
 
-        async with httpx.AsyncClient(
-            timeout=self.HEALTH_CHECK_REQUEST_TIMEOUT
-        ) as client:
+        async with httpx.AsyncClient(timeout=self.HEALTH_CHECK_REQUEST_TIMEOUT) as client:
             while elapsed < self.HEALTH_CHECK_TIMEOUT:
                 check_count += 1
 
@@ -298,18 +288,13 @@ class DeployerService:
                         ollama_response = await client.get(ollama_endpoint)
                         if ollama_response.status_code == 200:
                             ollama_data = ollama_response.json()
-                            if (
-                                ollama_data.get("models")
-                                and len(ollama_data["models"]) > 0
-                            ):
+                            if ollama_data.get("models") and len(ollama_data["models"]) > 0:
                                 logger.info(
                                     f"Ollama API ready at {ollama_endpoint} after {elapsed}s"
                                 )
                                 return True
 
-                    logger.debug(
-                        f"Health check {check_count}: status={response.status_code}"
-                    )
+                    logger.debug(f"Health check {check_count}: status={response.status_code}")
 
                 except httpx.ConnectError:
                     # Container not ready yet, this is expected during startup
@@ -326,10 +311,7 @@ class DeployerService:
                             select(Deployment).where(Deployment.id == deployment_id)
                         )
                         deployment = result.scalar_one_or_none()
-                        if (
-                            deployment
-                            and deployment.status == DeploymentStatus.STARTING.value
-                        ):
+                        if deployment and deployment.status == DeploymentStatus.STARTING.value:
                             mins = elapsed // 60
                             secs = elapsed % 60
                             time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
@@ -343,9 +325,7 @@ class DeployerService:
                 await asyncio.sleep(self.HEALTH_CHECK_INTERVAL)
                 elapsed += self.HEALTH_CHECK_INTERVAL
 
-        logger.warning(
-            f"API health check timed out after {elapsed}s ({check_count} checks)"
-        )
+        logger.warning(f"API health check timed out after {elapsed}s ({check_count} checks)")
         return False
 
     def _is_local_worker(self, address: str) -> bool:
@@ -414,17 +394,13 @@ class DeployerService:
             command = deploy_request.get("command", [])
             environment = deploy_request.get("environment", {})
             gpu_indexes = deploy_request.get("gpu_indexes", [0])
-            deployment_name = deploy_request.get(
-                "deployment_name", "lmstack-deployment"
-            )
+            deployment_name = deploy_request.get("deployment_name", "lmstack-deployment")
 
             # Find available port
             host_port = self._find_available_port()
 
             # Container name
-            container_name = (
-                f"lmstack-{deployment_name}-{deploy_request['deployment_id']}"
-            )
+            container_name = f"lmstack-{deployment_name}-{deploy_request['deployment_id']}"
 
             # Build GPU device requests
             device_requests = [
@@ -459,9 +435,7 @@ class DeployerService:
                 restart_policy={"Name": "unless-stopped"},
             )
 
-            logger.info(
-                f"Started local container: {container.id[:12]} on port {host_port}"
-            )
+            logger.info(f"Started local container: {container.id[:12]} on port {host_port}")
 
             return {
                 "container_id": container.id,
@@ -490,9 +464,7 @@ class DeployerService:
         # Determine docker image based on backend
         # Priority: deployment extra_params > model docker_image > backend default
         deployment_image = (
-            deployment.extra_params.get("docker_image")
-            if deployment.extra_params
-            else None
+            deployment.extra_params.get("docker_image") if deployment.extra_params else None
         )
 
         backend = deployment.backend
@@ -657,9 +629,7 @@ class DeployerService:
             "OLLAMA_HOST": "0.0.0.0:8000",  # Bind to container port 8000
             "OLLAMA_ORIGINS": "*",  # Allow CORS from all origins (required for web UI)
             "OLLAMA_NUM_PARALLEL": str(
-                deployment.extra_params.get("num_parallel", 4)
-                if deployment.extra_params
-                else "4"
+                deployment.extra_params.get("num_parallel", 4) if deployment.extra_params else "4"
             ),
             "OLLAMA_MAX_LOADED_MODELS": str(
                 deployment.extra_params.get("max_loaded_models", 1)
@@ -668,9 +638,7 @@ class DeployerService:
             ),
             # GPU settings
             "OLLAMA_GPU_OVERHEAD": "0",
-            "CUDA_VISIBLE_DEVICES": ",".join(
-                str(i) for i in (deployment.gpu_indexes or [0])
-            ),
+            "CUDA_VISIBLE_DEVICES": ",".join(str(i) for i in (deployment.gpu_indexes or [0])),
         }
 
         # Add any custom environment variables from extra_params

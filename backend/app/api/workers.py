@@ -46,9 +46,7 @@ async def list_workers(
     # Add deployment count
     items = []
     for worker in workers:
-        deployment_count_query = select(func.count()).where(
-            Deployment.worker_id == worker.id
-        )
+        deployment_count_query = select(func.count()).where(Deployment.worker_id == worker.id)
         deployment_count = await db.scalar(deployment_count_query) or 0
 
         worker_dict = {
@@ -79,23 +77,15 @@ async def create_worker(
     # Check if worker with same name exists
     existing = await db.execute(select(Worker).where(Worker.name == worker_in.name))
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="Worker with this name already exists"
-        )
+        raise HTTPException(status_code=400, detail="Worker with this name already exists")
 
     worker = Worker(
         name=worker_in.name,
         address=worker_in.address,
         description=worker_in.description,
         labels=worker_in.labels,
-        gpu_info=(
-            [gpu.model_dump() for gpu in worker_in.gpu_info]
-            if worker_in.gpu_info
-            else None
-        ),
-        system_info=(
-            worker_in.system_info.model_dump() if worker_in.system_info else None
-        ),
+        gpu_info=([gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None),
+        system_info=(worker_in.system_info.model_dump() if worker_in.system_info else None),
         status=WorkerStatus.ONLINE.value,
         last_heartbeat=datetime.now(UTC),
     )
@@ -132,9 +122,7 @@ async def get_worker(
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
 
-    deployment_count_query = select(func.count()).where(
-        Deployment.worker_id == worker.id
-    )
+    deployment_count_query = select(func.count()).where(Deployment.worker_id == worker.id)
     deployment_count = await db.scalar(deployment_count_query) or 0
 
     return WorkerResponse(
@@ -183,9 +171,7 @@ async def update_worker(
     await db.commit()
     await db.refresh(worker)
 
-    deployment_count_query = select(func.count()).where(
-        Deployment.worker_id == worker.id
-    )
+    deployment_count_query = select(func.count()).where(Deployment.worker_id == worker.id)
     deployment_count = await db.scalar(deployment_count_query) or 0
 
     return WorkerResponse(
@@ -221,9 +207,7 @@ async def delete_worker(
         select(func.count()).where(Deployment.worker_id == worker_id)
     )
     if deployment_count and deployment_count > 0:
-        raise HTTPException(
-            status_code=400, detail="Cannot delete worker with active deployments"
-        )
+        raise HTTPException(status_code=400, detail="Cannot delete worker with active deployments")
 
     await db.delete(worker)
     await db.commit()

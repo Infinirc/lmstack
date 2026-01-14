@@ -58,9 +58,7 @@ def get_gpu_info() -> list[dict]:
                         {
                             "index": int(parts[0]),
                             "name": parts[1],
-                            "memory_total": int(
-                                float(parts[2]) * 1024 * 1024
-                            ),  # MB to bytes
+                            "memory_total": int(float(parts[2]) * 1024 * 1024),  # MB to bytes
                             "memory_used": int(float(parts[3]) * 1024 * 1024),
                             "memory_free": int(float(parts[4]) * 1024 * 1024),
                             "utilization": int(parts[5]) if parts[5] != "[N/A]" else 0,

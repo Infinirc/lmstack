@@ -22,9 +22,7 @@ from app.config import get_settings
 async def table_exists(conn, table_name: str) -> bool:
     """Check if a table exists (SQLite compatible)"""
     result = await conn.execute(
-        text(
-            f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
-        )
+        text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
     )
     return result.fetchone() is not None
 
@@ -83,9 +81,7 @@ async def migrate():
             )
             # Create index on conversation_id
             await conn.execute(
-                text(
-                    "CREATE INDEX idx_messages_conversation_id ON messages(conversation_id)"
-                )
+                text("CREATE INDEX idx_messages_conversation_id ON messages(conversation_id)")
             )
             print("'messages' table created successfully!")
         else:

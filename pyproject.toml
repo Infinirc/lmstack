@@ -1,0 +1,10 @@
+# Root pyproject.toml for pre-commit tools
+# This ensures black and isort use consistent settings
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100

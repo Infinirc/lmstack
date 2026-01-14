@@ -53,14 +53,10 @@ async def get_disk_usage():
 
         # Calculate reclaimable
         images_reclaimable = sum(
-            img.get("Size", 0)
-            for img in df.get("Images", [])
-            if img.get("Containers", 0) == 0
+            img.get("Size", 0) for img in df.get("Images", []) if img.get("Containers", 0) == 0
         )
         containers_reclaimable = sum(
-            c.get("SizeRw", 0) or 0
-            for c in df.get("Containers", [])
-            if c.get("State") != "running"
+            c.get("SizeRw", 0) or 0 for c in df.get("Containers", []) if c.get("State") != "running"
         )
         volumes_reclaimable = sum(
             v.get("UsageData", {}).get("Size", 0) or 0
@@ -68,9 +64,7 @@ async def get_disk_usage():
             if v.get("UsageData", {}).get("RefCount", 0) == 0
         )
         build_cache_reclaimable = sum(
-            bc.get("Size", 0)
-            for bc in df.get("BuildCache", [])
-            if not bc.get("InUse", False)
+            bc.get("Size", 0) for bc in df.get("BuildCache", []) if not bc.get("InUse", False)
         )
 
         return {
@@ -94,10 +88,7 @@ async def get_disk_usage():
                 "size": build_cache_size,
                 "reclaimable": build_cache_reclaimable,
             },
-            "total_size": images_size
-            + containers_size
-            + volumes_size
-            + build_cache_size,
+            "total_size": images_size + containers_size + volumes_size + build_cache_size,
             "total_reclaimable": (
                 images_reclaimable
                 + containers_reclaimable
@@ -193,9 +184,7 @@ async def prune_storage(
             # Build cache prune via API
             try:
                 prune_result = agent.docker.client.api.prune_builds()
-                result["build_cache_deleted"] = (
-                    prune_result.get("CachesDeleted", 0) or 0
-                )
+                result["build_cache_deleted"] = prune_result.get("CachesDeleted", 0) or 0
                 result["space_reclaimed"] += prune_result.get("SpaceReclaimed", 0)
             except AttributeError:
                 # Build cache prune may not be available in older Docker versions

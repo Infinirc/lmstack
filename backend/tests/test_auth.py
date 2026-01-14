@@ -15,9 +15,7 @@ class TestAuthService:
 
     def test_create_access_token(self):
         """Test JWT token creation."""
-        token = auth_service.create_access_token(
-            data={"sub": "1", "username": "testuser"}
-        )
+        token = auth_service.create_access_token(data={"sub": "1", "username": "testuser"})
 
         assert token is not None
         assert isinstance(token, str)
@@ -25,9 +23,7 @@ class TestAuthService:
 
     def test_decode_token_valid(self):
         """Test decoding a valid JWT token."""
-        token = auth_service.create_access_token(
-            data={"sub": "1", "username": "testuser"}
-        )
+        token = auth_service.create_access_token(data={"sub": "1", "username": "testuser"})
 
         payload = auth_service.decode_token(token)
 
@@ -87,9 +83,7 @@ class TestAuthEndpoints:
         assert data["token_type"] == "bearer"
 
     @pytest.mark.asyncio
-    async def test_login_wrong_password(
-        self, async_client: AsyncClient, test_user: User
-    ):
+    async def test_login_wrong_password(self, async_client: AsyncClient, test_user: User):
         """Test login with wrong password."""
         response = await async_client.post(
             "/api/auth/login",

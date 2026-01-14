@@ -42,9 +42,9 @@ class ContainerManager:
         for container in self.client.containers.list(all=all):
             # Check if managed by LMStack
             labels = container.labels or {}
-            is_managed = labels.get(
-                self.LMSTACK_LABEL
-            ) == "true" or container.name.startswith("lmstack-")
+            is_managed = labels.get(self.LMSTACK_LABEL) == "true" or container.name.startswith(
+                "lmstack-"
+            )
 
             if managed_only and not is_managed:
                 continue
@@ -93,9 +93,7 @@ class ContainerManager:
                     "image_id": container.image.short_id if container.image else "",
                     "state": container.status,
                     "status": container.attrs.get("Status", container.status),
-                    "created_at": self._normalize_timestamp(
-                        container.attrs.get("Created")
-                    ),
+                    "created_at": self._normalize_timestamp(container.attrs.get("Created")),
                     "started_at": self._normalize_timestamp(started_at),
                     "finished_at": self._normalize_timestamp(finished_at),
                     "exit_code": state.get("ExitCode"),
@@ -217,8 +215,7 @@ class ContainerManager:
             - stats["precpu_stats"]["cpu_usage"]["total_usage"]
         )
         system_delta = (
-            stats["cpu_stats"]["system_cpu_usage"]
-            - stats["precpu_stats"]["system_cpu_usage"]
+            stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
         )
         num_cpus = stats["cpu_stats"]["online_cpus"]
 
@@ -238,12 +235,8 @@ class ContainerManager:
 
         # Block I/O stats
         blkio = stats.get("blkio_stats", {}).get("io_service_bytes_recursive", [])
-        block_read = sum(
-            b.get("value", 0) for b in (blkio or []) if b.get("op") == "read"
-        )
-        block_write = sum(
-            b.get("value", 0) for b in (blkio or []) if b.get("op") == "write"
-        )
+        block_read = sum(b.get("value", 0) for b in (blkio or []) if b.get("op") == "read")
+        block_write = sum(b.get("value", 0) for b in (blkio or []) if b.get("op") == "write")
 
         return {
             "cpu_percent": round(cpu_percent, 2),
@@ -509,9 +502,7 @@ class ContainerManager:
         Returns:
             Command execution result
         """
-        logger.info(
-            f"Executing command in container {container_id}: {' '.join(command)}"
-        )
+        logger.info(f"Executing command in container {container_id}: {' '.join(command)}")
         container = self.client.containers.get(container_id)
 
         exit_code, output = container.exec_run(

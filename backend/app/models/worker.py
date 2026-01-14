@@ -31,15 +31,11 @@ class Worker(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    address: Mapped[str] = mapped_column(
-        String(255), nullable=False
-    )  # IP:Port (direct connection)
+    address: Mapped[str] = mapped_column(String(255), nullable=False)  # IP:Port (direct connection)
     status: Mapped[str] = mapped_column(String(50), default=WorkerStatus.OFFLINE.value)
 
     # Connection type and Tailscale support
-    connection_type: Mapped[str] = mapped_column(
-        String(50), default=ConnectionType.DIRECT.value
-    )
+    connection_type: Mapped[str] = mapped_column(String(50), default=ConnectionType.DIRECT.value)
     tailscale_ip: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )  # IP in Tailscale network
@@ -52,15 +48,11 @@ class Worker(Base):
     labels: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    last_heartbeat: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     deployments: Mapped[list["Deployment"]] = relationship(

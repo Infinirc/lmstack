@@ -38,9 +38,7 @@ def get_deployment_progress(app_id: int) -> dict:
     return {"stage": "unknown", "progress": 0, "message": "No progress data"}
 
 
-def set_deployment_progress(
-    app_id: int, stage: str, progress: int, message: str
-) -> None:
+def set_deployment_progress(app_id: int, stage: str, progress: int, message: str) -> None:
     """Set deployment progress for an app."""
     _deployment_progress[app_id] = {
         "stage": stage,
@@ -58,9 +56,7 @@ def cleanup_old_progress_entries() -> None:
             for app_id, progress in _deployment_progress.items()
             if progress.get("stage") in ("completed", "error", "running")
         ]
-        for app_id in to_remove[
-            : len(_deployment_progress) - _MAX_PROGRESS_ENTRIES // 2
-        ]:
+        for app_id in to_remove[: len(_deployment_progress) - _MAX_PROGRESS_ENTRIES // 2]:
             _deployment_progress.pop(app_id, None)
 
 
@@ -140,9 +136,7 @@ async def wait_for_container_healthy(
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         while waited < max_wait:
             try:
-                response = await client.get(
-                    f"http://{worker_address}/containers/{container_id}"
-                )
+                response = await client.get(f"http://{worker_address}/containers/{container_id}")
 
                 # Reset failure counter on successful connection
                 consecutive_failures = 0
@@ -156,9 +150,7 @@ async def wait_for_container_healthy(
                     state = container_info.get("state", "").lower()
                     status = container_info.get("status", "").lower()
 
-                    logger.debug(
-                        f"App {app_id} container state={state}, status={status}"
-                    )
+                    logger.debug(f"App {app_id} container state={state}, status={status}")
 
                     if state == "running":
                         # Check health status in the status string
@@ -211,9 +203,7 @@ async def wait_for_container_healthy(
                     f"Failed to check container status (attempt {consecutive_failures}): {e}"
                 )
                 if consecutive_failures >= max_consecutive_failures:
-                    raise Exception(
-                        f"Worker unreachable after {consecutive_failures} attempts"
-                    )
+                    raise Exception(f"Worker unreachable after {consecutive_failures} attempts")
 
             await asyncio.sleep(poll_interval)
             waited += poll_interval
@@ -348,18 +338,14 @@ async def deploy_app_background(
                 app.status = AppStatus.ERROR.value
                 app.status_message = "Container health check timed out after 10 minutes"
                 await db.commit()
-                set_deployment_progress(
-                    app_id, "error", 0, "Container health check timed out"
-                )
+                set_deployment_progress(app_id, "error", 0, "Container health check timed out")
                 return
 
             # Phase 4: Setup proxy
             if use_proxy:
                 await _setup_nginx_proxy(app_id, app_type, worker_address, port)
             else:
-                logger.info(
-                    f"Proxy disabled for app {app_id}, using direct worker connection"
-                )
+                logger.info(f"Proxy disabled for app {app_id}, using direct worker connection")
 
             # Mark as running
             app.status = AppStatus.RUNNING.value

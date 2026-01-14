@@ -106,9 +106,7 @@ async def get_conversation(
     """Get a conversation with all messages"""
     result = await db.execute(
         select(Conversation)
-        .where(
-            Conversation.id == conversation_id, Conversation.user_id == current_user.id
-        )
+        .where(Conversation.id == conversation_id, Conversation.user_id == current_user.id)
         .options(selectinload(Conversation.messages))
     )
     conversation = result.scalar_one_or_none()
@@ -234,7 +232,5 @@ async def clear_all_conversations(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete all conversations for the current user"""
-    await db.execute(
-        delete(Conversation).where(Conversation.user_id == current_user.id)
-    )
+    await db.execute(delete(Conversation).where(Conversation.user_id == current_user.id))
     await db.commit()

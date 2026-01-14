@@ -39,9 +39,7 @@ async def check_worker_status():
 
             async with async_session_maker() as db:
                 # Find workers that haven't sent heartbeat within timeout
-                timeout_threshold = datetime.now(UTC) - timedelta(
-                    seconds=settings.worker_timeout
-                )
+                timeout_threshold = datetime.now(UTC) - timedelta(seconds=settings.worker_timeout)
 
                 # Get workers that are online but haven't sent heartbeat
                 result = await db.execute(

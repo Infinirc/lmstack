@@ -39,9 +39,7 @@ async def get_current_user(
 
     parts = authorization.split(" ")
     if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=401, detail="Invalid Authorization header format"
-        )
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
 
     token = parts[1]
     payload = auth_service.decode_token(token)
@@ -158,9 +156,7 @@ async def change_password(
 ):
     """Change current user's password."""
     # Verify current password
-    if not auth_service.verify_password(
-        request.current_password, current_user.hashed_password
-    ):
+    if not auth_service.verify_password(request.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     # Update password
@@ -211,9 +207,7 @@ async def create_user(
     # Validate role
     valid_roles = [r.value for r in UserRole]
     if user_in.role not in valid_roles:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid role. Valid roles: {valid_roles}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid role. Valid roles: {valid_roles}")
 
     # Create user
     user = await auth_service.create_user(
@@ -254,20 +248,14 @@ async def update_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     # Prevent self-demotion from admin
-    if (
-        user.id == current_user.id
-        and user_in.role
-        and user_in.role != UserRole.ADMIN.value
-    ):
+    if user.id == current_user.id and user_in.role and user_in.role != UserRole.ADMIN.value:
         raise HTTPException(status_code=400, detail="Cannot demote yourself from admin")
 
     # Validate role if provided
     if user_in.role:
         valid_roles = [r.value for r in UserRole]
         if user_in.role not in valid_roles:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid role. Valid roles: {valid_roles}"
-            )
+            raise HTTPException(status_code=400, detail=f"Invalid role. Valid roles: {valid_roles}")
 
     # Update fields
     update_data = user_in.model_dump(exclude_unset=True)

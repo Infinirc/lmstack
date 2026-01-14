@@ -147,12 +147,8 @@ class DockerRunner:
 
                     # Calculate overall progress
                     total_size = sum(layer.get("total", 0) for layer in layers.values())
-                    downloaded = sum(
-                        layer.get("current", 0) for layer in layers.values()
-                    )
-                    overall_progress = (
-                        int((downloaded / total_size) * 100) if total_size > 0 else 0
-                    )
+                    downloaded = sum(layer.get("current", 0) for layer in layers.values())
+                    overall_progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
 
                     _set_pull_progress(
                         deployment_id,
@@ -173,9 +169,7 @@ class DockerRunner:
                     "status": "completed",
                     "image": image,
                     "progress": 100,
-                    "layers": _pull_progress.get(str(deployment_id), {}).get(
-                        "layers", {}
-                    ),
+                    "layers": _pull_progress.get(str(deployment_id), {}).get("layers", {}),
                 },
             )
 
@@ -325,11 +319,7 @@ class DockerRunner:
                         "id": container.id,
                         "name": container.name,
                         "status": container.status,
-                        "image": (
-                            container.image.tags[0]
-                            if container.image.tags
-                            else "unknown"
-                        ),
+                        "image": (container.image.tags[0] if container.image.tags else "unknown"),
                     }
                 )
 

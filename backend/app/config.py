@@ -52,9 +52,7 @@ class Settings(BaseSettings):
         """Parse CORS origins from comma-separated string."""
         if self.cors_origins == "*":
             return ["*"]
-        return [
-            origin.strip() for origin in self.cors_origins.split(",") if origin.strip()
-        ]
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     class Config:
         env_prefix = "LMSTACK_"

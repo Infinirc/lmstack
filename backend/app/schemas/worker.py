@@ -71,9 +71,7 @@ class WorkerCreate(WorkerBase):
 
     gpu_info: list[GPUInfo] | None = None
     system_info: SystemInfo | None = None
-    tailscale_ip: str | None = Field(
-        None, description="IP address in Tailscale network"
-    )
+    tailscale_ip: str | None = Field(None, description="IP address in Tailscale network")
     headscale_node_id: int | None = Field(None, description="Node ID in Headscale")
 
 
@@ -87,12 +85,8 @@ class WorkerUpdate(BaseModel):
     status: WorkerStatus | None = None
     gpu_info: list[GPUInfo] | None = None
     system_info: SystemInfo | None = None
-    connection_type: str | None = Field(
-        None, description="Connection type: direct or tailscale"
-    )
-    tailscale_ip: str | None = Field(
-        None, description="IP address in Tailscale network"
-    )
+    connection_type: str | None = Field(None, description="Connection type: direct or tailscale")
+    tailscale_ip: str | None = Field(None, description="IP address in Tailscale network")
     headscale_node_id: int | None = Field(None, description="Node ID in Headscale")
 
 

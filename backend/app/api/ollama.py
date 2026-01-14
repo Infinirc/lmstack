@@ -50,17 +50,13 @@ def _set_cache(key: str, data: list):
 
     # Cleanup expired entries if cache is getting large
     if len(_models_cache) >= _MAX_CACHE_ENTRIES:
-        expired_keys = [
-            k for k, (ts, _) in _models_cache.items() if current_time - ts >= CACHE_TTL
-        ]
+        expired_keys = [k for k, (ts, _) in _models_cache.items() if current_time - ts >= CACHE_TTL]
         for k in expired_keys:
             _models_cache.pop(k, None)
 
         # If still too large, remove oldest entries
         if len(_models_cache) >= _MAX_CACHE_ENTRIES:
-            sorted_keys = sorted(
-                _models_cache.keys(), key=lambda k: _models_cache[k][0]
-            )
+            sorted_keys = sorted(_models_cache.keys(), key=lambda k: _models_cache[k][0])
             for k in sorted_keys[: _MAX_CACHE_ENTRIES // 4]:
                 _models_cache.pop(k, None)
 
@@ -102,9 +98,7 @@ def _extract_readme(html: str) -> str | None:
             return content
 
     # Fallback: Try to find the display div with a simpler pattern
-    display_match2 = re.search(
-        r'<div[^>]*id="display"[^>]*>(.*?)</div>', html, re.DOTALL
-    )
+    display_match2 = re.search(r'<div[^>]*id="display"[^>]*>(.*?)</div>', html, re.DOTALL)
     if display_match2:
         content = display_match2.group(1).strip()
         if content:
@@ -186,9 +180,7 @@ async def _scrape_ollama_library() -> list[OllamaModel]:
             return models
 
     except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Failed to fetch Ollama library: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Failed to fetch Ollama library: {str(e)}")
 
 
 # Pre-defined popular models with accurate info
@@ -417,9 +409,7 @@ async def get_model_info(model_name: str):
                     model.description = desc_match.group(1).strip()
 
             # Extract available tags/sizes
-            tag_pattern = re.compile(
-                r'href="/library/' + re.escape(model_name) + r':([^"]+)"'
-            )
+            tag_pattern = re.compile(r'href="/library/' + re.escape(model_name) + r':([^"]+)"')
             tags = tag_pattern.findall(html)
             if tags:
                 model.tags = list(set(tags))
@@ -443,9 +433,7 @@ async def get_model_info(model_name: str):
             raise HTTPException(status_code=404, detail="Model not found")
         raise HTTPException(status_code=e.response.status_code, detail=str(e))
     except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Failed to fetch model info: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Failed to fetch model info: {str(e)}")
 
 
 @router.get("/tags/{model_name}")
@@ -497,9 +485,7 @@ async def get_model_tags(model_name: str):
             raise HTTPException(status_code=404, detail="Model not found")
         raise HTTPException(status_code=e.response.status_code, detail=str(e))
     except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Failed to fetch model tags: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Failed to fetch model tags: {str(e)}")
 
 
 @router.get("/popular", response_model=list[OllamaModel])

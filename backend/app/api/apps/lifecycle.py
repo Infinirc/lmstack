@@ -191,9 +191,7 @@ async def get_app_logs(
                 params={"tail": tail},
             )
             if response.status_code >= 400:
-                return AppLogsResponse(
-                    app_id=app_id, logs=f"Failed to get logs: {response.text}"
-                )
+                return AppLogsResponse(app_id=app_id, logs=f"Failed to get logs: {response.text}")
 
             logs_data = response.json()
             logs = logs_data.get("logs", "")

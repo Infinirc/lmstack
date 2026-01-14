@@ -67,9 +67,7 @@ async def clear_statistics(
             details=f"Deleted {deleted_count} usage records",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to clear statistics: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to clear statistics: {str(e)}")
 
 
 @router.get("/backups", response_model=BackupListResponse)
@@ -130,9 +128,7 @@ async def create_backup():
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create backup: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to create backup: {str(e)}")
 
 
 @router.get("/backup/{filename}")
@@ -149,9 +145,7 @@ async def download_backup(filename: str):
     if not backup_path.exists():
         raise HTTPException(status_code=404, detail="Backup not found")
 
-    return FileResponse(
-        path=backup_path, filename=filename, media_type="application/octet-stream"
-    )
+    return FileResponse(path=backup_path, filename=filename, media_type="application/octet-stream")
 
 
 @router.post("/restore/{filename}", response_model=MessageResponse)
@@ -191,9 +185,7 @@ async def restore_backup(filename: str):
             details="Please restart the server for changes to take full effect",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to restore backup: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
 
 
 @router.delete("/backup/{filename}", response_model=MessageResponse)
@@ -212,13 +204,9 @@ async def delete_backup(filename: str):
 
     try:
         backup_path.unlink()
-        return MessageResponse(
-            message="Backup deleted successfully", details=f"Deleted {filename}"
-        )
+        return MessageResponse(message="Backup deleted successfully", details=f"Deleted {filename}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to delete backup: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to delete backup: {str(e)}")
 
 
 @router.post("/restore-upload", response_model=MessageResponse)
@@ -230,9 +218,7 @@ async def restore_from_upload(file: UploadFile = File(...)):
     The server should be restarted after restore for changes to take effect.
     """
     if not file.filename or not file.filename.endswith(".db"):
-        raise HTTPException(
-            status_code=400, detail="Invalid file. Please upload a .db file"
-        )
+        raise HTTPException(status_code=400, detail="Invalid file. Please upload a .db file")
 
     try:
         # Get database path
@@ -256,6 +242,4 @@ async def restore_from_upload(file: UploadFile = File(...)):
             details="Please restart the server for changes to take full effect",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to restore from upload: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to restore from upload: {str(e)}")

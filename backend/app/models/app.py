@@ -125,9 +125,7 @@ class App(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Worker where app is deployed
-    worker_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("workers.id"), nullable=False
-    )
+    worker_id: Mapped[int] = mapped_column(Integer, ForeignKey("workers.id"), nullable=False)
 
     # Associated API key (auto-created for the app)
     api_key_id: Mapped[int | None] = mapped_column(
@@ -152,9 +150,7 @@ class App(Base):
     config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

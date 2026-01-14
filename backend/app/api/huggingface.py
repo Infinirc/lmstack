@@ -81,9 +81,7 @@ def _set_cache(key: str, data: dict):
 
     # Cleanup expired entries if cache is getting large
     if len(_model_cache) >= _MAX_CACHE_ENTRIES:
-        expired_keys = [
-            k for k, (ts, _) in _model_cache.items() if current_time - ts >= CACHE_TTL
-        ]
+        expired_keys = [k for k, (ts, _) in _model_cache.items() if current_time - ts >= CACHE_TTL]
         for k in expired_keys:
             _model_cache.pop(k, None)
 
@@ -96,9 +94,7 @@ def _set_cache(key: str, data: dict):
     _model_cache[key] = (current_time, data)
 
 
-def _parse_parameter_count(
-    model_id: str, config: dict, tags: list[str]
-) -> float | None:
+def _parse_parameter_count(model_id: str, config: dict, tags: list[str]) -> float | None:
     """
     Parse parameter count from model config or ID.
     Returns count in billions.
@@ -149,9 +145,7 @@ def _parse_parameter_count(
         hidden_size = config.get("hidden_size", config.get("d_model", 0))
         num_layers = config.get("num_hidden_layers", config.get("n_layer", 0))
         vocab_size = config.get("vocab_size", 0)
-        intermediate_size = config.get(
-            "intermediate_size", hidden_size * 4 if hidden_size else 0
-        )
+        intermediate_size = config.get("intermediate_size", hidden_size * 4 if hidden_size else 0)
 
         # Check for MoE (Mixture of Experts) models
         num_experts = config.get("num_local_experts", config.get("num_experts", 1))
@@ -162,9 +156,7 @@ def _parse_parameter_count(
 
             # Attention: Q, K, V, O projections
             # For GQA, K and V may be smaller, but we estimate conservatively
-            num_kv_heads = config.get(
-                "num_key_value_heads", config.get("num_attention_heads", 0)
-            )
+            num_kv_heads = config.get("num_key_value_heads", config.get("num_attention_heads", 0))
             num_attention_heads = config.get("num_attention_heads", num_kv_heads)
             head_dim = hidden_size // num_attention_heads if num_attention_heads else 0
 
@@ -314,10 +306,7 @@ async def get_model_info(
             siblings = data.get("siblings", [])
             for file in siblings:
                 filename = file.get("rfilename", "")
-                if any(
-                    filename.endswith(ext)
-                    for ext in [".safetensors", ".bin", ".pt", ".pth"]
-                ):
+                if any(filename.endswith(ext) for ext in [".safetensors", ".bin", ".pt", ".pth"]):
                     total_size += file.get("size", 0)
 
             # Handle gated field - can be False (bool), None, or string like "manual"/"auto"
@@ -354,17 +343,13 @@ async def get_model_info(
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail=str(e))
     except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Failed to connect to HuggingFace: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Failed to connect to HuggingFace: {str(e)}")
 
 
 @router.get("/estimate-vram/{model_id:path}", response_model=VRAMEstimate)
 async def estimate_model_vram(
     model_id: str,
-    precision: str = Query(
-        "fp16", description="Model precision: fp32, fp16, bf16, int8, int4"
-    ),
+    precision: str = Query("fp16", description="Model precision: fp32, fp16, bf16, int8, int4"),
     context_length: int = Query(4096, description="Context length"),
     gpu_memory_gb: float | None = Query(
         None, description="Available GPU memory in GB for compatibility check"
@@ -405,9 +390,7 @@ async def estimate_model_vram(
             # Rough estimate: file size / 2 (fp16) = params
             param_count = model_info.size_bytes / (2 * 1e9)
         else:
-            raise HTTPException(
-                status_code=400, detail="Could not determine model parameter count"
-            )
+            raise HTTPException(status_code=400, detail="Could not determine model parameter count")
 
     # Estimate VRAM
     vram_gb, breakdown = estimate_vram(
@@ -482,10 +465,7 @@ async def list_model_files(
                 size = sibling.get("size", 0)
 
                 # Determine file type
-                if any(
-                    filename.endswith(ext)
-                    for ext in [".safetensors", ".bin", ".pt", ".pth"]
-                ):
+                if any(filename.endswith(ext) for ext in [".safetensors", ".bin", ".pt", ".pth"]):
                     file_type = "model"
                 elif filename.endswith("config.json"):
                     file_type = "config"
@@ -509,18 +489,14 @@ async def list_model_files(
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail=str(e))
     except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Failed to connect to HuggingFace: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Failed to connect to HuggingFace: {str(e)}")
 
 
 @router.get("/search")
 async def search_models(
     query: str = Query(..., min_length=2, description="Search query"),
     limit: int = Query(10, ge=1, le=50, description="Number of results"),
-    filter_task: str | None = Query(
-        None, description="Filter by task (e.g., text-generation)"
-    ),
+    filter_task: str | None = Query(None, description="Filter by task (e.g., text-generation)"),
 ):
     """
     Search for models on HuggingFace.
@@ -556,9 +532,7 @@ async def search_models(
             ]
 
     except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Failed to search HuggingFace: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Failed to search HuggingFace: {str(e)}")
 
 
 @router.get("/popular")
@@ -598,9 +572,7 @@ async def get_popular_models(
             ]
 
     except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Failed to fetch popular models: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Failed to fetch popular models: {str(e)}")
 
 
 @router.get("/readme/{model_id:path}")

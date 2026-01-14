@@ -80,9 +80,7 @@ async def list_apps(
     total = await db.scalar(select(func.count()).select_from(App))
 
     # Get paginated results with worker relationship
-    result = await db.execute(
-        select(App).offset(skip).limit(limit).order_by(App.created_at.desc())
-    )
+    result = await db.execute(select(App).offset(skip).limit(limit).order_by(App.created_at.desc()))
     apps = result.scalars().all()
 
     # Load worker relationships
@@ -141,9 +139,7 @@ async def deploy_app(
     try:
         app_type = AppType(deploy_request.app_type)
     except ValueError:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid app type: {deploy_request.app_type}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid app type: {deploy_request.app_type}")
 
     app_def = APP_DEFINITIONS[app_type]
 
@@ -237,9 +233,7 @@ async def _create_api_key_if_needed(
     Returns:
         Tuple of (ApiKey or None, full_key string)
     """
-    needs_api_key = any(
-        v == "{api_key}" for v in app_def.get("env_template", {}).values()
-    )
+    needs_api_key = any(v == "{api_key}" for v in app_def.get("env_template", {}).values())
 
     if not needs_api_key:
         return None, ""

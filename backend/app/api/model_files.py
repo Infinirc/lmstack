@@ -66,12 +66,8 @@ async def list_model_files(
         first_dep = deps[0]
 
         # Determine overall status based on deployment states
-        running_count = sum(
-            1 for d in deps if d.status == DeploymentStatus.RUNNING.value
-        )
-        downloading_count = sum(
-            1 for d in deps if d.status == DeploymentStatus.DOWNLOADING.value
-        )
+        running_count = sum(1 for d in deps if d.status == DeploymentStatus.RUNNING.value)
+        downloading_count = sum(1 for d in deps if d.status == DeploymentStatus.DOWNLOADING.value)
         starting_count = sum(
             1
             for d in deps

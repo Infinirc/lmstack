@@ -456,9 +456,9 @@ async def proxy_streaming_request(
                                         usage_info["prompt_tokens"] = data["usage"].get(
                                             "prompt_tokens", 0
                                         )
-                                        usage_info["completion_tokens"] = data[
-                                            "usage"
-                                        ].get("completion_tokens", 0)
+                                        usage_info["completion_tokens"] = data["usage"].get(
+                                            "completion_tokens", 0
+                                        )
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             pass  # Expected for binary chunks or incomplete JSON
 
@@ -826,9 +826,7 @@ async def proxy_responses_streaming(
                                 {
                                     "type": "message",
                                     "role": "assistant",
-                                    "content": [
-                                        {"type": "output_text", "text": full_content}
-                                    ],
+                                    "content": [{"type": "output_text", "text": full_content}],
                                 }
                             ],
                         },

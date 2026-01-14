@@ -25,9 +25,7 @@ class Conversation(Base):
     )
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -58,9 +56,7 @@ class Message(Base):
     )
 
     # Message content
-    role: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )  # 'user' or 'assistant'
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # 'user' or 'assistant'
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Optional: thinking content for assistant messages
@@ -71,14 +67,10 @@ class Message(Base):
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Timestamp
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
-    conversation: Mapped["Conversation"] = relationship(
-        "Conversation", back_populates="messages"
-    )
+    conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
 
     def __repr__(self) -> str:
         return f"<Message(id={self.id}, role='{self.role}')>"

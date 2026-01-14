@@ -139,9 +139,7 @@ async def call_worker(
             detail=f"Cannot connect to worker {worker.name} at {worker.address}",
         )
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504, detail=f"Request to worker {worker.name} timed out"
-        )
+        raise HTTPException(status_code=504, detail=f"Request to worker {worker.name} timed out")
 
 
 # =============================================================================
@@ -190,10 +188,7 @@ def _get_local_disk_usage() -> dict:
 
     total_size = image_size + container_size + volume_size + cache_size
     total_reclaimable = (
-        image_reclaimable
-        + container_reclaimable
-        + volume_reclaimable
-        + cache_reclaimable
+        image_reclaimable + container_reclaimable + volume_reclaimable + cache_reclaimable
     )
 
     return {
@@ -250,9 +245,7 @@ def _delete_local_volume(volume_name: str, force: bool = False) -> dict:
     return {"status": "deleted"}
 
 
-def _prune_local_storage(
-    images: bool, containers: bool, volumes: bool, build_cache: bool
-) -> dict:
+def _prune_local_storage(images: bool, containers: bool, volumes: bool, build_cache: bool) -> dict:
     """Prune local Docker resources."""
     client = docker.from_env()
     result = {
@@ -361,9 +354,7 @@ async def list_volumes(
                 vols = _get_local_volumes()
                 logger.info(f"Local worker {worker.name} has {len(vols)} volumes")
             else:
-                logger.info(
-                    f"Fetching volumes from worker {worker.name} at {worker.address}"
-                )
+                logger.info(f"Fetching volumes from worker {worker.name} at {worker.address}")
                 data = await call_worker(worker, "GET", "/storage/volumes")
                 vols = data.get("items", [])
                 logger.info(f"Worker {worker.name} returned {len(vols)} volumes")

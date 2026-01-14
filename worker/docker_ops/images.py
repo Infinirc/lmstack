@@ -126,9 +126,7 @@ class ImageManager:
                 "working_dir": config.get("WorkingDir"),
                 "exposed_ports": list(config.get("ExposedPorts", {}).keys()),
                 "volumes": (
-                    list(config.get("Volumes", {}).keys())
-                    if config.get("Volumes")
-                    else None
+                    list(config.get("Volumes", {}).keys()) if config.get("Volumes") else None
                 ),
             },
         }
@@ -163,9 +161,7 @@ class ImageManager:
         # Pull with progress tracking
         layers_progress: dict[str, dict] = {}
 
-        for line in self.client.api.pull(
-            image, stream=True, decode=True, auth_config=auth
-        ):
+        for line in self.client.api.pull(image, stream=True, decode=True, auth_config=auth):
             if progress_callback and "id" in line:
                 layer_id = line["id"]
                 detail = line.get("progressDetail", {})
@@ -177,9 +173,7 @@ class ImageManager:
 
                 # Calculate overall progress
                 total_size = sum(lp.get("total", 0) for lp in layers_progress.values())
-                downloaded = sum(
-                    lp.get("current", 0) for lp in layers_progress.values()
-                )
+                downloaded = sum(lp.get("current", 0) for lp in layers_progress.values())
                 progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
 
                 progress_callback(progress, layers_progress)

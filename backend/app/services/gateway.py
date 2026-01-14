@@ -132,9 +132,7 @@ class GatewayService:
             return row[0], row[1]
 
         # Try to find by model_id (HuggingFace ID or Ollama model name)
-        result = await db.execute(
-            select(LLMModel).where(LLMModel.model_id == model_name)
-        )
+        result = await db.execute(select(LLMModel).where(LLMModel.model_id == model_name))
         model = result.scalar_one_or_none()
 
         if model:
@@ -187,9 +185,7 @@ class GatewayService:
                     continue
 
             seen_model_ids.add(model.id)
-            created_timestamp = (
-                int(model.created_at.timestamp()) if model.created_at else 0
-            )
+            created_timestamp = int(model.created_at.timestamp()) if model.created_at else 0
             models.append(
                 {
                     "id": model.name,

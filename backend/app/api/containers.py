@@ -173,9 +173,7 @@ async def call_worker_api(
             response = await client.request(method, url, **kwargs)
 
             if response.status_code == 404:
-                raise HTTPException(
-                    status_code=404, detail="Container not found on worker"
-                )
+                raise HTTPException(status_code=404, detail="Container not found on worker")
 
             if response.status_code >= 400:
                 detail = response.json().get("detail", response.text)
@@ -189,9 +187,7 @@ async def call_worker_api(
             detail=f"Cannot connect to worker {worker.name} at {worker.address}",
         )
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504, detail=f"Worker {worker.name} request timed out"
-        )
+        raise HTTPException(status_code=504, detail=f"Worker {worker.name} request timed out")
     except HTTPException:
         raise
     except Exception as e:
@@ -268,9 +264,7 @@ async def list_containers(
 
         except HTTPException as e:
             if e.status_code != 503:
-                logger.warning(
-                    f"Error listing containers from {worker.name}: {e.detail}"
-                )
+                logger.warning(f"Error listing containers from {worker.name}: {e.detail}")
         except Exception as e:
             logger.warning(f"Error listing containers from {worker.name}: {e}")
 

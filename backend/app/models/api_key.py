@@ -23,9 +23,7 @@ class ApiKey(Base):
 
     # Optional restrictions
     allowed_model_ids = Column(JSON, nullable=True)  # List of model IDs, null = all
-    monthly_token_limit = Column(
-        Integer, nullable=True
-    )  # Monthly token limit, null = unlimited
+    monthly_token_limit = Column(Integer, nullable=True)  # Monthly token limit, null = unlimited
     expires_at = Column(DateTime, nullable=True)
 
     # Metadata

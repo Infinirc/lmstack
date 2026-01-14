@@ -46,18 +46,14 @@ async def migrate():
         if "source" not in llm_model_columns:
             print("Adding 'source' column to llm_models...")
             await conn.execute(
-                text(
-                    "ALTER TABLE llm_models ADD COLUMN source VARCHAR(50) DEFAULT 'huggingface'"
-                )
+                text("ALTER TABLE llm_models ADD COLUMN source VARCHAR(50) DEFAULT 'huggingface'")
             )
 
             # Migrate backend values to source
             if "backend" in llm_model_columns:
                 print("Migrating backend values to source...")
                 await conn.execute(
-                    text(
-                        "UPDATE llm_models SET source = 'ollama' WHERE backend = 'ollama'"
-                    )
+                    text("UPDATE llm_models SET source = 'ollama' WHERE backend = 'ollama'")
                 )
                 await conn.execute(
                     text(
@@ -71,9 +67,7 @@ async def migrate():
         if "backend" not in deployment_columns:
             print("Adding 'backend' column to deployments...")
             await conn.execute(
-                text(
-                    "ALTER TABLE deployments ADD COLUMN backend VARCHAR(50) DEFAULT 'vllm'"
-                )
+                text("ALTER TABLE deployments ADD COLUMN backend VARCHAR(50) DEFAULT 'vllm'")
             )
 
             # Copy backend values from models to deployments

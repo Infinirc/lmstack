@@ -23,9 +23,7 @@ router = APIRouter()
 class HeadscaleStartRequest(BaseModel):
     """Request to start Headscale."""
 
-    server_url: str | None = Field(
-        None, description="Server URL (auto-detected if not provided)"
-    )
+    server_url: str | None = Field(None, description="Server URL (auto-detected if not provided)")
     http_port: int = Field(8080, description="HTTP port for Headscale")
     grpc_port: int = Field(50443, description="gRPC port for Headscale")
 

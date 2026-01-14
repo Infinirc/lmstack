@@ -39,9 +39,7 @@ async def migrate():
         # Add 'monthly_token_limit' column if not exists
         if "monthly_token_limit" not in api_key_columns:
             print("Adding 'monthly_token_limit' column to api_keys...")
-            await conn.execute(
-                text("ALTER TABLE api_keys ADD COLUMN monthly_token_limit INTEGER")
-            )
+            await conn.execute(text("ALTER TABLE api_keys ADD COLUMN monthly_token_limit INTEGER"))
             print("Column added successfully!")
         else:
             print("'monthly_token_limit' column already exists in api_keys")

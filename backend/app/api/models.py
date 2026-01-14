@@ -42,9 +42,7 @@ async def list_models(
     # Add deployment count
     items = []
     for model in models:
-        deployment_count_query = select(func.count()).where(
-            Deployment.model_id == model.id
-        )
+        deployment_count_query = select(func.count()).where(Deployment.model_id == model.id)
         deployment_count = await db.scalar(deployment_count_query) or 0
 
         model_dict = {
@@ -73,9 +71,7 @@ async def create_model(
     # Check if model with same name exists
     existing = await db.execute(select(LLMModel).where(LLMModel.name == model_in.name))
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="Model with this name already exists"
-        )
+        raise HTTPException(status_code=400, detail="Model with this name already exists")
 
     source_value = model_in.source.value if model_in.source else "huggingface"
     # Set default backend based on source for backwards compatibility
@@ -192,13 +188,9 @@ async def delete_model(
         raise HTTPException(status_code=404, detail="Model not found")
 
     # Check if model has active deployments
-    deployment_count = await db.scalar(
-        select(func.count()).where(Deployment.model_id == model_id)
-    )
+    deployment_count = await db.scalar(select(func.count()).where(Deployment.model_id == model_id))
     if deployment_count and deployment_count > 0:
-        raise HTTPException(
-            status_code=400, detail="Cannot delete model with active deployments"
-        )
+        raise HTTPException(status_code=400, detail="Cannot delete model with active deployments")
 
     await db.delete(model)
     await db.commit()
