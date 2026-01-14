@@ -7,7 +7,6 @@ Headscale is a self-hosted implementation of the Tailscale control server.
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime
 
 import docker
@@ -18,8 +17,10 @@ logger = logging.getLogger(__name__)
 
 HEADSCALE_CONTAINER_NAME = "lmstack-headscale"
 HEADSCALE_IMAGE = "headscale/headscale:latest"
-# Use user home directory to avoid permission issues
-HEADSCALE_DATA_DIR = os.path.expanduser("~/.lmstack/headscale")
+# Docker volume name for headscale data (shared between backend and headscale containers)
+HEADSCALE_VOLUME_NAME = "lmstack-headscale-data"
+# Path inside containers where the volume is mounted
+HEADSCALE_DATA_DIR = "/app/data/headscale"
 HEADSCALE_CONFIG_PATH = f"{HEADSCALE_DATA_DIR}/config.yaml"
 HEADSCALE_DB_PATH = f"{HEADSCALE_DATA_DIR}/db.sqlite"
 HEADSCALE_SOCKET_PATH = f"{HEADSCALE_DATA_DIR}/headscale.sock"
@@ -76,12 +77,6 @@ class HeadscaleManager:
         self.server_url = server_url
         self.http_port = http_port
         self._api_key: str | None = None
-        self._ensure_data_dir()
-
-    def _ensure_data_dir(self):
-        """Ensure data directory exists."""
-        os.makedirs(HEADSCALE_DATA_DIR, exist_ok=True)
-        os.makedirs(f"{HEADSCALE_DATA_DIR}/run", exist_ok=True)
 
     @property
     def client(self) -> docker.DockerClient:
@@ -130,16 +125,35 @@ class HeadscaleManager:
                 "base_domain": "lmstack.local",
                 "nameservers": {"global": ["1.1.1.1", "8.8.8.8"]},
             },
-            "unix_socket": "/var/run/headscale/headscale.sock",
+            "unix_socket": "/etc/headscale/run/headscale.sock",
             "unix_socket_permission": "0770",
         }
 
-    def _write_config(self, server_url: str, http_port: int, grpc_port: int):
-        """Write Headscale configuration file."""
+    def _write_config_to_volume(self, server_url: str, http_port: int, grpc_port: int):
+        """Write Headscale configuration to Docker volume."""
         config = self._generate_config(server_url, http_port, grpc_port)
-        with open(HEADSCALE_CONFIG_PATH, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
-        logger.info(f"Headscale config written to {HEADSCALE_CONFIG_PATH}")
+        config_content = yaml.dump(config, default_flow_style=False)
+
+        # Create volume if not exists
+        try:
+            self.client.volumes.get(HEADSCALE_VOLUME_NAME)
+        except NotFound:
+            self.client.volumes.create(HEADSCALE_VOLUME_NAME)
+            logger.info(f"Created volume {HEADSCALE_VOLUME_NAME}")
+
+        # Write config to volume using alpine container
+        logger.info("Writing Headscale config to volume")
+        self.client.containers.run(
+            "alpine",
+            command=[
+                "sh",
+                "-c",
+                f"mkdir -p /data/run && cat > /data/config.yaml << 'EOFCONFIG'\n{config_content}EOFCONFIG",
+            ],
+            remove=True,
+            volumes={HEADSCALE_VOLUME_NAME: {"bind": "/data", "mode": "rw"}},
+        )
+        logger.info("Headscale config written to volume")
 
     async def is_running(self) -> bool:
         """Check if Headscale is running."""
@@ -166,8 +180,8 @@ class HeadscaleManager:
             logger.info("Removing old Headscale container")
             container.remove(force=True)
 
-        # Write config
-        self._write_config(server_url, http_port, grpc_port)
+        # Write config to volume
+        self._write_config_to_volume(server_url, http_port, grpc_port)
 
         # Pull image if needed
         try:
@@ -185,11 +199,7 @@ class HeadscaleManager:
                 command="serve",
                 detach=True,
                 volumes={
-                    HEADSCALE_DATA_DIR: {"bind": "/etc/headscale", "mode": "rw"},
-                    f"{HEADSCALE_DATA_DIR}/run": {
-                        "bind": "/var/run/headscale",
-                        "mode": "rw",
-                    },
+                    HEADSCALE_VOLUME_NAME: {"bind": "/etc/headscale", "mode": "rw"},
                 },
                 ports={
                     f"{http_port}/tcp": ("0.0.0.0", http_port),
