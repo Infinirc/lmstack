@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
+    external_url: str = ""  # External URL for worker registration (e.g., http://10.0.8.2:8088)
 
     # CORS - comma-separated list of allowed origins, or "*" for development
     # Example: "http://localhost:3000,http://localhost:5173,https://your-domain.com"

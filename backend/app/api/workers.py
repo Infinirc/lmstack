@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.models.deployment import Deployment
 from app.models.registration_token import RegistrationToken
@@ -362,6 +363,15 @@ def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
   infinirc/lmstack-worker:latest"""
 
 
+def _get_backend_url(request: Request) -> str:
+    """Get backend URL for worker registration."""
+    settings = get_settings()
+    if settings.external_url:
+        return settings.external_url.rstrip("/")
+    # Fallback to request URL
+    return str(request.base_url).rstrip("/")
+
+
 @router.post("/tokens", response_model=RegistrationTokenResponse, status_code=201)
 async def create_registration_token(
     token_in: RegistrationTokenCreate,
@@ -378,8 +388,7 @@ async def create_registration_token(
     await db.commit()
     await db.refresh(token)
 
-    # Generate backend URL from request
-    backend_url = str(request.base_url).rstrip("/")
+    backend_url = _get_backend_url(request)
 
     return RegistrationTokenResponse(
         id=token.id,
@@ -447,7 +456,7 @@ async def get_registration_token(
     if not token:
         raise HTTPException(status_code=404, detail="Registration token not found")
 
-    backend_url = str(request.base_url).rstrip("/")
+    backend_url = _get_backend_url(request)
 
     return RegistrationTokenResponse(
         id=token.id,
