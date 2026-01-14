@@ -271,7 +271,7 @@ export default function Setup() {
                   border: "none",
                 }}
               >
-                Continue
+                Sign up
               </Button>
             </Form.Item>
           </Form>
@@ -284,7 +284,7 @@ export default function Setup() {
               marginTop: 32,
             }}
           >
-            LMStack
+            © Infinirc LLC
           </p>
         </div>
       </div>

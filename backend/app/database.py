@@ -1,10 +1,13 @@
 """Database configuration and session management"""
 
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 engine = create_async_engine(
@@ -36,5 +39,12 @@ async def get_db() -> AsyncSession:
 
 async def init_db():
     """Initialize database tables"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        # Ignore "already exists" errors from race conditions with multiple workers
+        if "already exists" in str(e):
+            logger.debug("Database tables already exist, skipping creation")
+        else:
+            raise
