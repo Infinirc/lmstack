@@ -79,7 +79,24 @@ curl http://localhost:8000/v1/chat/completions \
 
 ## Development
 
-For local development without Docker:
+### Local Docker Build
+
+Build and run Docker images locally:
+
+```bash
+# Build all images
+./scripts/build-local.sh
+
+# Or build specific image
+./scripts/build-local.sh backend
+./scripts/build-local.sh frontend
+./scripts/build-local.sh worker
+
+# Run locally built images
+docker compose -f docker-compose.local.yml up -d
+```
+
+### Without Docker
 
 ```bash
 # Terminal 1 - Frontend

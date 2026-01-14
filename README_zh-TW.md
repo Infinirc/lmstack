@@ -79,7 +79,24 @@ curl http://localhost:8000/v1/chat/completions \
 
 ## 開發環境
 
-不使用 Docker 的本地開發：
+### 本地 Docker 構建
+
+在本地構建並運行 Docker 映像：
+
+```bash
+# 構建所有映像
+./scripts/build-local.sh
+
+# 或構建特定映像
+./scripts/build-local.sh backend
+./scripts/build-local.sh frontend
+./scripts/build-local.sh worker
+
+# 運行本地構建的映像
+docker compose -f docker-compose.local.yml up -d
+```
+
+### 不使用 Docker
 
 ```bash
 # 終端機 1 - 前端

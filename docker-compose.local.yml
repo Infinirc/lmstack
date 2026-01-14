@@ -1,0 +1,35 @@
+# LMStack Local Development
+# Use locally built Docker images
+#
+# Build: ./scripts/build-local.sh
+# Run:   docker compose -f docker-compose.local.yml up -d
+
+services:
+  server:
+    image: infinirc/lmstack-backend:local
+    container_name: lmstack-backend
+    ports:
+      - "8088:8000"
+    volumes:
+      - lmstack-data:/app/data
+    environment:
+      - LMSTACK_SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: infinirc/lmstack-frontend:local
+    container_name: lmstack-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  lmstack-data:
+    driver: local
