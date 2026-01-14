@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # Server
     host: str = "0.0.0.0"
-    port: int = 8088
+    port: int = 52000
     external_url: str = ""  # External URL for worker registration (optional)
 
     # CORS - comma-separated list of allowed origins, or "*" for development

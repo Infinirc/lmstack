@@ -44,7 +44,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VITE_API_URL` | Backend API URL | `http://localhost:8088` |
+| `VITE_API_URL` | Backend API URL | `http://localhost:52000` |
 | `VITE_WS_URL` | WebSocket URL | Auto-derived from API URL |
 
 ### Build Configuration
@@ -57,7 +57,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8088',
+        target: 'http://localhost:52000',
         changeOrigin: true
       }
     }

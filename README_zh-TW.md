@@ -46,7 +46,7 @@ docker compose -f docker-compose.deploy.yml up -d
 ```
 
 - 前端: http://localhost:3000
-- 後端 API: http://localhost:8088
+- 後端 API: http://localhost:52000
 
 ### 啟動 Worker（在 GPU 機器上）
 
@@ -58,7 +58,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   -v /:/host:ro \
-  -e BACKEND_URL=http://你的伺服器IP:8088 \
+  -e BACKEND_URL=http://你的伺服器IP:52000 \
   -e WORKER_NAME=gpu-worker-01 \
   infinirc/lmstack-worker:latest
 ```
@@ -72,7 +72,7 @@ docker run -d \
 5. 使用 OpenAI 相容 API：
 
 ```bash
-curl http://localhost:8088/v1/chat/completions \
+curl http://localhost:52000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"model": "llama3.2:3b", "messages": [{"role": "user", "content": "你好！"}]}'
@@ -104,7 +104,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   -v /:/host:ro \
-  -e BACKEND_URL=http://你的伺服器IP:8088 \
+  -e BACKEND_URL=http://你的伺服器IP:52000 \
   -e WORKER_NAME=gpu-worker-01 \
   infinirc/lmstack-worker:local
 ```
@@ -120,18 +120,18 @@ npm run dev
 # 終端機 2 - 後端
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8088 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 52000 --reload
 
 # 終端機 3 - Worker（在 GPU 機器上）
 cd worker
 pip install -r requirements.txt
-python agent.py --name gpu-worker-01 --server-url http://你的伺服器IP:8088
+python agent.py --name gpu-worker-01 --server-url http://你的伺服器IP:52000
 ```
 
 ## API 文件
 
-- Swagger UI: http://localhost:8088/docs
-- ReDoc: http://localhost:8088/redoc
+- Swagger UI: http://localhost:52000/docs
+- ReDoc: http://localhost:52000/redoc
 
 ## 授權條款
 

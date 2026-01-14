@@ -132,7 +132,7 @@ async def create_worker(
         if existing_worker and token.used_by_worker_id == existing_worker.id:
             # Allow reconnection - update existing worker with real IP
             client_ip = _get_client_ip(request)
-            reported_port = "8080"
+            reported_port = "52001"
             if ":" in worker_in.address:
                 reported_port = worker_in.address.split(":")[-1]
             existing_worker.address = f"{client_ip}:{reported_port}"
@@ -182,7 +182,7 @@ async def create_worker(
     # Use real client IP instead of reported address (which might be Docker internal IP)
     client_ip = _get_client_ip(request)
     # Extract port from reported address
-    reported_port = "8080"
+    reported_port = "52001"
     if ":" in worker_in.address:
         reported_port = worker_in.address.split(":")[-1]
     real_address = f"{client_ip}:{reported_port}"

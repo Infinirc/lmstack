@@ -208,7 +208,7 @@ async def deploy_app(
     set_deployment_progress(app.id, "pending", 0, "Deployment queued...")
 
     # Extract lmstack_port for background task
-    lmstack_host = request.headers.get("host", "localhost:8088")
+    lmstack_host = request.headers.get("host", "localhost:52000")
     lmstack_port = lmstack_host.split(":")[-1] if ":" in lmstack_host else "8000"
 
     # Start background deployment
@@ -287,7 +287,7 @@ async def _build_env_vars(
     db: AsyncSession,
 ) -> dict:
     """Build environment variables for the app container."""
-    lmstack_host = request.headers.get("host", "localhost:8088")
+    lmstack_host = request.headers.get("host", "localhost:52000")
     lmstack_port = lmstack_host.split(":")[-1] if ":" in lmstack_host else "8000"
 
     host_ip = get_host_ip(request, worker)

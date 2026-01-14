@@ -21,11 +21,12 @@ COPY . .
 ENV PYTHONUNBUFFERED=1
 ENV BACKEND_URL=http://backend:8000
 ENV WORKER_NAME=worker
+ENV AGENT_PORT=52001
 
-# Health check
+# Health check (uses AGENT_PORT env var)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:${AGENT_PORT}/health || exit 1
 
-EXPOSE 8080
+EXPOSE ${AGENT_PORT}
 
 CMD ["python", "agent.py"]

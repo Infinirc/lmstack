@@ -59,7 +59,7 @@ class WorkerAgent:
         name: str,
         server_url: str,
         host: str = "0.0.0.0",
-        port: int = 8080,
+        port: int = 52001,
         registration_token: Optional[str] = None,
     ):
         self.name = name
@@ -283,7 +283,8 @@ def main():
         help="Registration token from the server (or set REGISTRATION_TOKEN env var)",
     )
     parser.add_argument("--host", default="0.0.0.0", help="Agent host")
-    parser.add_argument("--port", type=int, default=8080, help="Agent port")
+    default_port = int(os.environ.get("AGENT_PORT", "52001"))
+    parser.add_argument("--port", type=int, default=default_port, help="Agent port")
 
     args = parser.parse_args()
 

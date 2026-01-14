@@ -17,7 +17,7 @@ async def sample_worker(db_session: AsyncSession) -> Worker:
         name="deploy-test-worker",
         hostname="deploy-test-host",
         status=WorkerStatus.ONLINE.value,
-        agent_port=8080,
+        agent_port=52001,
         gpu_count=1,
     )
     db_session.add(worker)

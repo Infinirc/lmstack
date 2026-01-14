@@ -65,7 +65,7 @@ npm install
 Create a `.env` file:
 
 ```bash
-VITE_API_URL=http://localhost:8088
+VITE_API_URL=http://localhost:52000
 ```
 
 ### 3. Start Development Server
@@ -115,7 +115,7 @@ Create a `.env` file:
 
 ```bash
 # Backend connection
-BACKEND_URL=http://your-backend-server:8088
+BACKEND_URL=http://your-backend-server:52000
 WORKER_TOKEN=your-worker-token
 
 # Worker identification
@@ -133,7 +133,7 @@ python agent.py
 ### Check Backend Health
 
 ```bash
-curl http://localhost:8088/health
+curl http://localhost:52000/health
 ```
 
 Expected response:
@@ -146,7 +146,7 @@ Expected response:
 After starting the worker agent, verify it appears in the backend:
 
 ```bash
-curl http://localhost:8088/api/workers
+curl http://localhost:52000/api/workers
 ```
 
 ## Next Steps

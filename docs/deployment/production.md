@@ -31,7 +31,7 @@ server {
     }
 
     location /api {
-        proxy_pass http://backend:8088;
+        proxy_pass http://backend:52000;
     }
 }
 ```
@@ -162,9 +162,9 @@ services:
 
 ```nginx
 upstream backend {
-    server backend1:8088;
-    server backend2:8088;
-    server backend3:8088;
+    server backend1:52000;
+    server backend2:52000;
+    server backend3:52000;
 }
 ```
 
@@ -172,8 +172,8 @@ upstream backend {
 
 ```nginx
 upstream backend {
-    server backend1:8088 max_fails=3 fail_timeout=30s;
-    server backend2:8088 max_fails=3 fail_timeout=30s;
+    server backend1:52000 max_fails=3 fail_timeout=30s;
+    server backend2:52000 max_fails=3 fail_timeout=30s;
 }
 ```
 

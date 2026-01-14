@@ -16,7 +16,7 @@ async def sample_worker(db_session: AsyncSession) -> Worker:
         name="test-worker",
         hostname="test-host",
         status=WorkerStatus.ONLINE.value,
-        agent_port=8080,
+        agent_port=52001,
         gpu_count=2,
         gpu_info=[
             {"index": 0, "name": "NVIDIA A100", "memory_total": 81920},
@@ -93,7 +93,7 @@ class TestWorkerModel:
             name="model-test-worker",
             hostname="model-test-host",
             status=WorkerStatus.ONLINE.value,
-            agent_port=8080,
+            agent_port=52001,
         )
         db_session.add(worker)
         await db_session.commit()

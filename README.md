@@ -46,7 +46,7 @@ docker compose -f docker-compose.deploy.yml up -d
 ```
 
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:8088
+- Backend API: http://localhost:52000
 
 ### Start Worker (on GPU machine)
 
@@ -58,7 +58,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   -v /:/host:ro \
-  -e BACKEND_URL=http://YOUR_SERVER_IP:8088 \
+  -e BACKEND_URL=http://YOUR_SERVER_IP:52000 \
   -e WORKER_NAME=gpu-worker-01 \
   infinirc/lmstack-worker:latest
 ```
@@ -72,7 +72,7 @@ docker run -d \
 5. Use OpenAI-compatible API:
 
 ```bash
-curl http://localhost:8088/v1/chat/completions \
+curl http://localhost:52000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"model": "llama3.2:3b", "messages": [{"role": "user", "content": "Hello!"}]}'
@@ -104,7 +104,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   -v /:/host:ro \
-  -e BACKEND_URL=http://YOUR_SERVER_IP:8088 \
+  -e BACKEND_URL=http://YOUR_SERVER_IP:52000 \
   -e WORKER_NAME=gpu-worker-01 \
   infinirc/lmstack-worker:local
 ```
@@ -120,18 +120,18 @@ npm run dev
 # Terminal 2 - Backend
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8088 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 52000 --reload
 
 # Terminal 3 - Worker (on GPU machine)
 cd worker
 pip install -r requirements.txt
-python agent.py --name gpu-worker-01 --server-url http://YOUR_SERVER_IP:8088
+python agent.py --name gpu-worker-01 --server-url http://YOUR_SERVER_IP:52000
 ```
 
 ## API Docs
 
-- Swagger UI: http://localhost:8088/docs
-- ReDoc: http://localhost:8088/redoc
+- Swagger UI: http://localhost:52000/docs
+- ReDoc: http://localhost:52000/redoc
 
 ## License
 

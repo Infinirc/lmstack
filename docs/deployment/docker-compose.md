@@ -32,7 +32,7 @@ SECRET_KEY=your-secret-key
 DATABASE_URL=postgresql://lmstack:your-secure-password@db:5432/lmstack
 
 # Frontend
-VITE_API_URL=http://localhost:8088
+VITE_API_URL=http://localhost:52000
 ```
 
 ### 3. Start Services
@@ -72,7 +72,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       SECRET_KEY: ${SECRET_KEY}
     ports:
-      - "8000:8088"
+      - "8000:52000"
     depends_on:
       db:
         condition: service_healthy
@@ -91,7 +91,7 @@ services:
       context: ./worker
       dockerfile: Dockerfile
     environment:
-      BACKEND_URL: http://backend:8088
+      BACKEND_URL: http://backend:52000
       WORKER_TOKEN: ${WORKER_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -198,7 +198,7 @@ services:
       context: ./worker
       dockerfile: Dockerfile
     environment:
-      BACKEND_URL: http://backend-server:8088
+      BACKEND_URL: http://backend-server:52000
       WORKER_TOKEN: ${WORKER_TOKEN}
       WORKER_NAME: ${WORKER_NAME:-worker-1}
     volumes:
@@ -241,7 +241,7 @@ For external worker nodes, expose the backend API:
 services:
   backend:
     ports:
-      - "0.0.0.0:8088:8088"
+      - "0.0.0.0:52000:52000"
 ```
 
 ## Persistence

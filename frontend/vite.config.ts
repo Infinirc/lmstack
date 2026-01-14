@@ -9,7 +9,7 @@ export default defineConfig({
     proxy: {
       // Use regex to match /api/ paths only (not /api-keys)
       "^/api/": {
-        target: "http://localhost:8088",
+        target: "http://localhost:52000",
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq, req) => {
@@ -23,7 +23,7 @@ export default defineConfig({
         },
       },
       "/v1": {
-        target: "http://localhost:8088",
+        target: "http://localhost:52000",
         changeOrigin: true,
       },
     },
