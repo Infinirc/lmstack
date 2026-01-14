@@ -92,8 +92,19 @@ curl http://localhost:8000/v1/chat/completions \
 ./scripts/build-local.sh frontend
 ./scripts/build-local.sh worker
 
-# 運行本地構建的映像
+# 運行本地構建的 backend + frontend
 docker compose -f docker-compose.local.yml up -d
+
+# 運行本地構建的 worker（在 GPU 機器上）
+docker run -d \
+  --name lmstack-worker \
+  --gpus all \
+  --privileged \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  -e BACKEND_URL=http://你的伺服器IP:8088 \
+  -e WORKER_NAME=gpu-worker-01 \
+  infinirc/lmstack-worker:local
 ```
 
 ### 不使用 Docker

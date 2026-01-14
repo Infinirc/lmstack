@@ -92,8 +92,19 @@ Build and run Docker images locally:
 ./scripts/build-local.sh frontend
 ./scripts/build-local.sh worker
 
-# Run locally built images
+# Run locally built backend + frontend
 docker compose -f docker-compose.local.yml up -d
+
+# Run locally built worker (on GPU machine)
+docker run -d \
+  --name lmstack-worker \
+  --gpus all \
+  --privileged \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  -e BACKEND_URL=http://YOUR_SERVER_IP:8088 \
+  -e WORKER_NAME=gpu-worker-01 \
+  infinirc/lmstack-worker:local
 ```
 
 ### Without Docker
