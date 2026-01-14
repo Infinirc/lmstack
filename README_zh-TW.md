@@ -33,6 +33,8 @@ LLM 部署管理平台 - 在分散式 GPU 節點上部署和管理大型語言�
 ### 前置需求
 
 - Docker
+- Docker Compose V2：`sudo apt install docker-compose-v2`
+- Docker 權限設定：`sudo usermod -aG docker $USER && newgrp docker`
 - 支援 CUDA 的 NVIDIA GPU
 - NVIDIA Container Toolkit（使用 `./scripts/install-nvidia-toolkit.sh` 安裝）
 

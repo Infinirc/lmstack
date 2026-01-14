@@ -3,7 +3,7 @@
 # Usage: docker compose -f docker-compose.deploy.yml up -d
 
 services:
-  backend:
+  server:
     image: infinirc/lmstack-backend:latest
     container_name: lmstack-backend
     ports:
@@ -27,7 +27,7 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8088
     depends_on:
-      - backend
+      - server
     restart: unless-stopped
 
 volumes:

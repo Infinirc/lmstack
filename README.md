@@ -33,6 +33,8 @@ LLM Deployment Management Platform - Deploy and manage Large Language Models on 
 ### Prerequisites
 
 - Docker
+- Docker Compose V2: `sudo apt install docker-compose-v2`
+- Docker permissions: `sudo usermod -aG docker $USER && newgrp docker`
 - NVIDIA GPU with CUDA support
 - NVIDIA Container Toolkit (install with `./scripts/install-nvidia-toolkit.sh`)
 
