@@ -439,6 +439,7 @@ def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
   --name lmstack-worker \\
   --gpus all \\
   --privileged \\
+  -p 52001:52001 \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
   -v ~/.cache/huggingface:/root/.cache/huggingface \\
   -v /:/host:ro \\
