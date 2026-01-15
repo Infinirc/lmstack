@@ -179,6 +179,15 @@ async def deploy_app(
     proxy_path = f"/apps/{app_type.value}"
     port = await _find_available_port(db, worker.id)
 
+    # Auto-disable proxy for localhost workers to avoid port conflicts
+    # When worker is on localhost (using --network host), app container binds
+    # directly to host port, so proxy would conflict
+    worker_host = worker.address.split(":")[0]
+    use_proxy = deploy_request.use_proxy
+    if worker_host in ("localhost", "127.0.0.1"):
+        use_proxy = False
+        logger.info(f"Auto-disabled proxy for localhost worker {worker.name}")
+
     # Create app record
     app = App(
         app_type=app_type.value,
@@ -188,7 +197,7 @@ async def deploy_app(
         status=AppStatus.PENDING.value,
         proxy_path=proxy_path,
         port=port,
-        use_proxy=deploy_request.use_proxy,
+        use_proxy=use_proxy,
     )
     db.add(app)
     await db.commit()
@@ -222,7 +231,7 @@ async def deploy_app(
         port=port,
         app_def=app_def,
         lmstack_port=lmstack_port,
-        use_proxy=deploy_request.use_proxy,
+        use_proxy=use_proxy,
     )
 
     return app_to_response(app, request)
