@@ -145,7 +145,6 @@ class RegistrationTokenResponse(BaseModel):
     used_at: datetime | None = None
     is_valid: bool
     docker_command: str | None = None
-    wsl_docker_command: str | None = None  # For WSL/Docker-in-Docker environments
 
     class Config:
         from_attributes = True

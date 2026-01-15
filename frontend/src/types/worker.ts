@@ -80,7 +80,6 @@ export interface RegistrationToken {
   used_at?: string;
   is_valid: boolean;
   docker_command?: string;
-  wsl_docker_command?: string; // For WSL/Docker-in-Docker environments
 }
 
 export interface RegistrationTokenCreate {
