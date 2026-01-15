@@ -19,6 +19,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install docker CLI for local worker spawn feature
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-24.0.7.tgz | tar xz --strip-components=1 -C /usr/local/bin docker/docker \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin

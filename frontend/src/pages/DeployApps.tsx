@@ -657,7 +657,17 @@ export default function DeployApps() {
             style={{ width: "100%", marginTop: 8 }}
             placeholder="Select a worker"
             value={selectedWorker}
-            onChange={setSelectedWorker}
+            onChange={(value) => {
+              setSelectedWorker(value);
+              // Auto-disable proxy for localhost workers
+              const worker = workers.find((w) => w.id === value);
+              if (worker) {
+                const workerHost = worker.address.split(":")[0];
+                if (workerHost === "localhost" || workerHost === "127.0.0.1") {
+                  setUseProxy(false);
+                }
+              }
+            }}
             options={workers.map((w) => ({
               value: w.id,
               label: `${w.name} (${w.address})`,
@@ -665,27 +675,37 @@ export default function DeployApps() {
           />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div>
-              <Text strong>Use LMStack Proxy</Text>
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {useProxy
-                    ? "Access app through LMStack server (recommended)"
-                    : "Connect directly to worker (requires network access to worker)"}
-                </Text>
+        {/* Hide proxy option for localhost workers (they use direct connection) */}
+        {(() => {
+          const worker = workers.find((w) => w.id === selectedWorker);
+          const workerHost = worker?.address.split(":")[0];
+          const isLocalhost =
+            workerHost === "localhost" || workerHost === "127.0.0.1";
+          if (isLocalhost) return null;
+          return (
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <Text strong>Use LMStack Proxy</Text>
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {useProxy
+                        ? "Access app through LMStack server (recommended)"
+                        : "Connect directly to worker (requires network access to worker)"}
+                    </Text>
+                  </div>
+                </div>
+                <Switch checked={useProxy} onChange={setUseProxy} />
               </div>
             </div>
-            <Switch checked={useProxy} onChange={setUseProxy} />
-          </div>
-        </div>
+          );
+        })()}
 
         {workers.length === 0 && (
           <div style={{ marginTop: 16 }}>
