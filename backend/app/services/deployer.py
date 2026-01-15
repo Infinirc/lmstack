@@ -142,6 +142,20 @@ class DeployerService:
 
                 # For Ollama, we need to pull the model first
                 if deployment.backend == BackendType.OLLAMA.value:
+                    deployment.status_message = "Waiting for Ollama container to start..."
+                    await db.commit()
+
+                    # Wait for Ollama API to be available before pulling
+                    ollama_ready = await self._wait_for_ollama_ready(
+                        deployment.worker.address,
+                        deployment.port,
+                    )
+                    if not ollama_ready:
+                        deployment.status = DeploymentStatus.ERROR.value
+                        deployment.status_message = "Ollama container failed to start"
+                        await db.commit()
+                        return
+
                     deployment.status_message = "Pulling model with Ollama..."
                     await db.commit()
 
@@ -193,6 +207,48 @@ class DeployerService:
                 deployment.status_message = str(e)
 
             await db.commit()
+
+    async def _wait_for_ollama_ready(
+        self,
+        worker_address: str,
+        port: int,
+        timeout: int = 60,
+    ) -> bool:
+        """Wait for Ollama API to be available.
+
+        Args:
+            worker_address: Worker address (host:port)
+            port: Ollama container port
+            timeout: Maximum wait time in seconds
+
+        Returns:
+            True if Ollama is ready, False on timeout
+        """
+        worker_ip = worker_address.split(":")[0]
+        api_url = f"http://{worker_ip}:{port}/api/tags"
+
+        logger.info(f"Waiting for Ollama API at {api_url}")
+
+        elapsed = 0
+        check_interval = 2
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            while elapsed < timeout:
+                try:
+                    response = await client.get(api_url)
+                    if response.status_code == 200:
+                        logger.info(f"Ollama API ready after {elapsed}s")
+                        return True
+                except httpx.ConnectError:
+                    logger.debug(f"Ollama not ready yet ({elapsed}s)")
+                except Exception as e:
+                    logger.debug(f"Ollama check error: {e}")
+
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
+
+        logger.error(f"Ollama API not ready after {timeout}s")
+        return False
 
     async def _ollama_pull_model(
         self,
