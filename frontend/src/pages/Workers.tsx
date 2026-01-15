@@ -25,6 +25,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
   EyeOutlined,
+  EditOutlined,
   ReloadOutlined,
   ThunderboltOutlined,
   CheckCircleOutlined,
@@ -61,6 +62,9 @@ export default function Workers() {
   const [modelFiles, setModelFiles] = useState<ModelFileView[]>([]);
   const [modelFilesLoading, setModelFilesLoading] = useState(false);
   const [modelFilesModal, setModelFilesModal] = useState<Worker | null>(null);
+  const [editModal, setEditModal] = useState<Worker | null>(null);
+  const [editForm] = Form.useForm();
+  const [editing, setEditing] = useState(false);
   const [form] = Form.useForm();
   const { isMobile } = useResponsive();
   const { canEdit } = useAuth();
@@ -162,6 +166,37 @@ export default function Workers() {
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } };
       message.error(err.response?.data?.detail || "Failed to delete worker");
+    }
+  };
+
+  const openEditModal = (worker: Worker) => {
+    setEditModal(worker);
+    editForm.setFieldsValue({
+      name: worker.name,
+      description: worker.description || "",
+    });
+  };
+
+  const handleEditWorker = async (values: {
+    name: string;
+    description?: string;
+  }) => {
+    if (!editModal) return;
+    setEditing(true);
+    try {
+      await workersApi.update(editModal.id, {
+        name: values.name,
+        description: values.description,
+      });
+      message.success("Worker updated successfully");
+      setEditModal(null);
+      editForm.resetFields();
+      fetchWorkers();
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to update worker");
+    } finally {
+      setEditing(false);
     }
   };
 
@@ -316,20 +351,28 @@ export default function Workers() {
             onClick={() => setDetailModal(record)}
           />
           {canEdit && (
-            <Popconfirm
-              title="Delete this worker?"
-              description="This action cannot be undone."
-              onConfirm={() => handleDelete(record.id)}
-              okText="Delete"
-              okButtonProps={{ danger: true }}
-            >
+            <>
               <Button
                 type="text"
                 size="small"
-                danger
-                icon={<DeleteOutlined />}
+                icon={<EditOutlined />}
+                onClick={() => openEditModal(record)}
               />
-            </Popconfirm>
+              <Popconfirm
+                title="Delete this worker?"
+                description="This action cannot be undone."
+                onConfirm={() => handleDelete(record.id)}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                />
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),
@@ -525,7 +568,7 @@ export default function Workers() {
     {
       title: "Actions",
       key: "actions",
-      width: 120,
+      width: 150,
       render: (_: unknown, record: Worker) => (
         <Space size={4}>
           <Tooltip title="Model Files">
@@ -545,20 +588,30 @@ export default function Workers() {
             />
           </Tooltip>
           {canEdit && (
-            <Popconfirm
-              title="Delete this worker?"
-              description="This action cannot be undone."
-              onConfirm={() => handleDelete(record.id)}
-              okText="Delete"
-              okButtonProps={{ danger: true }}
-            >
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                size="small"
-              />
-            </Popconfirm>
+            <>
+              <Tooltip title="Edit">
+                <Button
+                  type="text"
+                  icon={<EditOutlined />}
+                  onClick={() => openEditModal(record)}
+                  size="small"
+                />
+              </Tooltip>
+              <Popconfirm
+                title="Delete this worker?"
+                description="This action cannot be undone."
+                onConfirm={() => handleDelete(record.id)}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  size="small"
+                />
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),
@@ -1184,6 +1237,49 @@ python agent.py \\
             ]}
           />
         )}
+      </Modal>
+
+      {/* Edit Worker Modal */}
+      <Modal
+        title={`Edit Worker: ${editModal?.name}`}
+        open={!!editModal}
+        onCancel={() => {
+          setEditModal(null);
+          editForm.resetFields();
+        }}
+        footer={null}
+        width={isMobile ? "100%" : 400}
+        style={
+          isMobile ? { top: 20, maxWidth: "100%", margin: "0 8px" } : undefined
+        }
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleEditWorker}>
+          <Form.Item
+            name="name"
+            label="Worker Name"
+            rules={[{ required: true, message: "Please enter worker name" }]}
+          >
+            <Input placeholder="e.g., gpu-worker-01" />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea placeholder="Optional description" rows={3} />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={editing}>
+                Save
+              </Button>
+              <Button
+                onClick={() => {
+                  setEditModal(null);
+                  editForm.resetFields();
+                }}
+              >
+                Cancel
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

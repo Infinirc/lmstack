@@ -159,17 +159,18 @@ def spawn_docker_worker(
         logger.warning(f"Error checking existing container: {e}")
 
     # Build the docker run command
+    # Use --network host so worker can access backend and deployed apps
     cmd = [
         "docker",
         "run",
         "-d",
         "--name",
         container_name,
+        "--network",
+        "host",
         "--gpus",
         "all",
         "--privileged",
-        "-p",
-        "52001:52001",
         "-v",
         "/var/run/docker.sock:/var/run/docker.sock",
         "-v",
