@@ -25,6 +25,7 @@ import {
   Switch,
   Tooltip,
   Divider,
+  Progress,
 } from "antd";
 import {
   PlayCircleOutlined,
@@ -44,6 +45,7 @@ import {
   type HeadscaleStatus,
   type HeadscaleNode,
   type PreauthKeyResponse,
+  type HeadscaleProgress,
 } from "../services/api";
 import { useAppTheme } from "../hooks/useTheme";
 import dayjs from "dayjs";
@@ -65,6 +67,10 @@ export default function Headscale() {
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [preauthKeyModal, setPreauthKeyModal] = useState(false);
   const [generatedKey, setGeneratedKey] = useState<PreauthKeyResponse | null>(
+    null,
+  );
+  const [progressModalOpen, setProgressModalOpen] = useState(false);
+  const [startProgress, setStartProgress] = useState<HeadscaleProgress | null>(
     null,
   );
   const [startForm] = Form.useForm();
@@ -100,6 +106,16 @@ export default function Headscale() {
     return () => clearInterval(interval);
   }, [fetchAll]);
 
+  const pollProgress = useCallback(async () => {
+    try {
+      const progress = await headscaleApi.getProgress();
+      setStartProgress(progress);
+      return progress;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const handleStart = async (values: {
     server_url?: string;
     http_port?: number;
@@ -107,14 +123,53 @@ export default function Headscale() {
   }) => {
     try {
       setActionLoading("start");
-      await headscaleApi.start(values);
-      message.success("Headscale started successfully");
       setStartModalOpen(false);
+      setProgressModalOpen(true);
+      setStartProgress({
+        status: "starting",
+        progress: 0,
+        message: "Starting...",
+      });
+
+      // Start the server (don't await - we'll poll for progress)
+      const startPromise = headscaleApi.start(values);
+
+      // Poll for progress
+      const pollInterval = setInterval(async () => {
+        const progress = await pollProgress();
+        if (
+          progress &&
+          (progress.status === "completed" || progress.status === "error")
+        ) {
+          clearInterval(pollInterval);
+        }
+      }, 1000);
+
+      // Wait for the actual start to complete
+      await startPromise;
+      clearInterval(pollInterval);
+
+      // Final progress check
+      const finalProgress = await pollProgress();
+      if (finalProgress?.status === "error") {
+        message.error(finalProgress.message || "Failed to start");
+      } else {
+        message.success("Headscale started successfully");
+      }
+
       startForm.resetFields();
       fetchAll();
+
+      // Close progress modal after a short delay
+      setTimeout(() => {
+        setProgressModalOpen(false);
+        setStartProgress(null);
+      }, 1500);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } };
       message.error(err.response?.data?.detail || "Failed to start Headscale");
+      setProgressModalOpen(false);
+      setStartProgress(null);
     } finally {
       setActionLoading(null);
     }
@@ -639,6 +694,42 @@ export default function Headscale() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Progress Modal */}
+      <Modal
+        title="Starting Headscale VPN Server"
+        open={progressModalOpen}
+        closable={false}
+        footer={null}
+        width={450}
+      >
+        <div style={{ padding: "16px 0" }}>
+          <Progress
+            percent={startProgress?.progress || 0}
+            status={
+              startProgress?.status === "error"
+                ? "exception"
+                : startProgress?.status === "completed"
+                  ? "success"
+                  : "active"
+            }
+            strokeColor={
+              startProgress?.status === "pulling"
+                ? { from: "#108ee9", to: "#87d068" }
+                : undefined
+            }
+          />
+          <div
+            style={{
+              marginTop: 12,
+              textAlign: "center",
+              color: colors.textMuted,
+            }}
+          >
+            {startProgress?.message || "Starting..."}
+          </div>
+        </div>
       </Modal>
     </div>
   );

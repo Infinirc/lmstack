@@ -17,6 +17,26 @@ logger = logging.getLogger(__name__)
 
 HEADSCALE_CONTAINER_NAME = "lmstack-headscale"
 HEADSCALE_IMAGE = "headscale/headscale:latest"
+
+# =============================================================================
+# Progress Tracking
+# =============================================================================
+
+# In-memory store for Headscale startup progress
+_startup_progress: dict = {"status": "idle", "progress": 0, "message": ""}
+
+
+def get_startup_progress() -> dict:
+    """Get Headscale startup progress."""
+    return _startup_progress.copy()
+
+
+def _set_startup_progress(status: str, progress: int, message: str) -> None:
+    """Set Headscale startup progress."""
+    global _startup_progress
+    _startup_progress = {"status": status, "progress": progress, "message": message}
+
+
 # Docker volume name for headscale data (shared between backend and headscale containers)
 HEADSCALE_VOLUME_NAME = "lmstack-headscale-data"
 # Path inside containers where the volume is mounted
@@ -170,28 +190,36 @@ class HeadscaleManager:
         self.server_url = server_url
         self.http_port = http_port
 
+        _set_startup_progress("starting", 0, "Checking container status...")
+
         container = self._get_container()
 
         if container:
             if container.status == "running":
                 logger.info("Headscale is already running")
+                _set_startup_progress("completed", 100, "Headscale is already running")
                 return True
             # Remove old container to ensure port config is correct
             logger.info("Removing old Headscale container")
+            _set_startup_progress("starting", 5, "Removing old container...")
             container.remove(force=True)
 
         # Write config to volume
+        _set_startup_progress("starting", 10, "Writing configuration...")
         self._write_config_to_volume(server_url, http_port, grpc_port)
 
         # Pull image if needed
         try:
             self.client.images.get(HEADSCALE_IMAGE)
+            _set_startup_progress("starting", 50, "Image already exists")
         except NotFound:
             logger.info(f"Pulling {HEADSCALE_IMAGE}...")
-            self.client.images.pull(HEADSCALE_IMAGE)
+            _set_startup_progress("pulling", 15, f"Pulling image {HEADSCALE_IMAGE}...")
+            await self._pull_image_with_progress(HEADSCALE_IMAGE)
 
         # Create and start container
         logger.info("Creating Headscale container")
+        _set_startup_progress("starting", 70, "Creating container...")
         try:
             self.client.containers.run(
                 HEADSCALE_IMAGE,
@@ -209,17 +237,56 @@ class HeadscaleManager:
             )
 
             # Wait for Headscale to start
+            _set_startup_progress("starting", 85, "Waiting for service to start...")
             await asyncio.sleep(3)
 
             # Create default user
+            _set_startup_progress("starting", 95, "Creating default user...")
             await self._create_user(LMSTACK_USER)
 
+            _set_startup_progress("completed", 100, "Headscale started successfully")
             logger.info("Headscale started successfully")
             return True
 
         except APIError as e:
             logger.error(f"Failed to start Headscale: {e}")
+            _set_startup_progress("error", 0, f"Failed to start: {e}")
             return False
+
+    async def _pull_image_with_progress(self, image: str) -> None:
+        """Pull image with progress tracking."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._pull_image_sync, image)
+
+    def _pull_image_sync(self, image: str) -> None:
+        """Synchronously pull image with progress updates."""
+        layers_progress: dict[str, dict] = {}
+
+        for line in self.client.api.pull(image, stream=True, decode=True):
+            if "id" in line and "progressDetail" in line:
+                layer_id = line["id"]
+                detail = line.get("progressDetail", {})
+                current = detail.get("current", 0)
+                total = detail.get("total", 0)
+
+                layers_progress[layer_id] = {
+                    "status": line.get("status", ""),
+                    "current": current,
+                    "total": total,
+                }
+
+                # Calculate overall progress (15% to 65%)
+                total_size = sum(lp.get("total", 0) for lp in layers_progress.values())
+                downloaded = sum(lp.get("current", 0) for lp in layers_progress.values())
+                if total_size > 0:
+                    pull_progress = int((downloaded / total_size) * 100)
+                    # Map to 15-65% range
+                    overall_progress = 15 + int(pull_progress * 0.5)
+                    _set_startup_progress(
+                        "pulling",
+                        overall_progress,
+                        f"Pulling image {image}... ({pull_progress}%)",
+                    )
 
     async def stop(self) -> bool:
         """Stop Headscale server."""

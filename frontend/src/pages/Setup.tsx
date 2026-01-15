@@ -4,6 +4,8 @@ import { Form, Input, Button, message, ConfigProvider, theme } from "antd";
 import { authApi } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import type { SetupRequest } from "../types";
+import logoLight from "../assets/logo/LMStack-light.png";
+import logoDark from "../assets/logo/LMStack-dark.png";
 
 export default function Setup() {
   const [loading, setLoading] = useState(false);
@@ -122,39 +124,19 @@ export default function Setup() {
           <div style={{ textAlign: "center", marginBottom: 40 }}>
             <div
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 56,
-                height: 56,
-                background: colors.logoBg,
-                borderRadius: 12,
+                height: 80,
+                overflow: "hidden",
                 marginBottom: 24,
               }}
             >
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 2L2 7L12 12L22 7L12 2Z"
-                  stroke={colors.logoColor}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M2 17L12 22L22 17"
-                  stroke={colors.logoColor}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M2 12L12 17L22 12"
-                  stroke={colors.logoColor}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <img
+                src={isDark ? logoDark : logoLight}
+                alt="LMStack"
+                style={{
+                  height: 240,
+                  marginTop: -80,
+                }}
+              />
             </div>
             <h1
               style={{

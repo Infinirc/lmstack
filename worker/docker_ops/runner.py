@@ -234,6 +234,16 @@ class DockerRunner:
             logger.info(f"Pulling image {image}...")
             self.pull_image_with_progress(image, deployment_id)
 
+        # Update progress to starting
+        _set_pull_progress(
+            deployment_id,
+            {
+                "status": "starting",
+                "image": image,
+                "progress": 100,
+            },
+        )
+
         # Use specified port or get a new one
         host_port = port if port else self._get_next_port()
 

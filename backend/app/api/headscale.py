@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.api.auth import require_admin
-from app.services.headscale_manager import LMSTACK_USER, get_headscale_manager
+from app.services.headscale_manager import LMSTACK_USER, get_headscale_manager, get_startup_progress
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -92,6 +92,14 @@ async def get_headscale_status(
     except Exception as e:
         logger.error(f"Failed to get Headscale status: {e}")
         return HeadscaleStatusResponse(enabled=False, running=False)
+
+
+@router.get("/progress")
+async def get_headscale_progress(
+    _: dict = Depends(require_admin),
+):
+    """Get Headscale startup progress."""
+    return get_startup_progress()
 
 
 @router.post("/start", response_model=HeadscaleStatusResponse)

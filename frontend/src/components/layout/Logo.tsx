@@ -1,36 +1,31 @@
 /**
  * Logo Icon Component
  */
+import logoLight from "../../assets/logo/LMStack-light.png";
+import logoDark from "../../assets/logo/LMStack-dark.png";
 
 interface LogoIconProps {
-  color: string;
-  size?: number;
+  color?: string;
+  width?: number;
+  height?: number;
+  isDark?: boolean;
 }
 
-export function LogoIcon({ color, size = 18 }: LogoIconProps) {
+export function LogoIcon({
+  width = 160,
+  height = 36,
+  isDark = false,
+}: LogoIconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path
-        d="M12 2L2 7L12 12L22 7L12 2Z"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M2 17L12 22L22 17"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M2 12L12 17L22 12"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <img
+      src={isDark ? logoDark : logoLight}
+      alt="LMStack"
+      style={{
+        width: width,
+        height: height,
+        objectFit: "cover",
+        objectPosition: "center 46%",
+      }}
+    />
   );
 }

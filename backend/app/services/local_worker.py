@@ -119,3 +119,188 @@ def get_local_worker_info() -> dict:
         "platform": platform.system(),
         "platform_release": platform.release(),
     }
+
+
+def spawn_docker_worker(
+    worker_name: str,
+    backend_url: str,
+    registration_token: str,
+    container_name: str = "lmstack-worker",
+) -> dict:
+    """Spawn a Docker worker container on the local machine.
+
+    Returns:
+        dict with keys: success, message, container_id (if success)
+    """
+    # First, check if container with same name exists and remove it
+    try:
+        check_result = subprocess.run(
+            ["docker", "ps", "-a", "-q", "-f", f"name=^{container_name}$"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if check_result.stdout.strip():
+            # Container exists, stop and remove it
+            logger.info(f"Removing existing container: {container_name}")
+            subprocess.run(
+                ["docker", "stop", container_name],
+                capture_output=True,
+                timeout=30,
+            )
+            subprocess.run(
+                ["docker", "rm", container_name],
+                capture_output=True,
+                timeout=10,
+            )
+    except subprocess.TimeoutExpired:
+        logger.warning("Timeout while checking/removing existing container")
+    except Exception as e:
+        logger.warning(f"Error checking existing container: {e}")
+
+    # Build the docker run command
+    # Use --network host so worker can access backend and deployed apps
+    cmd = [
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        container_name,
+        "--network",
+        "host",
+        "--gpus",
+        "all",
+        "--privileged",
+        "-v",
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "-v",
+        f"{_get_huggingface_cache()}:/root/.cache/huggingface",
+        "-v",
+        "/:/host:ro",
+        "-e",
+        f"BACKEND_URL={backend_url}",
+        "-e",
+        f"WORKER_NAME={worker_name}",
+        "-e",
+        f"REGISTRATION_TOKEN={registration_token}",
+        "infinirc/lmstack-worker:latest",
+    ]
+
+    try:
+        logger.info(f"Spawning Docker worker: {worker_name}")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode == 0:
+            container_id = result.stdout.strip()[:12]
+            logger.info(f"Docker worker spawned successfully: {container_id}")
+            return {
+                "success": True,
+                "message": f"Worker container started: {container_id}",
+                "container_id": container_id,
+            }
+        else:
+            error_msg = result.stderr.strip() or result.stdout.strip()
+            logger.error(f"Failed to spawn Docker worker: {error_msg}")
+            return {
+                "success": False,
+                "message": f"Failed to start worker: {error_msg}",
+            }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "message": "Timeout while starting Docker container",
+        }
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "message": "Docker not found. Please install Docker first.",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error starting Docker worker: {str(e)}",
+        }
+
+
+def _get_huggingface_cache() -> str:
+    """Get the HuggingFace cache directory path."""
+    import os
+
+    # Check HF_HOME first, then default to ~/.cache/huggingface
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return hf_home
+    return os.path.expanduser("~/.cache/huggingface")
+
+
+def stop_docker_worker(container_name: str = "lmstack-worker") -> dict:
+    """Stop and remove a Docker worker container.
+
+    Returns:
+        dict with keys: success, message
+    """
+    try:
+        # Check if container exists
+        check_result = subprocess.run(
+            ["docker", "ps", "-a", "-q", "-f", f"name=^{container_name}$"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if not check_result.stdout.strip():
+            return {
+                "success": True,
+                "message": f"Container {container_name} not found (already removed)",
+            }
+
+        # Stop the container
+        logger.info(f"Stopping container: {container_name}")
+        stop_result = subprocess.run(
+            ["docker", "stop", container_name],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        # Remove the container
+        logger.info(f"Removing container: {container_name}")
+        rm_result = subprocess.run(
+            ["docker", "rm", container_name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if rm_result.returncode == 0:
+            logger.info(f"Container {container_name} stopped and removed")
+            return {
+                "success": True,
+                "message": f"Container {container_name} stopped and removed",
+            }
+        else:
+            error_msg = rm_result.stderr.strip() or stop_result.stderr.strip()
+            return {
+                "success": False,
+                "message": f"Failed to remove container: {error_msg}",
+            }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "message": "Timeout while stopping Docker container",
+        }
+    except FileNotFoundError:
+        return {
+            "success": True,
+            "message": "Docker not found (container may not exist)",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error stopping Docker worker: {str(e)}",
+        }

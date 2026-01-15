@@ -109,4 +109,5 @@ export type {
   HeadscaleStatus,
   HeadscaleNode,
   PreauthKeyResponse,
+  HeadscaleProgress,
 } from "./headscale";

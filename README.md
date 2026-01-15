@@ -1,6 +1,10 @@
-# LMStack
+<p align="center">
+  <img src="docs/LMStack-light.png" alt="LMStack" height="80">
+</p>
 
-[中文文檔](README_zh-TW.md)
+<p align="center">
+  <a href="README_zh-TW.md">中文文檔</a>
+</p>
 
 LLM Deployment Management Platform - Deploy and manage Large Language Models on distributed GPU workers.
 
@@ -48,29 +52,14 @@ docker compose -f docker-compose.deploy.yml up -d
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:52000
 
-### Start Worker (on GPU machine)
-
-```bash
-docker run -d \
-  --name lmstack-worker \
-  --gpus all \
-  --privileged \
-  -p 52001:52001 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  -v /:/host:ro \
-  -e BACKEND_URL=http://YOUR_SERVER_IP:52000 \
-  -e WORKER_NAME=gpu-worker-01 \
-  infinirc/lmstack-worker:latest
-```
-
 ### Usage
 
 1. Login with `admin` / `admin` (change password after first login)
-2. Check **Workers** page - workers auto-register
-3. Add model in **Models** page
-4. Create deployment in **Deployments** page
-5. Use OpenAI-compatible API:
+2. Go to **Workers** page and click **Add Worker** to get the Docker command
+3. Run the Docker command on your GPU machine to register a worker
+4. Add model in **Models** page
+5. Create deployment in **Deployments** page
+6. Use OpenAI-compatible API:
 
 ```bash
 curl http://localhost:52000/v1/chat/completions \
@@ -96,20 +85,9 @@ Build and run Docker images locally:
 
 # Run locally built backend + frontend
 docker compose -f docker-compose.local.yml up -d
-
-# Run locally built worker (on GPU machine)
-docker run -d \
-  --name lmstack-worker \
-  --gpus all \
-  --privileged \
-  -p 52001:52001 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  -v /:/host:ro \
-  -e BACKEND_URL=http://YOUR_SERVER_IP:52000 \
-  -e WORKER_NAME=gpu-worker-01 \
-  infinirc/lmstack-worker:local
 ```
+
+Then go to **Workers** page in the UI to add a worker.
 
 ### Without Docker
 

@@ -8,6 +8,7 @@ import type {
   ListResponse,
   RegistrationToken,
   RegistrationTokenCreate,
+  LocalWorkerSpawnResponse,
 } from "../types";
 
 export interface WorkerListParams {
@@ -43,8 +44,8 @@ export const workersApi = {
     await api.delete(`/workers/${id}`);
   },
 
-  registerLocal: async (): Promise<Worker> => {
-    const response = await api.post<Worker>("/workers/local");
+  registerLocal: async (): Promise<LocalWorkerSpawnResponse> => {
+    const response = await api.post<LocalWorkerSpawnResponse>("/workers/local");
     return response.data;
   },
 

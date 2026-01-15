@@ -1,6 +1,10 @@
-# LMStack
+<p align="center">
+  <img src="docs/LMStack-light.png" alt="LMStack" height="80">
+</p>
 
-[English](README.md)
+<p align="center">
+  <a href="README.md">English</a>
+</p>
 
 LLM 部署管理平台 - 在分散式 GPU 節點上部署和管理大型語言模型。
 
@@ -23,8 +27,8 @@ LLM 部署管理平台 - 在分散式 GPU 節點上部署和管理大型語言�
                    ┌────────────┴────────────┐
                    ▼                         ▼
            ┌──────────────┐          ┌──────────────┐
-           │ Worker Agent │          │ Worker Agent │
-           │  (GPU 節點)  │          │  (GPU 節點)  │
+           │ Worker       │          │ Worker       │
+           │  (GPU 節點)  │           │  (GPU 節點)  │
            └──────────────┘          └──────────────┘
 ```
 
@@ -48,29 +52,14 @@ docker compose -f docker-compose.deploy.yml up -d
 - 前端: http://localhost:3000
 - 後端 API: http://localhost:52000
 
-### 啟動 Worker（在 GPU 機器上）
-
-```bash
-docker run -d \
-  --name lmstack-worker \
-  --gpus all \
-  --privileged \
-  -p 52001:52001 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  -v /:/host:ro \
-  -e BACKEND_URL=http://你的伺服器IP:52000 \
-  -e WORKER_NAME=gpu-worker-01 \
-  infinirc/lmstack-worker:latest
-```
-
 ### 使用方式
 
 1. 使用 `admin` / `admin` 登入（首次登入後請更改密碼）
-2. 查看 **Workers** 頁面 - Workers 會自動註冊
-3. 在 **Models** 頁面新增模型
-4. 在 **Deployments** 頁面建立部署
-5. 使用 OpenAI 相容 API：
+2. 前往 **Workers** 頁面，點擊 **Add Worker** 取得 Docker 指令
+3. 在 GPU 機器上執行該 Docker 指令以註冊 Worker
+4. 在 **Models** 頁面新增模型
+5. 在 **Deployments** 頁面建立部署
+6. 使用 OpenAI 相容 API：
 
 ```bash
 curl http://localhost:52000/v1/chat/completions \
@@ -96,20 +85,9 @@ curl http://localhost:52000/v1/chat/completions \
 
 # 運行本地構建的 backend + frontend
 docker compose -f docker-compose.local.yml up -d
-
-# 運行本地構建的 worker（在 GPU 機器上）
-docker run -d \
-  --name lmstack-worker \
-  --gpus all \
-  --privileged \
-  -p 52001:52001 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  -v /:/host:ro \
-  -e BACKEND_URL=http://你的伺服器IP:52000 \
-  -e WORKER_NAME=gpu-worker-01 \
-  infinirc/lmstack-worker:local
 ```
+
+然後前往 UI 中的 **Workers** 頁面新增 Worker。
 
 ### 不使用 Docker
 
