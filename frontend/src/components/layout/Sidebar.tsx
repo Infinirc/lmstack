@@ -52,7 +52,7 @@ export function Sidebar({
       {/* Logo and Collapse Button */}
       <div
         style={{
-          padding: collapsed ? "16px" : "16px 12px 16px 20px",
+          padding: collapsed ? "24px 16px" : "20px 10px 16px 1px",
           display: "flex",
           alignItems: "center",
           justifyContent: collapsed ? "center" : "space-between",
@@ -62,7 +62,6 @@ export function Sidebar({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 12,
             cursor: collapsed ? "pointer" : "default",
           }}
           onClick={() => collapsed && onCollapse(false)}
@@ -71,17 +70,11 @@ export function Sidebar({
         >
           <div
             style={{
-              width: 28,
-              height: 28,
-              background: isDark
-                ? "rgba(255, 255, 255, 0.1)"
-                : "rgba(0, 0, 0, 0.08)",
-              borderRadius: 6,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
-              transition: "background 0.15s ease",
+              transition: "all 0.15s ease",
             }}
           >
             {collapsed && logoHovered ? (
@@ -89,22 +82,13 @@ export function Sidebar({
                 style={{ fontSize: 14, color: colors.text }}
               />
             ) : (
-              <LogoIcon color={colors.text} />
+              <LogoIcon
+                width={collapsed ? 56 : 200}
+                height={collapsed ? 38 : 48}
+                isDark={isDark}
+              />
             )}
           </div>
-          {!collapsed && (
-            <span
-              style={{
-                fontSize: 16,
-                fontWeight: 600,
-                color: colors.text,
-                letterSpacing: "-0.02em",
-                whiteSpace: "nowrap",
-              }}
-            >
-              LMStack
-            </span>
-          )}
         </div>
         {!collapsed && (
           <Button

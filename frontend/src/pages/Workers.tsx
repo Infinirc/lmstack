@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Button,
   Card,
+  Collapse,
   Form,
   Input,
   InputNumber,
@@ -169,13 +170,16 @@ export default function Workers() {
   const handleRegisterLocal = async () => {
     setRegisteringLocal(true);
     try {
-      await workersApi.registerLocal();
-      message.success("Local worker registered successfully");
-      fetchWorkers();
+      const result = await workersApi.registerLocal();
+      message.success(
+        `Docker worker "${result.worker_name}" started (${result.container_id}). It will appear shortly.`,
+      );
+      // Refresh workers list after a short delay to allow worker to register
+      setTimeout(fetchWorkers, 3000);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } };
       message.error(
-        err.response?.data?.detail || "Failed to register local worker",
+        err.response?.data?.detail || "Failed to spawn local Docker worker",
       );
     } finally {
       setRegisteringLocal(false);
@@ -733,67 +737,138 @@ export default function Workers() {
                 </Button>
               </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <Text strong>Development Mode (Python):</Text>
-              <div
-                style={{
-                  marginTop: 8,
-                  padding: 12,
-                  backgroundColor: "#1e1e1e",
-                  borderRadius: 6,
-                  position: "relative",
-                }}
-              >
-                <pre
-                  style={{
-                    margin: 0,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-all",
-                    color: "#d4d4d4",
-                    fontSize: 12,
-                    fontFamily: "monospace",
-                  }}
-                >
-                  {`cd worker
+            <Collapse
+              size="small"
+              style={{ marginBottom: 16 }}
+              items={[
+                {
+                  key: "local-docker",
+                  label: "Local Docker Build (after ./scripts/build-local.sh)",
+                  children: (
+                    <div
+                      style={{
+                        padding: 12,
+                        backgroundColor: "#1e1e1e",
+                        borderRadius: 6,
+                        position: "relative",
+                      }}
+                    >
+                      <pre
+                        style={{
+                          margin: 0,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-all",
+                          color: "#d4d4d4",
+                          fontSize: 12,
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {generatedToken.docker_command?.replace(
+                          "infinirc/lmstack-worker:latest",
+                          "infinirc/lmstack-worker:local",
+                        )}
+                      </pre>
+                      <Button
+                        type="primary"
+                        icon={<CopyOutlined />}
+                        size="small"
+                        onClick={() => {
+                          const localCmd =
+                            generatedToken.docker_command?.replace(
+                              "infinirc/lmstack-worker:latest",
+                              "infinirc/lmstack-worker:local",
+                            );
+                          if (localCmd) {
+                            if (navigator.clipboard && window.isSecureContext) {
+                              navigator.clipboard.writeText(localCmd);
+                              message.success("Command copied to clipboard");
+                            } else {
+                              const textArea =
+                                document.createElement("textarea");
+                              textArea.value = localCmd;
+                              textArea.style.position = "fixed";
+                              textArea.style.left = "-999999px";
+                              document.body.appendChild(textArea);
+                              textArea.focus();
+                              textArea.select();
+                              document.execCommand("copy");
+                              document.body.removeChild(textArea);
+                              message.success("Command copied to clipboard");
+                            }
+                          }
+                        }}
+                        style={{ position: "absolute", top: 8, right: 8 }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  ),
+                },
+                {
+                  key: "dev-python",
+                  label: "Development Mode (Python)",
+                  children: (
+                    <div
+                      style={{
+                        padding: 12,
+                        backgroundColor: "#1e1e1e",
+                        borderRadius: 6,
+                        position: "relative",
+                      }}
+                    >
+                      <pre
+                        style={{
+                          margin: 0,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-all",
+                          color: "#d4d4d4",
+                          fontSize: 12,
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {`cd worker
 pip install -r requirements.txt
 python agent.py \\
   --name ${generatedToken.name} \\
   --server-url ${window.location.protocol}//${window.location.hostname}:52000 \\
   --registration-token ${generatedToken.token}`}
-                </pre>
-                <Button
-                  type="primary"
-                  icon={<CopyOutlined />}
-                  size="small"
-                  onClick={() => {
-                    const devCommand = `cd worker
+                      </pre>
+                      <Button
+                        type="primary"
+                        icon={<CopyOutlined />}
+                        size="small"
+                        onClick={() => {
+                          const devCommand = `cd worker
 pip install -r requirements.txt
 python agent.py \\
   --name ${generatedToken.name} \\
   --server-url ${window.location.protocol}//${window.location.hostname}:52000 \\
   --registration-token ${generatedToken.token}`;
-                    if (navigator.clipboard && window.isSecureContext) {
-                      navigator.clipboard.writeText(devCommand);
-                      message.success("Command copied to clipboard");
-                    } else {
-                      const textArea = document.createElement("textarea");
-                      textArea.value = devCommand;
-                      textArea.style.position = "fixed";
-                      textArea.style.left = "-999999px";
-                      document.body.appendChild(textArea);
-                      textArea.focus();
-                      textArea.select();
-                      document.execCommand("copy");
-                      document.body.removeChild(textArea);
-                      message.success("Command copied to clipboard");
-                    }
-                  }}
-                  style={{ position: "absolute", top: 8, right: 8 }}
-                >
-                  Copy
-                </Button>
-              </div>
-            </div>
+                          if (navigator.clipboard && window.isSecureContext) {
+                            navigator.clipboard.writeText(devCommand);
+                            message.success("Command copied to clipboard");
+                          } else {
+                            const textArea = document.createElement("textarea");
+                            textArea.value = devCommand;
+                            textArea.style.position = "fixed";
+                            textArea.style.left = "-999999px";
+                            document.body.appendChild(textArea);
+                            textArea.focus();
+                            textArea.select();
+                            document.execCommand("copy");
+                            document.body.removeChild(textArea);
+                            message.success("Command copied to clipboard");
+                          }
+                        }}
+                        style={{ position: "absolute", top: 8, right: 8 }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  ),
+                },
+              ]}
+            />
             <div style={{ textAlign: "right" }}>
               <Button onClick={handleCloseAddModal}>Done</Button>
             </div>

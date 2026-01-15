@@ -24,7 +24,12 @@ from app.schemas.worker import (
     WorkerResponse,
     WorkerUpdate,
 )
-from app.services.local_worker import get_local_worker_info
+from app.services.local_worker import (
+    get_local_hostname,
+    get_local_ip,
+    spawn_docker_worker,
+    stop_docker_worker,
+)
 
 router = APIRouter()
 
@@ -326,6 +331,10 @@ async def delete_worker(
     if deployment_count and deployment_count > 0:
         raise HTTPException(status_code=400, detail="Cannot delete worker with active deployments")
 
+    # Try to stop and remove Docker container if it's a local worker
+    # Container name is "lmstack-worker" by default
+    stop_docker_worker("lmstack-worker")
+
     await db.delete(worker)
     await db.commit()
 
@@ -356,81 +365,57 @@ async def worker_heartbeat(
     return {"status": "ok"}
 
 
-@router.post("/local", response_model=WorkerResponse, status_code=201)
+@router.post("/local", status_code=201)
 async def register_local_worker(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_operator),
 ):
-    """Register the local machine as a worker (requires operator+)"""
-    # Get local machine info
-    info = get_local_worker_info()
+    """Spawn a Docker worker on the local machine (requires operator+).
 
-    worker_name = f"local-{info['hostname']}"
+    This creates a registration token, then runs docker to start a worker container.
+    The worker will register itself using the token.
+    """
+    # Get local hostname for worker name
+    hostname = get_local_hostname()
+    worker_name = hostname
 
-    # Check if local worker already exists
-    existing = await db.execute(select(Worker).where(Worker.name == worker_name))
-    existing_worker = existing.scalar_one_or_none()
+    # Get backend URL - use local IP so the Docker container can reach it
+    local_ip = get_local_ip()
+    settings = get_settings()
+    backend_url = f"http://{local_ip}:{settings.port}"
 
-    if existing_worker:
-        # Update existing worker info
-        existing_worker.gpu_info = info["gpu_info"]
-        existing_worker.system_info = info["system_info"]
-        existing_worker.status = WorkerStatus.ONLINE.value
-        existing_worker.last_heartbeat = datetime.now(UTC)
-
-        await db.commit()
-        await db.refresh(existing_worker)
-
-        deployment_count_query = select(func.count()).where(
-            Deployment.worker_id == existing_worker.id
-        )
-        deployment_count = await db.scalar(deployment_count_query) or 0
-
-        return WorkerResponse(
-            id=existing_worker.id,
-            name=existing_worker.name,
-            address=existing_worker.address,
-            description=existing_worker.description,
-            labels=existing_worker.labels,
-            status=existing_worker.status,
-            gpu_info=existing_worker.gpu_info,
-            system_info=existing_worker.system_info,
-            created_at=existing_worker.created_at,
-            updated_at=existing_worker.updated_at,
-            last_heartbeat=existing_worker.last_heartbeat,
-            deployment_count=deployment_count,
-        )
-
-    # Create new local worker
-    worker = Worker(
+    # Create a registration token for this worker
+    token = RegistrationToken.create(
         name=worker_name,
-        address="localhost",
-        description=f"Local worker on {info['hostname']} ({info['platform']} {info['platform_release']})",
-        labels={"type": "local", "hostname": info["hostname"]},
-        gpu_info=info["gpu_info"],
-        system_info=info["system_info"],
-        status=WorkerStatus.ONLINE.value,
-        last_heartbeat=datetime.now(UTC),
+        expires_in_hours=24,  # Token valid for 24 hours
     )
 
-    db.add(worker)
+    db.add(token)
     await db.commit()
-    await db.refresh(worker)
+    await db.refresh(token)
 
-    return WorkerResponse(
-        id=worker.id,
-        name=worker.name,
-        address=worker.address,
-        description=worker.description,
-        labels=worker.labels,
-        status=worker.status,
-        gpu_info=worker.gpu_info,
-        system_info=worker.system_info,
-        created_at=worker.created_at,
-        updated_at=worker.updated_at,
-        last_heartbeat=worker.last_heartbeat,
-        deployment_count=0,
+    # Spawn the Docker worker
+    result = spawn_docker_worker(
+        worker_name=worker_name,
+        backend_url=backend_url,
+        registration_token=token.token,
+        container_name="lmstack-worker",
     )
+
+    if not result["success"]:
+        # Clean up the token if spawn failed
+        await db.delete(token)
+        await db.commit()
+        raise HTTPException(status_code=500, detail=result["message"])
+
+    return {
+        "success": True,
+        "message": result["message"],
+        "worker_name": worker_name,
+        "container_id": result.get("container_id"),
+        "backend_url": backend_url,
+    }
 
 
 def _generate_docker_command(token: str, name: str, backend_url: str) -> str:

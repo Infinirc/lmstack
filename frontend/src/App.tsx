@@ -118,7 +118,7 @@ const DockerIcon = ({ size = 14 }: { size?: number }) => (
 
 function getMenuItems(isAdmin: boolean) {
   const workersChildren: any[] = [
-    { key: "/workers", icon: <CloudServerOutlined />, label: "Overview" },
+    { key: "/workers", icon: <CloudServerOutlined />, label: "Worker Nodes" },
     {
       key: "docker-group",
       icon: <DockerIcon />,

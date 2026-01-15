@@ -1,6 +1,10 @@
-# LMStack
+<p align="center">
+  <img src="docs/LMStack-light.png" alt="LMStack" height="80">
+</p>
 
-[English](README.md)
+<p align="center">
+  <a href="README.md">English</a>
+</p>
 
 LLM 部署管理平台 - 在分散式 GPU 節點上部署和管理大型語言模型。
 
@@ -23,8 +27,8 @@ LLM 部署管理平台 - 在分散式 GPU 節點上部署和管理大型語言�
                    ┌────────────┴────────────┐
                    ▼                         ▼
            ┌──────────────┐          ┌──────────────┐
-           │ Worker Agent │          │ Worker Agent │
-           │  (GPU 節點)  │          │  (GPU 節點)  │
+           │ Worker       │          │ Worker       │
+           │  (GPU 節點)  │           │  (GPU 節點)  │
            └──────────────┘          └──────────────┘
 ```
 

@@ -19,6 +19,7 @@ export type {
   WorkerCreate,
   RegistrationToken,
   RegistrationTokenCreate,
+  LocalWorkerSpawnResponse,
 } from "./worker";
 
 // Model Types

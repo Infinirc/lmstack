@@ -84,9 +84,46 @@ class DeployerService:
                 else:
                     # Send to remote worker agent
                     worker_url = f"http://{deployment.worker.address}/deploy"
+                    progress_url = (
+                        f"http://{deployment.worker.address}/pull-progress/{deployment.id}"
+                    )
 
+                    # Start deployment request and poll for progress
                     async with httpx.AsyncClient(timeout=300.0) as client:
-                        response = await client.post(worker_url, json=deploy_request)
+                        # Start the deployment in a task
+                        deploy_task = asyncio.create_task(
+                            client.post(worker_url, json=deploy_request)
+                        )
+
+                        # Poll for progress while waiting
+                        while not deploy_task.done():
+                            try:
+                                progress_resp = await client.get(progress_url, timeout=5.0)
+                                if progress_resp.status_code == 200:
+                                    progress_data = progress_resp.json()
+                                    status = progress_data.get("status", "")
+                                    image = progress_data.get("image", "")
+                                    progress = progress_data.get("progress", 0)
+
+                                    if status == "pulling":
+                                        deployment.status_message = (
+                                            f"Pulling image {image}... ({progress}%)"
+                                        )
+                                        await db.commit()
+                                    elif status == "completed":
+                                        deployment.status_message = (
+                                            "Image pulled, starting container..."
+                                        )
+                                        await db.commit()
+                                    elif status == "starting":
+                                        deployment.status_message = "Starting container..."
+                                        await db.commit()
+                            except Exception:
+                                pass  # Progress polling is best-effort
+
+                            await asyncio.sleep(2)
+
+                        response = await deploy_task
 
                         if response.status_code != 200:
                             deployment.status = DeploymentStatus.ERROR.value

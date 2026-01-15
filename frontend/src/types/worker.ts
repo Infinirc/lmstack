@@ -86,3 +86,11 @@ export interface RegistrationTokenCreate {
   name: string;
   expires_in_hours?: number;
 }
+
+export interface LocalWorkerSpawnResponse {
+  success: boolean;
+  message: string;
+  worker_name: string;
+  container_id?: string;
+  backend_url: string;
+}

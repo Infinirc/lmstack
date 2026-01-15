@@ -1,6 +1,10 @@
-# LMStack
+<p align="center">
+  <img src="docs/LMStack-light.png" alt="LMStack" height="80">
+</p>
 
-[中文文檔](README_zh-TW.md)
+<p align="center">
+  <a href="README_zh-TW.md">中文文檔</a>
+</p>
 
 LLM Deployment Management Platform - Deploy and manage Large Language Models on distributed GPU workers.
 
