@@ -28,6 +28,12 @@ export interface PreauthKeyResponse {
   join_command: string;
 }
 
+export interface HeadscaleProgress {
+  status: string;
+  progress: number;
+  message: string;
+}
+
 export const headscaleApi = {
   getStatus: async (): Promise<HeadscaleStatus> => {
     const response = await api.get<HeadscaleStatus>("/headscale/status");
@@ -72,5 +78,10 @@ export const headscaleApi = {
 
   deleteNode: async (nodeId: number): Promise<void> => {
     await api.delete(`/headscale/nodes/${nodeId}`);
+  },
+
+  getProgress: async (): Promise<HeadscaleProgress> => {
+    const response = await api.get<HeadscaleProgress>("/headscale/progress");
+    return response.data;
   },
 };

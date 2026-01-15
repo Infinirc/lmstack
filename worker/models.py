@@ -48,6 +48,7 @@ class ImagePullRequest(BaseModel):
 
     image: str
     registry_auth: Optional[dict[str, str]] = None
+    app_id: Optional[int] = None  # Optional app ID for progress tracking
 
 
 class ImageBuildRequest(BaseModel):

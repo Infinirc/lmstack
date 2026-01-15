@@ -84,12 +84,47 @@ async def pull_image_with_progress(
         Exception: On pull failure
     """
     url = f"http://{worker.address}/images/pull"
+    progress_url = f"http://{worker.address}/images/pull-progress/{app_id}"
 
     set_deployment_progress(app_id, "pulling", 0, f"Pulling image {image}...")
 
     try:
         async with httpx.AsyncClient(timeout=IMAGE_PULL_TIMEOUT) as client:
-            response = await client.post(url, json={"image": image})
+            # Start the pull request in a task with app_id for progress tracking
+            pull_task = asyncio.create_task(
+                client.post(url, json={"image": image, "app_id": app_id})
+            )
+
+            # Poll for progress while waiting
+            while not pull_task.done():
+                try:
+                    progress_resp = await client.get(progress_url, timeout=5.0)
+                    if progress_resp.status_code == 200:
+                        progress_data = progress_resp.json()
+                        status = progress_data.get("status", "")
+                        progress = progress_data.get("progress", 0)
+
+                        if status == "pulling":
+                            set_deployment_progress(
+                                app_id,
+                                "pulling",
+                                progress,
+                                f"Pulling image {image}... ({progress}%)",
+                            )
+                        elif status == "completed":
+                            set_deployment_progress(
+                                app_id,
+                                "pulling",
+                                100,
+                                "Image pulled successfully",
+                            )
+                except Exception:
+                    pass  # Progress polling is best-effort
+
+                await asyncio.sleep(2)
+
+            # Get the final response
+            response = await pull_task
             if response.status_code >= 400:
                 raise Exception(f"Failed to pull image: {response.text}")
 

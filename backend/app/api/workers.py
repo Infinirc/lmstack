@@ -434,6 +434,36 @@ def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
   infinirc/lmstack-worker:latest"""
 
 
+def _generate_wsl_docker_command(token: str, name: str, backend_url: str) -> str:
+    """Generate docker run command for WSL/Docker-in-Docker environments.
+
+    In WSL or Docker-in-Docker, localhost inside the container refers to the container
+    itself, not the host machine. We need to use host.docker.internal instead.
+    """
+    # Replace localhost or 127.0.0.1 with host.docker.internal
+    import re
+
+    wsl_backend_url = re.sub(
+        r"(https?://)(?:localhost|127\.0\.0\.1)(:\d+)?",
+        r"\1host.docker.internal\2",
+        backend_url,
+    )
+
+    return f"""docker run -d \\
+  --name lmstack-worker \\
+  --gpus all \\
+  --privileged \\
+  -p 52001:52001 \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v ~/.cache/huggingface:/root/.cache/huggingface \\
+  -v /:/host:ro \\
+  -e BACKEND_URL={wsl_backend_url} \\
+  -e WORKER_NAME={name} \\
+  -e REGISTRATION_TOKEN={token} \\
+  --add-host=host.docker.internal:host-gateway \\
+  infinirc/lmstack-worker:latest"""
+
+
 def _get_backend_url(request: Request) -> str:
     """Get backend URL for worker registration."""
     settings = get_settings()
@@ -481,6 +511,7 @@ async def create_registration_token(
         used_at=token.used_at,
         is_valid=token.is_valid,
         docker_command=_generate_docker_command(token.token, token.name, backend_url),
+        wsl_docker_command=_generate_wsl_docker_command(token.token, token.name, backend_url),
     )
 
 
@@ -552,6 +583,11 @@ async def get_registration_token(
         is_valid=token.is_valid,
         docker_command=(
             _generate_docker_command(token.token, token.name, backend_url)
+            if token.is_valid
+            else None
+        ),
+        wsl_docker_command=(
+            _generate_wsl_docker_command(token.token, token.name, backend_url)
             if token.is_valid
             else None
         ),

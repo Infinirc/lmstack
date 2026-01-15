@@ -3,6 +3,7 @@
 Contains endpoints for listing, pulling, building, and removing Docker images.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -19,6 +20,36 @@ router = APIRouter(prefix="/images", tags=["images"])
 
 # Agent reference - set by main app
 _agent = None
+
+# =============================================================================
+# Progress Tracking for App Image Pulls
+# =============================================================================
+
+# In-memory store for app image pull progress
+_app_pull_progress: dict[int, dict] = {}
+_MAX_PROGRESS_ENTRIES = 100
+
+
+def get_app_pull_progress(app_id: int) -> dict:
+    """Get pull progress for an app."""
+    return _app_pull_progress.get(app_id, {"status": "unknown", "progress": 0})
+
+
+def _set_app_pull_progress(app_id: int, data: dict) -> None:
+    """Set pull progress for an app."""
+    _app_pull_progress[app_id] = data
+
+
+def _cleanup_old_app_progress() -> None:
+    """Remove old progress entries to prevent memory leaks."""
+    if len(_app_pull_progress) > _MAX_PROGRESS_ENTRIES:
+        completed_keys = [
+            key
+            for key, val in _app_pull_progress.items()
+            if val.get("status") in ("completed", "error")
+        ]
+        for key in completed_keys[: len(_app_pull_progress) - _MAX_PROGRESS_ENTRIES // 2]:
+            _app_pull_progress.pop(key, None)
 
 
 def set_agent(agent):
@@ -59,17 +90,109 @@ async def get_image(image_id: str):
         raise HTTPException(status_code=404, detail=f"Image not found: {image_id}")
 
 
+@router.get("/pull-progress/{app_id}")
+async def pull_progress(app_id: int):
+    """Get image pull progress for an app."""
+    return get_app_pull_progress(app_id)
+
+
+def _pull_image_with_tracking(agent, image: str, app_id: int, auth_config: dict | None = None):
+    """Pull image with progress tracking (runs in background thread)."""
+    _cleanup_old_app_progress()
+
+    logger.info(f"Starting image pull for app {app_id}: {image}")
+
+    _set_app_pull_progress(
+        app_id,
+        {
+            "status": "pulling",
+            "image": image,
+            "progress": 0,
+            "layers": {},
+        },
+    )
+
+    last_logged_progress = 0
+
+    def progress_callback(progress: int, layers: dict):
+        """Update progress during pull."""
+        nonlocal last_logged_progress
+        _set_app_pull_progress(
+            app_id,
+            {
+                "status": "pulling",
+                "image": image,
+                "progress": progress,
+                "layers": layers,
+            },
+        )
+        # Log progress every 10%
+        if progress >= last_logged_progress + 10:
+            logger.info(f"Pulling image {image} for app {app_id}: {progress}%")
+            last_logged_progress = progress
+
+    try:
+        result = agent.image_manager.pull_image(
+            image=image,
+            auth_config=auth_config,
+            progress_callback=progress_callback,
+        )
+        logger.info(f"Image pull completed for app {app_id}: {image}")
+        _set_app_pull_progress(
+            app_id,
+            {
+                "status": "completed",
+                "image": image,
+                "progress": 100,
+            },
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Image pull failed for app {app_id}: {image} - {e}")
+        _set_app_pull_progress(
+            app_id,
+            {
+                "status": "error",
+                "image": image,
+                "progress": 0,
+                "error": str(e),
+            },
+        )
+        raise
+
+
 @router.post("/pull")
 async def pull_image(request: ImagePullRequest):
     """Pull an image from registry."""
     agent = get_agent()
 
+    logger.info(
+        f"Received pull request for image: {request.image}"
+        + (f" (app_id: {request.app_id})" if request.app_id else "")
+    )
+
     try:
-        result = agent.image_manager.pull_image(
-            image=request.image,
-            auth_config=request.registry_auth,
-        )
-        return result
+        if request.app_id:
+            # Pull with progress tracking in thread pool
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                _pull_image_with_tracking,
+                agent,
+                request.image,
+                request.app_id,
+                request.registry_auth,
+            )
+            return result
+        else:
+            # Simple pull without tracking
+            logger.info(f"Pulling image without tracking: {request.image}")
+            result = agent.image_manager.pull_image(
+                image=request.image,
+                auth_config=request.registry_auth,
+            )
+            logger.info(f"Image pull completed: {request.image}")
+            return result
     except Exception as e:
         logger.error(f"Failed to pull image {request.image}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

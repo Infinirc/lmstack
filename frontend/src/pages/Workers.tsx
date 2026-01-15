@@ -742,6 +742,74 @@ export default function Workers() {
               style={{ marginBottom: 16 }}
               items={[
                 {
+                  key: "wsl-docker",
+                  label: "WSL / Docker-in-Docker Environment",
+                  children: (
+                    <div>
+                      <Alert
+                        message="如果在 WSL 或 Docker-in-Docker 環境中運行"
+                        description="在 Docker 容器內，localhost 指向容器本身而非宿主機。請使用以下命令來確保正確連接到 LMStack 後端。"
+                        type="warning"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                      />
+                      <div
+                        style={{
+                          padding: 12,
+                          backgroundColor: "#1e1e1e",
+                          borderRadius: 6,
+                          position: "relative",
+                        }}
+                      >
+                        <pre
+                          style={{
+                            margin: 0,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-all",
+                            color: "#d4d4d4",
+                            fontSize: 12,
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          {generatedToken.wsl_docker_command}
+                        </pre>
+                        <Button
+                          type="primary"
+                          icon={<CopyOutlined />}
+                          size="small"
+                          onClick={() => {
+                            const cmd = generatedToken.wsl_docker_command;
+                            if (cmd) {
+                              if (
+                                navigator.clipboard &&
+                                window.isSecureContext
+                              ) {
+                                navigator.clipboard.writeText(cmd);
+                                message.success("Command copied to clipboard");
+                              } else {
+                                const textArea =
+                                  document.createElement("textarea");
+                                textArea.value = cmd;
+                                textArea.style.position = "fixed";
+                                textArea.style.left = "-999999px";
+                                document.body.appendChild(textArea);
+                                textArea.focus();
+                                textArea.select();
+                                document.execCommand("copy");
+                                document.body.removeChild(textArea);
+                                message.success("Command copied to clipboard");
+                              }
+                            }
+                          }}
+                          style={{ position: "absolute", top: 8, right: 8 }}
+                        >
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
                   key: "local-docker",
                   label: "Local Docker Build (after ./scripts/build-local.sh)",
                   children: (
