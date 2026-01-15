@@ -747,8 +747,8 @@ export default function Workers() {
                   children: (
                     <div>
                       <Alert
-                        message="如果在 WSL 或 Docker-in-Docker 環境中運行"
-                        description="在 Docker 容器內，localhost 指向容器本身而非宿主機。請使用以下命令來確保正確連接到 LMStack 後端。"
+                        message="Running in WSL or Docker-in-Docker"
+                        description="Inside a Docker container, localhost refers to the container itself, not the host machine. Use the command below to ensure proper connection to the LMStack backend."
                         type="warning"
                         showIcon
                         style={{ marginBottom: 12 }}

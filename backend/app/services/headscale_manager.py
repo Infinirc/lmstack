@@ -190,36 +190,36 @@ class HeadscaleManager:
         self.server_url = server_url
         self.http_port = http_port
 
-        _set_startup_progress("starting", 0, "正在檢查容器狀態...")
+        _set_startup_progress("starting", 0, "Checking container status...")
 
         container = self._get_container()
 
         if container:
             if container.status == "running":
                 logger.info("Headscale is already running")
-                _set_startup_progress("completed", 100, "Headscale 已在運行中")
+                _set_startup_progress("completed", 100, "Headscale is already running")
                 return True
             # Remove old container to ensure port config is correct
             logger.info("Removing old Headscale container")
-            _set_startup_progress("starting", 5, "正在移除舊容器...")
+            _set_startup_progress("starting", 5, "Removing old container...")
             container.remove(force=True)
 
         # Write config to volume
-        _set_startup_progress("starting", 10, "正在寫入配置文件...")
+        _set_startup_progress("starting", 10, "Writing configuration...")
         self._write_config_to_volume(server_url, http_port, grpc_port)
 
         # Pull image if needed
         try:
             self.client.images.get(HEADSCALE_IMAGE)
-            _set_startup_progress("starting", 50, "鏡像已存在")
+            _set_startup_progress("starting", 50, "Image already exists")
         except NotFound:
             logger.info(f"Pulling {HEADSCALE_IMAGE}...")
-            _set_startup_progress("pulling", 15, f"正在拉取鏡像 {HEADSCALE_IMAGE}...")
+            _set_startup_progress("pulling", 15, f"Pulling image {HEADSCALE_IMAGE}...")
             await self._pull_image_with_progress(HEADSCALE_IMAGE)
 
         # Create and start container
         logger.info("Creating Headscale container")
-        _set_startup_progress("starting", 70, "正在創建容器...")
+        _set_startup_progress("starting", 70, "Creating container...")
         try:
             self.client.containers.run(
                 HEADSCALE_IMAGE,
@@ -237,20 +237,20 @@ class HeadscaleManager:
             )
 
             # Wait for Headscale to start
-            _set_startup_progress("starting", 85, "正在等待服務啟動...")
+            _set_startup_progress("starting", 85, "Waiting for service to start...")
             await asyncio.sleep(3)
 
             # Create default user
-            _set_startup_progress("starting", 95, "正在創建預設用戶...")
+            _set_startup_progress("starting", 95, "Creating default user...")
             await self._create_user(LMSTACK_USER)
 
-            _set_startup_progress("completed", 100, "Headscale 啟動成功")
+            _set_startup_progress("completed", 100, "Headscale started successfully")
             logger.info("Headscale started successfully")
             return True
 
         except APIError as e:
             logger.error(f"Failed to start Headscale: {e}")
-            _set_startup_progress("error", 0, f"啟動失敗: {e}")
+            _set_startup_progress("error", 0, f"Failed to start: {e}")
             return False
 
     async def _pull_image_with_progress(self, image: str) -> None:
@@ -285,7 +285,7 @@ class HeadscaleManager:
                     _set_startup_progress(
                         "pulling",
                         overall_progress,
-                        f"正在拉取鏡像 {image}... ({pull_progress}%)",
+                        f"Pulling image {image}... ({pull_progress}%)",
                     )
 
     async def stop(self) -> bool:

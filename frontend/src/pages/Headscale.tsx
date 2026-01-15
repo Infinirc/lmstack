@@ -128,7 +128,7 @@ export default function Headscale() {
       setStartProgress({
         status: "starting",
         progress: 0,
-        message: "正在啟動...",
+        message: "Starting...",
       });
 
       // Start the server (don't await - we'll poll for progress)
@@ -152,9 +152,9 @@ export default function Headscale() {
       // Final progress check
       const finalProgress = await pollProgress();
       if (finalProgress?.status === "error") {
-        message.error(finalProgress.message || "啟動失敗");
+        message.error(finalProgress.message || "Failed to start");
       } else {
-        message.success("Headscale 啟動成功");
+        message.success("Headscale started successfully");
       }
 
       startForm.resetFields();
@@ -698,7 +698,7 @@ export default function Headscale() {
 
       {/* Progress Modal */}
       <Modal
-        title="啟動 Headscale VPN Server"
+        title="Starting Headscale VPN Server"
         open={progressModalOpen}
         closable={false}
         footer={null}
@@ -727,7 +727,7 @@ export default function Headscale() {
               color: colors.textMuted,
             }}
           >
-            {startProgress?.message || "正在啟動..."}
+            {startProgress?.message || "Starting..."}
           </div>
         </div>
       </Modal>
