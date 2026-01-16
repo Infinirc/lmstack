@@ -122,6 +122,7 @@ export default function DeployApps() {
   const [logs, setLogs] = useState<string>("");
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsFullscreen, setLogsFullscreen] = useState(true);
+  const [logsAutoRefresh, setLogsAutoRefresh] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
   const logsRef = useRef<HTMLPreElement>(null);
   const { isMobile } = useResponsive();
@@ -175,9 +176,9 @@ export default function DeployApps() {
     return () => clearInterval(interval);
   }, [deployedApps]);
 
-  // Auto-refresh logs when modal is open
+  // Auto-refresh logs when modal is open and auto-refresh is enabled
   useEffect(() => {
-    if (!logsModal) return;
+    if (!logsModal || !logsAutoRefresh) return;
 
     const interval = setInterval(async () => {
       try {
@@ -189,7 +190,7 @@ export default function DeployApps() {
     }, 2000); // Refresh every 2 seconds
 
     return () => clearInterval(interval);
-  }, [logsModal]);
+  }, [logsModal, logsAutoRefresh]);
 
   // Auto-scroll logs to bottom
   useEffect(() => {
@@ -728,13 +729,20 @@ export default function DeployApps() {
             }}
           >
             <span>Logs: {logsModal?.name}</span>
-            <Tag color="green">Auto-refresh</Tag>
+            <Tag
+              color={logsAutoRefresh ? "green" : "default"}
+              style={{ cursor: "pointer" }}
+              onClick={() => setLogsAutoRefresh(!logsAutoRefresh)}
+            >
+              Auto-refresh {logsAutoRefresh ? "ON" : "OFF"}
+            </Tag>
           </div>
         }
         open={!!logsModal}
         onCancel={() => {
           setLogsModal(null);
           setLogsFullscreen(false);
+          setLogsAutoRefresh(true);
           setAutoScroll(true);
         }}
         footer={
@@ -765,7 +773,7 @@ export default function DeployApps() {
               onClick={() => setLogsFullscreen(!logsFullscreen)}
               size="small"
             >
-              {logsFullscreen ? "Exit" : "Fullscreen"}
+              {logsFullscreen ? "Minimize" : "Fullscreen"}
             </Button>
           </Space>
         }
