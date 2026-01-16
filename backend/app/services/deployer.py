@@ -23,7 +23,7 @@ class DeployerService:
 
     # Health check configuration
     HEALTH_CHECK_INTERVAL = 5  # seconds between checks
-    HEALTH_CHECK_TIMEOUT = 600  # max seconds to wait (10 minutes for large models)
+    HEALTH_CHECK_SLOW_THRESHOLD = 600  # seconds before showing "slow loading" message (10 min)
     HEALTH_CHECK_REQUEST_TIMEOUT = 10  # timeout for each health check request
 
     async def deploy(self, deployment_id: int) -> None:
@@ -189,12 +189,10 @@ class DeployerService:
                     # Deployment was cancelled, don't update status
                     logger.info(f"Deployment {deployment_id} cancelled during startup")
                     return
-                elif api_ready:
+                else:
+                    # api_ready is True, model is ready
                     deployment.status = DeploymentStatus.RUNNING.value
                     deployment.status_message = "Model ready"
-                else:
-                    deployment.status = DeploymentStatus.ERROR.value
-                    deployment.status_message = "Model failed to start within timeout"
 
             except httpx.ConnectError:
                 deployment.status = DeploymentStatus.ERROR.value
@@ -321,11 +319,10 @@ class DeployerService:
         backend: str = BackendType.VLLM.value,
     ) -> bool | None:
         """
-        Poll the OpenAI API endpoint until it's ready or timeout.
+        Poll the OpenAI API endpoint until it's ready or cancelled.
 
         Returns:
             True: API is ready
-            False: Timeout or error
             None: Cancelled (user stopped deployment)
         """
         worker_ip = worker_address.split(":")[0]
@@ -339,11 +336,12 @@ class DeployerService:
 
         elapsed = 0
         check_count = 0
+        shown_slow_message = False
 
         logger.info(f"Waiting for API to be ready at {health_endpoint} (backend={backend})")
 
         async with httpx.AsyncClient(timeout=self.HEALTH_CHECK_REQUEST_TIMEOUT) as client:
-            while elapsed < self.HEALTH_CHECK_TIMEOUT:
+            while True:  # Wait indefinitely until ready or cancelled
                 check_count += 1
 
                 # Check if deployment was cancelled
@@ -408,18 +406,31 @@ class DeployerService:
                             mins = elapsed // 60
                             secs = elapsed % 60
                             time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
-                            deployment.status_message = (
-                                f"Loading model into GPU memory... ({time_str})"
-                            )
+
+                            # Show patience message after threshold
+                            if (
+                                elapsed >= self.HEALTH_CHECK_SLOW_THRESHOLD
+                                and not shown_slow_message
+                            ):
+                                deployment.status_message = (
+                                    f"Loading model... ({time_str}) - "
+                                    "Large model or slow network detected. Please be patient."
+                                )
+                                shown_slow_message = True
+                            elif shown_slow_message:
+                                deployment.status_message = (
+                                    f"Loading model... ({time_str}) - Please be patient."
+                                )
+                            else:
+                                deployment.status_message = (
+                                    f"Loading model into GPU memory... ({time_str})"
+                                )
                             await db.commit()
                     except Exception as e:
                         logger.debug(f"Error updating deployment status message: {e}")
 
                 await asyncio.sleep(self.HEALTH_CHECK_INTERVAL)
                 elapsed += self.HEALTH_CHECK_INTERVAL
-
-        logger.warning(f"API health check timed out after {elapsed}s ({check_count} checks)")
-        return False
 
     def _is_local_worker(self, address: str) -> bool:
         """Check if the worker address refers to the local machine."""

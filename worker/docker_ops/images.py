@@ -164,16 +164,41 @@ class ImageManager:
         for line in self.client.api.pull(image, stream=True, decode=True, auth_config=auth):
             if progress_callback and "id" in line:
                 layer_id = line["id"]
+                status = line.get("status", "")
                 detail = line.get("progressDetail", {})
-                layers_progress[layer_id] = {
-                    "status": line.get("status", ""),
-                    "current": detail.get("current", 0),
-                    "total": detail.get("total", 0),
-                }
 
-                # Calculate overall progress
-                total_size = sum(lp.get("total", 0) for lp in layers_progress.values())
-                downloaded = sum(lp.get("current", 0) for lp in layers_progress.values())
+                # Only update download progress for "Downloading" status
+                # Once downloaded, keep the layer at 100% (current = total)
+                if status == "Downloading":
+                    layers_progress[layer_id] = {
+                        "status": status,
+                        "current": detail.get("current", 0),
+                        "total": detail.get("total", 0),
+                    }
+                elif status in ("Download complete", "Pull complete", "Already exists"):
+                    # Layer is complete, mark as 100%
+                    existing = layers_progress.get(layer_id, {})
+                    total = existing.get("total", 0)
+                    layers_progress[layer_id] = {
+                        "status": status,
+                        "current": total,
+                        "total": total,
+                    }
+                elif status == "Pulling fs layer":
+                    # New layer, initialize with 0
+                    layers_progress[layer_id] = {
+                        "status": status,
+                        "current": 0,
+                        "total": 0,
+                    }
+                # Ignore "Extracting" and other statuses to avoid progress reset
+
+                # Calculate overall progress (only count layers with total > 0)
+                layers_with_size = [
+                    lyr for lyr in layers_progress.values() if lyr.get("total", 0) > 0
+                ]
+                total_size = sum(lyr.get("total", 0) for lyr in layers_with_size)
+                downloaded = sum(lyr.get("current", 0) for lyr in layers_with_size)
                 progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
 
                 progress_callback(progress, layers_progress)
