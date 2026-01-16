@@ -52,6 +52,29 @@ docker compose -f docker-compose.deploy.yml up -d
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:52000
 
+### Windows Docker Desktop - LAN Access
+
+Docker Desktop on Windows binds ports to `127.0.0.1` only. To allow LAN access, run these commands in PowerShell (Administrator):
+
+```powershell
+# Add firewall rule
+New-NetFirewallRule -DisplayName "LMStack" -Direction Inbound -LocalPort 3000,52000 -Protocol TCP -Action Allow
+
+# Port forwarding for LAN access
+netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectport=3000 connectaddress=127.0.0.1
+netsh interface portproxy add v4tov4 listenport=52000 listenaddress=0.0.0.0 connectport=52000 connectaddress=127.0.0.1
+
+# Verify port forwarding
+netsh interface portproxy show all
+```
+
+To remove port forwarding:
+
+```powershell
+netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0
+netsh interface portproxy delete v4tov4 listenport=52000 listenaddress=0.0.0.0
+```
+
 ### Usage
 
 1. Login with `admin` / `admin` (change password after first login)

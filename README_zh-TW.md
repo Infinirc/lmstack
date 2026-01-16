@@ -52,6 +52,29 @@ docker compose -f docker-compose.deploy.yml up -d
 - 前端: http://localhost:3000
 - 後端 API: http://localhost:52000
 
+### Windows Docker Desktop - 區域網路存取
+
+Windows 上的 Docker Desktop 預設只綁定到 `127.0.0.1`。若要允許區域網路存取，請在 PowerShell（系統管理員）中執行：
+
+```powershell
+# 新增防火牆規則
+New-NetFirewallRule -DisplayName "LMStack" -Direction Inbound -LocalPort 3000,52000 -Protocol TCP -Action Allow
+
+# 設定端口轉發以允許區域網路存取
+netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectport=3000 connectaddress=127.0.0.1
+netsh interface portproxy add v4tov4 listenport=52000 listenaddress=0.0.0.0 connectport=52000 connectaddress=127.0.0.1
+
+# 確認端口轉發設定
+netsh interface portproxy show all
+```
+
+移除端口轉發：
+
+```powershell
+netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0
+netsh interface portproxy delete v4tov4 listenport=52000 listenaddress=0.0.0.0
+```
+
 ### 使用方式
 
 1. 使用 `admin` / `admin` 登入（首次登入後請更改密碼）
