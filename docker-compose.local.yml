@@ -11,7 +11,7 @@ services:
     user: root
     # Use bridge network for Windows compatibility (network_mode: host doesn't work on Windows)
     ports:
-      - "52000:52000"
+      - "0.0.0.0:52000:52000"
     volumes:
       - lmstack-data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
@@ -27,7 +27,7 @@ services:
     image: infinirc/lmstack-frontend:local
     container_name: lmstack-frontend
     ports:
-      - "3000:80"
+      - "0.0.0.0:3000:80"
     environment:
       - BACKEND_HOST=server
       - NGINX_ENVSUBST_FILTER=BACKEND_HOST
