@@ -83,6 +83,7 @@ class DeployerService:
                     deployment.port = result.get("port")
                     # Store container_name for internal Docker network communication
                     local_container_name = result.get("container_name")
+                    deployment.container_name = local_container_name
                 else:
                     local_container_name = None  # Remote workers use IP:port
                     # Send to remote worker agent

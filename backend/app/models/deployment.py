@@ -48,6 +48,7 @@ class Deployment(Base):
 
     # Container info
     container_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    container_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     port: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Configuration
