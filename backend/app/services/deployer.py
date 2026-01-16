@@ -81,7 +81,10 @@ class DeployerService:
                         return
                     deployment.container_id = result.get("container_id")
                     deployment.port = result.get("port")
+                    # Store container_name for internal Docker network communication
+                    local_container_name = result.get("container_name")
                 else:
+                    local_container_name = None  # Remote workers use IP:port
                     # Send to remote worker agent
                     worker_url = f"http://{deployment.worker.address}/deploy"
                     progress_url = (
@@ -149,6 +152,7 @@ class DeployerService:
                     ollama_ready = await self._wait_for_ollama_ready(
                         deployment.worker.address,
                         deployment.port,
+                        container_name=local_container_name,
                     )
                     if not ollama_ready:
                         deployment.status = DeploymentStatus.ERROR.value
@@ -163,6 +167,7 @@ class DeployerService:
                         deployment.worker.address,
                         deployment.port,
                         deployment.model.model_id,
+                        container_name=local_container_name,
                     )
                     if not pull_success:
                         deployment.status = DeploymentStatus.ERROR.value
@@ -180,6 +185,7 @@ class DeployerService:
                     deployment_id,
                     db,
                     backend=deployment.backend,
+                    container_name=local_container_name,
                 )
 
                 # Refresh deployment object after health check updates
@@ -211,6 +217,7 @@ class DeployerService:
         worker_address: str,
         port: int,
         timeout: int = 60,
+        container_name: str | None = None,
     ) -> bool:
         """Wait for Ollama API to be available.
 
@@ -218,12 +225,17 @@ class DeployerService:
             worker_address: Worker address (host:port)
             port: Ollama container port
             timeout: Maximum wait time in seconds
+            container_name: Container name for Docker network (Windows compatibility)
 
         Returns:
             True if Ollama is ready, False on timeout
         """
-        worker_ip = worker_address.split(":")[0]
-        api_url = f"http://{worker_ip}:{port}/api/tags"
+        # Ollama is configured to use port 8000 (OLLAMA_HOST=0.0.0.0:8000)
+        if container_name:
+            api_url = f"http://{container_name}:8000/api/tags"
+        else:
+            worker_ip = worker_address.split(":")[0]
+            api_url = f"http://{worker_ip}:{port}/api/tags"
 
         logger.info(f"Waiting for Ollama API at {api_url}")
 
@@ -253,14 +265,19 @@ class DeployerService:
         worker_address: str,
         port: int,
         model_id: str,
+        container_name: str | None = None,
     ) -> bool:
         """Pull a model using Ollama API.
 
         Ollama requires models to be pulled before they can be used.
         This method calls the /api/pull endpoint and waits for completion.
         """
-        worker_ip = worker_address.split(":")[0]
-        api_url = f"http://{worker_ip}:{port}/api/pull"
+        # Ollama is configured to use port 8000 (OLLAMA_HOST=0.0.0.0:8000)
+        if container_name:
+            api_url = f"http://{container_name}:8000/api/pull"
+        else:
+            worker_ip = worker_address.split(":")[0]
+            api_url = f"http://{worker_ip}:{port}/api/pull"
 
         logger.info(f"Pulling Ollama model: {model_id}")
 
@@ -317,16 +334,33 @@ class DeployerService:
         deployment_id: int,
         db,
         backend: str = BackendType.VLLM.value,
+        container_name: str | None = None,
     ) -> bool | None:
         """
         Poll the OpenAI API endpoint until it's ready or cancelled.
+
+        Args:
+            worker_address: Worker address (host:port)
+            port: Host port for the model API
+            deployment_id: Deployment ID for status updates
+            db: Database session
+            backend: Backend type (vllm, ollama, etc.)
+            container_name: Container name for local Docker network communication.
+                           If set, uses container_name:8000 instead of worker_ip:port.
+                           This is needed for Windows Docker Desktop compatibility.
 
         Returns:
             True: API is ready
             None: Cancelled (user stopped deployment)
         """
-        worker_ip = worker_address.split(":")[0]
-        api_base_url = f"http://{worker_ip}:{port}"
+        # For local deployments with container_name, use Docker internal networking
+        # All backends (vLLM, SGLang, Ollama) are configured to use port 8000
+        if container_name:
+            api_base_url = f"http://{container_name}:8000"
+            logger.info(f"Using Docker network for API: {api_base_url}")
+        else:
+            worker_ip = worker_address.split(":")[0]
+            api_base_url = f"http://{worker_ip}:{port}"
 
         # Both vLLM and Ollama support OpenAI-compatible /v1/models endpoint
         health_endpoint = f"{api_base_url}/v1/models"
@@ -490,6 +524,10 @@ class DeployerService:
 
         This is used for local workers where we don't need to go through
         a remote worker agent.
+
+        On Windows Docker Desktop, containers must be on the same network
+        to communicate. We put model containers on the 'lmstack' network
+        so the backend can reach them via container name.
         """
         try:
             client = docker.from_env()
@@ -500,11 +538,25 @@ class DeployerService:
             gpu_indexes = deploy_request.get("gpu_indexes", [0])
             deployment_name = deploy_request.get("deployment_name", "lmstack-deployment")
 
-            # Find available port
+            # Find available port (still used for external access)
             host_port = self._find_available_port()
 
-            # Container name
+            # Container name - used for internal Docker network communication
             container_name = f"lmstack-{deployment_name}-{deploy_request['deployment_id']}"
+
+            # Ensure lmstack network exists (for Windows Docker Desktop compatibility)
+            network_name = "lmstack_lmstack"
+            try:
+                client.networks.get(network_name)
+            except docker.errors.NotFound:
+                # Try alternative network name (depends on compose project name)
+                try:
+                    network_name = "lmstack"
+                    client.networks.get(network_name)
+                except docker.errors.NotFound:
+                    # Create the network if it doesn't exist
+                    logger.info(f"Creating Docker network: {network_name}")
+                    client.networks.create(network_name, driver="bridge")
 
             # Build GPU device requests
             device_requests = [
@@ -537,12 +589,17 @@ class DeployerService:
                 },
                 shm_size="16g",  # Required for large model inference
                 restart_policy={"Name": "unless-stopped"},
+                network=network_name,  # Join lmstack network for Windows compatibility
             )
 
-            logger.info(f"Started local container: {container.id[:12]} on port {host_port}")
+            logger.info(
+                f"Started local container: {container.id[:12]} "
+                f"(name={container_name}) on network={network_name}, port={host_port}"
+            )
 
             return {
                 "container_id": container.id,
+                "container_name": container_name,
                 "port": host_port,
             }
 

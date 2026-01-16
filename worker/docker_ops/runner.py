@@ -216,8 +216,20 @@ class DockerRunner:
         environment: dict[str, str],
         deployment_id: int = 0,
         port: Optional[int] = None,
+        network: Optional[str] = None,
     ) -> tuple[str, int]:
-        """Run a container and return (container_id, port)."""
+        """Run a container and return (container_id, port).
+
+        Args:
+            name: Container name
+            image: Docker image
+            command: Container command
+            gpu_indexes: GPU indices to use
+            environment: Environment variables
+            deployment_id: Deployment ID for progress tracking
+            port: Optional specific port to use
+            network: Optional Docker network to join (for Windows compatibility)
+        """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
@@ -229,6 +241,7 @@ class DockerRunner:
             environment,
             deployment_id,
             port,
+            network,
         )
 
     def _run_sync(
@@ -240,6 +253,7 @@ class DockerRunner:
         environment: dict[str, str],
         deployment_id: int = 0,
         port: Optional[int] = None,
+        network: Optional[str] = None,
     ) -> tuple[str, int]:
         """Synchronous container run."""
         # Check if container with same name exists
@@ -286,24 +300,32 @@ class DockerRunner:
             **environment,
         }
 
-        # Run container
-        container = self.client.containers.run(
-            image=image,
-            name=name,
-            command=command,
-            detach=True,
-            remove=False,
-            ports={"8000/tcp": host_port},
-            device_requests=device_requests,
-            environment=env,
-            shm_size="16g",
-            volumes={
+        # Build container run kwargs
+        run_kwargs = {
+            "image": image,
+            "name": name,
+            "command": command,
+            "detach": True,
+            "remove": False,
+            "ports": {"8000/tcp": host_port},
+            "device_requests": device_requests,
+            "environment": env,
+            "shm_size": "16g",
+            "volumes": {
                 "/root/.cache/huggingface": {
                     "bind": "/root/.cache/huggingface",
                     "mode": "rw",
                 },
             },
-        )
+        }
+
+        # Add network if specified (for Windows Docker Desktop compatibility)
+        if network:
+            run_kwargs["network"] = network
+            logger.info(f"Creating container on network: {network}")
+
+        # Run container
+        container = self.client.containers.run(**run_kwargs)
 
         return container.id, host_port
 
