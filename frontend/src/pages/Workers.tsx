@@ -858,6 +858,69 @@ export default function Workers() {
                   ),
                 },
                 {
+                  key: "windows-local",
+                  label: "Windows (Same Machine as Backend)",
+                  children: (
+                    <div
+                      style={{
+                        padding: 12,
+                        backgroundColor: "#1e1e1e",
+                        borderRadius: 6,
+                        position: "relative",
+                      }}
+                    >
+                      <pre
+                        style={{
+                          margin: 0,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-all",
+                          color: "#d4d4d4",
+                          fontSize: 12,
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {generatedToken.docker_command?.replace(
+                          /BACKEND_URL=http:\/\/[^:]+:52000/,
+                          "BACKEND_URL=http://host.docker.internal:52000",
+                        )}
+                      </pre>
+                      <Button
+                        type="primary"
+                        icon={<CopyOutlined />}
+                        size="small"
+                        onClick={() => {
+                          const windowsCmd =
+                            generatedToken.docker_command?.replace(
+                              /BACKEND_URL=http:\/\/[^:]+:52000/,
+                              "BACKEND_URL=http://host.docker.internal:52000",
+                            );
+                          if (windowsCmd) {
+                            if (navigator.clipboard && window.isSecureContext) {
+                              navigator.clipboard.writeText(windowsCmd);
+                              message.success("Command copied to clipboard");
+                            } else {
+                              const textArea =
+                                document.createElement("textarea");
+                              textArea.value = windowsCmd;
+                              textArea.style.position = "fixed";
+                              textArea.style.left = "-999999px";
+                              document.body.appendChild(textArea);
+                              textArea.focus();
+                              textArea.select();
+                              document.execCommand("copy");
+                              document.body.removeChild(textArea);
+                              message.success("Command copied to clipboard");
+                            }
+                          }
+                        }}
+                        style={{ position: "absolute", top: 8, right: 8 }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  ),
+                },
+                {
                   key: "dev-python",
                   label: "Development Mode (Python)",
                   children: (
