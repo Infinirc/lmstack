@@ -131,23 +131,46 @@ class DockerRunner:
 
         try:
             for line in self.client.api.pull(image, stream=True, decode=True):
-                if "id" in line and "progressDetail" in line:
+                if "id" in line:
                     layer_id = line["id"]
+                    status = line.get("status", "")
                     detail = line.get("progressDetail", {})
-                    current = detail.get("current", 0)
-                    total = detail.get("total", 0)
 
                     progress_data = _pull_progress.get(str(deployment_id), {})
                     layers = progress_data.get("layers", {})
-                    layers[layer_id] = {
-                        "status": line.get("status", ""),
-                        "current": current,
-                        "total": total,
-                    }
 
-                    # Calculate overall progress
-                    total_size = sum(layer.get("total", 0) for layer in layers.values())
-                    downloaded = sum(layer.get("current", 0) for layer in layers.values())
+                    # Only update download progress for "Downloading" status
+                    # Once downloaded, keep the layer at 100% (total = total, current = total)
+                    if status == "Downloading":
+                        current = detail.get("current", 0)
+                        total = detail.get("total", 0)
+                        layers[layer_id] = {
+                            "status": status,
+                            "current": current,
+                            "total": total,
+                        }
+                    elif status in ("Download complete", "Pull complete", "Already exists"):
+                        # Layer is complete, mark as 100%
+                        existing = layers.get(layer_id, {})
+                        total = existing.get("total", 0)
+                        layers[layer_id] = {
+                            "status": status,
+                            "current": total,  # current = total = 100%
+                            "total": total,
+                        }
+                    elif status == "Pulling fs layer":
+                        # New layer, initialize with 0
+                        layers[layer_id] = {
+                            "status": status,
+                            "current": 0,
+                            "total": 0,
+                        }
+                    # Ignore "Extracting" and other statuses to avoid progress reset
+
+                    # Calculate overall progress (only count layers with total > 0)
+                    layers_with_size = [lyr for lyr in layers.values() if lyr.get("total", 0) > 0]
+                    total_size = sum(lyr.get("total", 0) for lyr in layers_with_size)
+                    downloaded = sum(lyr.get("current", 0) for lyr in layers_with_size)
                     overall_progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
 
                     _set_pull_progress(
