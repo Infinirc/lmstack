@@ -511,18 +511,19 @@ export default function DeployApps() {
                             {app.status === "starting" && <LoadingOutlined />}
                             {app.status === "pending" && <SyncOutlined spin />}
                             <Text type="secondary" style={{ fontSize: 13 }}>
-                              {progress?.stage === "unknown" ||
-                              !progress?.message
-                                ? app.status === "starting"
-                                  ? "Starting app (first startup may take 1-3 minutes)..."
-                                  : app.status === "pulling"
+                              {app.status === "starting"
+                                ? "Starting app (first startup may take 1-3 minutes)..."
+                                : progress?.stage === "unknown" ||
+                                    !progress?.message
+                                  ? app.status === "pulling"
                                     ? "Pulling image..."
                                     : "Preparing..."
-                                : progress.message}
+                                  : progress.message}
                             </Text>
                           </div>
-                          {/* Use indeterminate style when no real progress data */}
-                          {!progress ||
+                          {/* Use indeterminate style for starting stage or when no real progress data */}
+                          {app.status === "starting" ||
+                          !progress ||
                           progress.stage === "unknown" ||
                           (app.status === "pulling" &&
                             progress.progress === 0) ? (
