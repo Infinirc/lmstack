@@ -32,6 +32,7 @@ import type {
   ConversationMessage,
 } from "../services/api";
 import { useResponsive } from "../hooks";
+import { STORAGE_KEYS } from "../constants";
 
 // Conversation type for UI (maps from API type)
 interface Conversation {
@@ -351,10 +352,13 @@ export default function Chat() {
       try {
         abortControllerRef.current = new AbortController();
 
+        const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
           body: JSON.stringify({
             model: selectedDeployment.model?.model_id || "default",
             messages: [
