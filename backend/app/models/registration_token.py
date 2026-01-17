@@ -25,6 +25,9 @@ class RegistrationToken(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)  # Suggested worker name
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_local: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )  # True if created via /local endpoint
     used_by_worker_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -32,11 +35,14 @@ class RegistrationToken(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @classmethod
-    def create(cls, name: str, expires_in_hours: int = 24) -> "RegistrationToken":
+    def create(
+        cls, name: str, expires_in_hours: int = 24, is_local: bool = False
+    ) -> "RegistrationToken":
         """Create a new registration token"""
         return cls(
             token=generate_token(),
             name=name,
+            is_local=is_local,
             expires_at=datetime.utcnow() + timedelta(hours=expires_in_hours),
         )
 

@@ -145,6 +145,12 @@ async def create_worker(
             existing_worker.status = WorkerStatus.ONLINE.value
             existing_worker.last_heartbeat = datetime.now(UTC)
 
+            # Update labels to mark as local if token is for local worker
+            if token.is_local:
+                worker_labels = dict(existing_worker.labels) if existing_worker.labels else {}
+                worker_labels["type"] = "local"
+                existing_worker.labels = worker_labels
+
             await db.commit()
             await db.refresh(existing_worker)
 
@@ -187,11 +193,16 @@ async def create_worker(
         reported_port = worker_in.address.split(":")[-1]
     real_address = f"{client_ip}:{reported_port}"
 
+    # Set labels for local workers (created via /local endpoint)
+    worker_labels = dict(worker_in.labels) if worker_in.labels else {}
+    if token.is_local:
+        worker_labels["type"] = "local"
+
     worker = Worker(
         name=worker_in.name,
         address=real_address,
         description=worker_in.description,
-        labels=worker_in.labels,
+        labels=worker_labels if worker_labels else None,
         gpu_info=([gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None),
         system_info=(worker_in.system_info.model_dump() if worker_in.system_info else None),
         status=WorkerStatus.ONLINE.value,
@@ -379,10 +390,11 @@ async def register_local_worker(
     settings = get_settings()
     backend_url = f"http://localhost:{settings.port}"
 
-    # Create a registration token for this worker
+    # Create a registration token for this worker (marked as local)
     token = RegistrationToken.create(
         name=worker_name,
         expires_in_hours=24,  # Token valid for 24 hours
+        is_local=True,  # Mark as local worker
     )
 
     db.add(token)
