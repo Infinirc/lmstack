@@ -304,10 +304,24 @@ export default function DeployApps() {
       // Use current hostname (LMStack IP) + app port
       return `http://${window.location.hostname}:${app.port}`;
     } else {
-      // Direct connection to worker
+      // Direct connection - for local workers, use current hostname
+      // Check if worker_address is a private/internal IP (Docker network, etc.)
       if (app.worker_address) {
         const workerHost = app.worker_address.split(":")[0];
-        return `http://${workerHost}:${app.port}`;
+        const isInternalIp =
+          workerHost.startsWith("172.") ||
+          workerHost.startsWith("10.") ||
+          workerHost.startsWith("192.168.") ||
+          workerHost === "localhost" ||
+          workerHost === "127.0.0.1";
+
+        if (isInternalIp) {
+          // Local worker - use current browser hostname
+          return `http://${window.location.hostname}:${app.port}`;
+        } else {
+          // Remote worker - use worker's IP
+          return `http://${workerHost}:${app.port}`;
+        }
       }
       return null;
     }
