@@ -265,10 +265,13 @@ class DockerRunner:
             pass
 
         # Pull image if not exists
+        # Note: We catch both NotFound and APIError because when a tag exists
+        # but points to a deleted/pruned image SHA, Docker returns a 404 APIError
+        # instead of NotFound.
         try:
             self.client.images.get(image)
-        except NotFound:
-            logger.info(f"Pulling image {image}...")
+        except (NotFound, APIError) as e:
+            logger.info(f"Image {image} not found or invalid ({type(e).__name__}), pulling...")
             self.pull_image_with_progress(image, deployment_id)
 
         # Update progress to starting

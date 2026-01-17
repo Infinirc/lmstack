@@ -289,11 +289,14 @@ class ContainerManager:
         logger.info(f"Creating container: {name} from image {image}")
 
         # Verify image exists, pull if not found
+        # Note: We catch both ImageNotFound and APIError because when a tag exists
+        # but points to a deleted/pruned image SHA, Docker returns a 404 APIError
+        # instead of ImageNotFound.
         try:
             self.client.images.get(image)
             logger.info(f"Image {image} found locally")
-        except ImageNotFound:
-            logger.info(f"Image {image} not found, pulling...")
+        except (ImageNotFound, APIError) as e:
+            logger.info(f"Image {image} not found or invalid ({type(e).__name__}), pulling...")
             self.client.images.pull(image)
             logger.info(f"Image {image} pulled successfully")
 
