@@ -54,26 +54,30 @@ docker compose -f docker-compose.deploy.yml up -d
 
 ### Windows Docker Desktop - 區域網路存取
 
-Windows 上的 Docker Desktop 預設只綁定到 `127.0.0.1`。若要允許區域網路存取，請在 PowerShell（系統管理員）中執行：
+Windows 防火牆預設會阻擋區域網路存取。請選擇以下其中一種方式：
+
+**方式一：關閉防火牆（最簡單）**
 
 ```powershell
-# 新增防火牆規則
+# 在 PowerShell（系統管理員）中執行
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+```
+
+**方式二：新增防火牆規則（較安全）**
+
+```powershell
+# 在 PowerShell（系統管理員）中執行
+# 基本端口（前端 + 後端 API）
 New-NetFirewallRule -DisplayName "LMStack" -Direction Inbound -LocalPort 3000,52000 -Protocol TCP -Action Allow
 
-# 設定端口轉發以允許區域網路存取
-netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectport=3000 connectaddress=127.0.0.1
-netsh interface portproxy add v4tov4 listenport=52000 listenaddress=0.0.0.0 connectport=52000 connectaddress=127.0.0.1
+# 模型部署端口（依需求新增，例如 40000-40100）
+New-NetFirewallRule -DisplayName "LMStack Models" -Direction Inbound -LocalPort 40000-40100 -Protocol TCP -Action Allow
 
-# 確認端口轉發設定
-netsh interface portproxy show all
+# App 端口（例如 Open WebUI 使用 46488）
+New-NetFirewallRule -DisplayName "LMStack Apps" -Direction Inbound -LocalPort 46000-46500 -Protocol TCP -Action Allow
 ```
 
-移除端口轉發：
-
-```powershell
-netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0
-netsh interface portproxy delete v4tov4 listenport=52000 listenaddress=0.0.0.0
-```
+> **注意**：部署模型或 App 時，請在 UI 中查看分配的端口，並確保該端口已在防火牆中開放。
 
 ### 使用方式
 

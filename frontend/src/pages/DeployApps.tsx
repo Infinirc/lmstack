@@ -561,15 +561,25 @@ export default function DeployApps() {
                       )}
 
                       {app.status === "running" && appUrl && (
-                        <Button
-                          type="link"
-                          icon={<LinkOutlined />}
-                          href={appUrl}
-                          target="_blank"
-                          style={{ padding: 0, height: "auto" }}
-                        >
-                          Open {app.name}
-                        </Button>
+                        <div>
+                          <Button
+                            type="link"
+                            icon={<LinkOutlined />}
+                            href={appUrl}
+                            target="_blank"
+                            style={{ padding: 0, height: "auto" }}
+                          >
+                            Open {app.name}
+                          </Button>
+                          {app.port && (
+                            <Text
+                              type="secondary"
+                              style={{ fontSize: 12, marginLeft: 8 }}
+                            >
+                              Port: {app.port}
+                            </Text>
+                          )}
+                        </div>
                       )}
 
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>

@@ -54,26 +54,30 @@ docker compose -f docker-compose.deploy.yml up -d
 
 ### Windows Docker Desktop - LAN Access
 
-Docker Desktop on Windows binds ports to `127.0.0.1` only. To allow LAN access, run these commands in PowerShell (Administrator):
+Windows Firewall blocks LAN access by default. Choose one of the following options:
+
+**Option 1: Disable Firewall (Simplest)**
 
 ```powershell
-# Add firewall rule
+# Run in PowerShell (Administrator)
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+```
+
+**Option 2: Add Firewall Rules (More Secure)**
+
+```powershell
+# Run in PowerShell (Administrator)
+# Base ports (Frontend + Backend API)
 New-NetFirewallRule -DisplayName "LMStack" -Direction Inbound -LocalPort 3000,52000 -Protocol TCP -Action Allow
 
-# Port forwarding for LAN access
-netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectport=3000 connectaddress=127.0.0.1
-netsh interface portproxy add v4tov4 listenport=52000 listenaddress=0.0.0.0 connectport=52000 connectaddress=127.0.0.1
+# Model deployment ports (add ports as needed, e.g., 40000-40100)
+New-NetFirewallRule -DisplayName "LMStack Models" -Direction Inbound -LocalPort 40000-40100 -Protocol TCP -Action Allow
 
-# Verify port forwarding
-netsh interface portproxy show all
+# App ports (e.g., Open WebUI on 46488)
+New-NetFirewallRule -DisplayName "LMStack Apps" -Direction Inbound -LocalPort 46000-46500 -Protocol TCP -Action Allow
 ```
 
-To remove port forwarding:
-
-```powershell
-netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0
-netsh interface portproxy delete v4tov4 listenport=52000 listenaddress=0.0.0.0
-```
+> **Note**: When you deploy models or apps, check the assigned port in the UI and ensure it's allowed through the firewall.
 
 ### Usage
 
