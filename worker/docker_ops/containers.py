@@ -8,7 +8,7 @@ import logging
 from typing import Any, Optional
 
 import docker
-from docker.errors import APIError, NotFound
+from docker.errors import APIError, ImageNotFound, NotFound
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +287,15 @@ class ContainerManager:
             Created container information
         """
         logger.info(f"Creating container: {name} from image {image}")
+
+        # Verify image exists, pull if not found
+        try:
+            self.client.images.get(image)
+            logger.info(f"Image {image} found locally")
+        except ImageNotFound:
+            logger.info(f"Image {image} not found, pulling...")
+            self.client.images.pull(image)
+            logger.info(f"Image {image} pulled successfully")
 
         # Remove existing container with same name
         try:
