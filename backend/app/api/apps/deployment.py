@@ -96,6 +96,9 @@ async def pull_image_with_progress(
             )
 
             # Poll for progress while waiting
+            # Track last known progress to avoid regression when status is "unknown"
+            last_known_progress = 0
+
             while not pull_task.done():
                 try:
                     progress_resp = await client.get(progress_url, timeout=5.0)
@@ -105,12 +108,15 @@ async def pull_image_with_progress(
                         progress = progress_data.get("progress", 0)
 
                         if status == "pulling":
-                            set_deployment_progress(
-                                app_id,
-                                "pulling",
-                                progress,
-                                f"Pulling image {image}... ({progress}%)",
-                            )
+                            # Only update if progress is moving forward (avoid regression)
+                            if progress >= last_known_progress:
+                                last_known_progress = progress
+                                set_deployment_progress(
+                                    app_id,
+                                    "pulling",
+                                    progress,
+                                    f"Pulling image {image}... ({progress}%)",
+                                )
                         elif status == "completed":
                             set_deployment_progress(
                                 app_id,
@@ -118,6 +124,7 @@ async def pull_image_with_progress(
                                 100,
                                 "Image pulled successfully",
                             )
+                        # Ignore "unknown" status - keep showing last known progress
                 except Exception:
                     pass  # Progress polling is best-effort
 
