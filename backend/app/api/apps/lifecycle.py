@@ -44,6 +44,12 @@ async def stop_app(
     if app.status != AppStatus.RUNNING.value:
         raise HTTPException(status_code=400, detail="App is not running")
 
+    if not app.container_id:
+        # No container to stop, just mark as stopped
+        app.status = AppStatus.STOPPED.value
+        await db.commit()
+        return app_to_response(app, request)
+
     await db.refresh(app, ["worker"])
     worker = app.worker
 
@@ -91,6 +97,12 @@ async def start_app(
 
     if app.status not in [AppStatus.STOPPED.value, AppStatus.ERROR.value]:
         raise HTTPException(status_code=400, detail="App is not stopped")
+
+    if not app.container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Container not found. Please delete and redeploy the app.",
+        )
 
     await db.refresh(app, ["worker"])
     worker = app.worker
