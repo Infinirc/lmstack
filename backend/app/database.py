@@ -53,6 +53,14 @@ async def _run_migrations(conn):
         await conn.execute(text("ALTER TABLE deployments ADD COLUMN container_name VARCHAR(255)"))
         logger.info("'container_name' column added!")
 
+    # Migration: Add is_local to registration_tokens (for local worker detection)
+    if not await column_exists("registration_tokens", "is_local"):
+        logger.info("Adding 'is_local' column to registration_tokens table...")
+        await conn.execute(
+            text("ALTER TABLE registration_tokens ADD COLUMN is_local BOOLEAN DEFAULT 0")
+        )
+        logger.info("'is_local' column added!")
+
 
 async def init_db():
     """Initialize database tables and run migrations"""
