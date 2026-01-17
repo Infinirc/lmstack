@@ -160,6 +160,7 @@ class ImageManager:
 
         # Pull with progress tracking
         layers_progress: dict[str, dict] = {}
+        max_progress = 0  # Track max progress to prevent going backwards
 
         for line in self.client.api.pull(image, stream=True, decode=True, auth_config=auth):
             if progress_callback and "id" in line:
@@ -200,6 +201,12 @@ class ImageManager:
                 total_size = sum(lyr.get("total", 0) for lyr in layers_with_size)
                 downloaded = sum(lyr.get("current", 0) for lyr in layers_with_size)
                 progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
+
+                # Never let progress go backwards
+                if progress > max_progress:
+                    max_progress = progress
+                else:
+                    progress = max_progress
 
                 progress_callback(progress, layers_progress)
 

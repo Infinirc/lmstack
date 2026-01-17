@@ -670,12 +670,14 @@ export default function DeployApps() {
             value={selectedWorker}
             onChange={(value) => {
               setSelectedWorker(value);
-              // Auto-disable proxy for localhost workers
+              // Auto-disable proxy for local workers (same machine as LMStack)
               const worker = workers.find((w) => w.id === value);
               if (worker) {
-                const workerHost = worker.address.split(":")[0];
-                if (workerHost === "localhost" || workerHost === "127.0.0.1") {
+                const isLocalWorker = worker.labels?.type === "local";
+                if (isLocalWorker) {
                   setUseProxy(false);
+                } else {
+                  setUseProxy(true);
                 }
               }
             }}
@@ -686,13 +688,11 @@ export default function DeployApps() {
           />
         </div>
 
-        {/* Hide proxy option for localhost workers (they use direct connection) */}
+        {/* Hide proxy option for local workers (same machine as LMStack) */}
         {(() => {
           const worker = workers.find((w) => w.id === selectedWorker);
-          const workerHost = worker?.address.split(":")[0];
-          const isLocalhost =
-            workerHost === "localhost" || workerHost === "127.0.0.1";
-          if (isLocalhost) return null;
+          const isLocalWorker = worker?.labels?.type === "local";
+          if (isLocalWorker) return null;
           return (
             <div style={{ marginBottom: 16 }}>
               <div
