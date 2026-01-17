@@ -354,6 +354,7 @@ export default function Chat() {
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             model: selectedDeployment.model?.model_id || "default",
             messages: [
