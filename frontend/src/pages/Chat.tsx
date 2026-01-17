@@ -278,18 +278,15 @@ export default function Chat() {
   }, [isStreaming]);
 
   /**
-   * Get endpoint URL for deployment
+   * Get endpoint URL for deployment (uses backend proxy to handle Docker networking)
    */
   const getEndpointUrl = (deployment: Deployment): string | null => {
-    if (
-      !deployment.worker ||
-      !deployment.port ||
-      deployment.status !== "running"
-    ) {
+    if (deployment.status !== "running") {
       return null;
     }
-    const workerIp = deployment.worker.address.split(":")[0];
-    return `http://${workerIp}:${deployment.port}/v1/chat/completions`;
+    // Use backend proxy endpoint instead of direct model URL
+    // This handles Docker internal networking correctly (especially on Windows)
+    return `/api/deployments/${deployment.id}/chat`;
   };
 
   /**

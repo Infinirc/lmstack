@@ -420,10 +420,13 @@ def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
     2. Apps deployed by Worker are accessible via host network
     3. Works seamlessly on both regular machines and WSL
 
+    Uses --restart unless-stopped so worker auto-starts after system reboot.
+
     Command is single-line for cross-platform compatibility (Linux/Mac/Windows).
     """
     return (
-        f"docker run -d --name lmstack-worker --network host --gpus all --privileged "
+        f"docker run -d --name lmstack-worker --restart unless-stopped "
+        f"--network host --gpus all --privileged "
         f"-v /var/run/docker.sock:/var/run/docker.sock "
         f"-v ~/.cache/huggingface:/root/.cache/huggingface "
         f"-v /:/host:ro "

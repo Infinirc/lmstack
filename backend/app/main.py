@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.core.exceptions import LMStackError
 from app.database import async_session_maker, init_db
 from app.models.worker import Worker, WorkerStatus
+from app.services.deployment_sync import deployment_sync_service
 
 # Configure logging
 logging.basicConfig(
@@ -29,6 +30,10 @@ settings = get_settings()
 
 # Background task control
 _worker_check_task = None
+_deployment_health_task = None
+
+# Deployment health check interval (in seconds)
+DEPLOYMENT_HEALTH_CHECK_INTERVAL = 60  # Check every minute
 
 
 async def check_worker_status():
@@ -72,26 +77,74 @@ async def check_worker_status():
             await asyncio.sleep(10)  # Wait before retrying on error
 
 
+async def check_deployment_health():
+    """Background task to periodically check deployment health.
+
+    This ensures that deployments marked as 'starting' eventually become
+    'running' or 'error', and catches any containers that crash.
+    """
+    # Initial delay to let containers stabilize after startup sync
+    await asyncio.sleep(30)
+
+    while True:
+        try:
+            await asyncio.sleep(DEPLOYMENT_HEALTH_CHECK_INTERVAL)
+
+            # Only sync deployments that are in transitional states
+            stats = await deployment_sync_service.sync_all_deployments()
+
+            if stats["total"] > 0:
+                logger.debug(
+                    f"Deployment health check: {stats['running_verified']} healthy, "
+                    f"{stats['api_not_ready']} loading, {stats['container_missing']} missing"
+                )
+
+        except asyncio.CancelledError:
+            logger.info("Deployment health check task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in deployment health check: {e}")
+            await asyncio.sleep(30)  # Wait before retrying on error
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
-    global _worker_check_task
+    global _worker_check_task, _deployment_health_task
 
     # Startup
     logger.info("Starting LMStack API Server...")
     await init_db()
     logger.info("Database initialized")
 
+    # Synchronize deployment status with actual container state
+    # This is important after system reboot
+    try:
+        logger.info("Synchronizing deployment status...")
+        sync_stats = await deployment_sync_service.sync_all_deployments()
+        if sync_stats["total"] > 0:
+            logger.info(
+                f"Deployment sync complete: {sync_stats['running_verified']} running, "
+                f"{sync_stats['restarting']} restarting, {sync_stats['api_not_ready']} loading, "
+                f"{sync_stats['container_missing']} missing"
+            )
+    except Exception as e:
+        logger.error(f"Failed to sync deployments on startup: {e}")
+
     # Start background task for checking worker status
     _worker_check_task = asyncio.create_task(check_worker_status())
     logger.info("Worker status check task started")
+
+    # Start background task for checking deployment health
+    _deployment_health_task = asyncio.create_task(check_deployment_health())
+    logger.info("Deployment health check task started")
 
     yield
 
     # Shutdown
     logger.info("Shutting down LMStack API Server...")
 
-    # Cancel background task
+    # Cancel background tasks
     if _worker_check_task:
         _worker_check_task.cancel()
         try:
@@ -99,6 +152,14 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         logger.info("Worker status check task stopped")
+
+    if _deployment_health_task:
+        _deployment_health_task.cancel()
+        try:
+            await _deployment_health_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Deployment health check task stopped")
 
 
 app = FastAPI(
