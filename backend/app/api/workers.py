@@ -1,15 +1,17 @@
 """Worker API routes"""
 
+import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.deps import require_operator, require_viewer
-from app.database import get_db
-from app.models.deployment import Deployment
+from app.database import async_session_maker, get_db
+from app.models.app import App, AppStatus
+from app.models.deployment import Deployment, DeploymentStatus
 from app.models.registration_token import RegistrationToken
 from app.models.user import User
 from app.models.worker import Worker, WorkerStatus
@@ -25,6 +27,8 @@ from app.schemas.worker import (
     WorkerUpdate,
 )
 from app.services.local_worker import get_local_hostname, spawn_docker_worker, stop_docker_worker
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -348,6 +352,7 @@ async def delete_worker(
 @router.post("/heartbeat")
 async def worker_heartbeat(
     heartbeat: WorkerHeartbeat,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """Receive heartbeat from worker"""
@@ -356,6 +361,10 @@ async def worker_heartbeat(
 
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
+
+    # Check if worker is coming back online
+    was_offline = worker.status == WorkerStatus.OFFLINE.value
+    is_now_online = heartbeat.status == WorkerStatus.ONLINE
 
     worker.last_heartbeat = datetime.now(UTC)
     worker.status = heartbeat.status.value
@@ -367,6 +376,10 @@ async def worker_heartbeat(
         worker.system_info = heartbeat.system_info.model_dump()
 
     await db.commit()
+
+    # If worker came back online, refresh deployments and apps status
+    if was_offline and is_now_online:
+        background_tasks.add_task(_refresh_worker_resources, worker.id)
 
     return {"status": "ok"}
 
@@ -614,3 +627,107 @@ async def delete_registration_token(
 
     await db.delete(token)
     await db.commit()
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+async def _refresh_worker_resources(worker_id: int):
+    """Refresh status of deployments and apps on a worker that just came online.
+
+    This is called as a background task when a worker's heartbeat indicates
+    it has come back online after being offline.
+    """
+    import httpx
+
+    logger.info(f"Refreshing resources for worker {worker_id} after coming online")
+
+    async with async_session_maker() as db:
+        # Get the worker
+        result = await db.execute(select(Worker).where(Worker.id == worker_id))
+        worker = result.scalar_one_or_none()
+        if not worker:
+            return
+
+        # Refresh deployments on this worker
+        dep_result = await db.execute(
+            select(Deployment).where(
+                Deployment.worker_id == worker_id,
+                Deployment.status.in_(
+                    [
+                        DeploymentStatus.ERROR.value,
+                        DeploymentStatus.STARTING.value,
+                        DeploymentStatus.RUNNING.value,
+                    ]
+                ),
+            )
+        )
+        deployments = dep_result.scalars().all()
+
+        for deployment in deployments:
+            if not deployment.container_id:
+                continue
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(
+                        f"http://{worker.address}/containers/{deployment.container_id}"
+                    )
+                    if response.status_code == 200:
+                        container_info = response.json()
+                        state = container_info.get("state", "").lower()
+                        if state == "running":
+                            deployment.status = DeploymentStatus.RUNNING.value
+                            deployment.status_message = "Model ready"
+                        elif state in ("exited", "dead"):
+                            deployment.status = DeploymentStatus.STOPPED.value
+                            deployment.status_message = f"Container {state}"
+                    elif response.status_code == 404:
+                        deployment.status = DeploymentStatus.ERROR.value
+                        deployment.status_message = "Container not found"
+            except Exception as e:
+                logger.warning(f"Failed to check deployment {deployment.id}: {e}")
+
+        # Refresh apps on this worker
+        app_result = await db.execute(
+            select(App).where(
+                App.worker_id == worker_id,
+                App.status.in_(
+                    [
+                        AppStatus.ERROR.value,
+                        AppStatus.STARTING.value,
+                        AppStatus.RUNNING.value,
+                    ]
+                ),
+            )
+        )
+        apps = app_result.scalars().all()
+
+        for app in apps:
+            if not app.container_id:
+                continue
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(
+                        f"http://{worker.address}/containers/{app.container_id}"
+                    )
+                    if response.status_code == 200:
+                        container_info = response.json()
+                        state = container_info.get("state", "").lower()
+                        if state == "running":
+                            app.status = AppStatus.RUNNING.value
+                            app.status_message = None
+                        elif state in ("exited", "dead"):
+                            app.status = AppStatus.STOPPED.value
+                            app.status_message = f"Container {state}"
+                    elif response.status_code == 404:
+                        app.status = AppStatus.ERROR.value
+                        app.status_message = "Container not found"
+            except Exception as e:
+                logger.warning(f"Failed to check app {app.id}: {e}")
+
+        await db.commit()
+        logger.info(
+            f"Refreshed {len(deployments)} deployments and {len(apps)} apps for worker {worker_id}"
+        )
