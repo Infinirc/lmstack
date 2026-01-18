@@ -109,6 +109,11 @@ class AppSyncService:
             return "skipped"
 
         if not app.container_id:
+            # If app is still being deployed (STARTING/PULLING), skip it
+            if app.status in (AppStatus.STARTING.value, AppStatus.PULLING.value):
+                logger.debug(f"App {app.id} is still deploying, skipping")
+                return "skipped"
+            # Only mark as error if app claims to be RUNNING but has no container
             logger.warning(f"App {app.id} has no container_id, marking as error")
             app.status = AppStatus.ERROR.value
             app.status_message = "Container ID missing"

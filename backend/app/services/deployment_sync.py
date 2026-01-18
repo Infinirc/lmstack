@@ -135,6 +135,11 @@ class DeploymentSyncService:
             return "skipped"
 
         if not deployment.container_id:
+            # If deployment is still starting, skip it
+            if deployment.status == DeploymentStatus.STARTING.value:
+                logger.debug(f"Deployment {deployment.id} is still starting, skipping")
+                return "skipped"
+            # Only mark as error if deployment claims to be RUNNING but has no container
             logger.warning(f"Deployment {deployment.id} has no container_id, marking as error")
             deployment.status = DeploymentStatus.ERROR.value
             deployment.status_message = "Container ID missing after restart"
