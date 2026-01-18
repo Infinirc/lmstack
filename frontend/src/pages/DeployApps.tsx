@@ -675,6 +675,12 @@ export default function DeployApps() {
             Select a worker to deploy {selectedApp?.name}. An API key will be
             automatically created.
           </Text>
+          <div style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              The app will connect to LMStack API at{" "}
+              <code>http://172.17.0.1:52000/v1</code> (Docker bridge gateway).
+            </Text>
+          </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
