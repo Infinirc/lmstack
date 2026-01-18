@@ -129,46 +129,48 @@ async def create_worker(
         )
         original_worker = original_worker_result.scalar_one_or_none()
 
-        if existing_worker and token.used_by_worker_id == existing_worker.id:
-            # Allow reconnection - update existing worker with real IP
+        if original_worker is not None:
+            # Allow reconnection - update existing worker with new info
+            # Worker name may have changed (e.g., new container ID), update it
             client_ip = _get_client_ip(request)
             reported_port = "52001"
             if ":" in worker_in.address:
                 reported_port = worker_in.address.split(":")[-1]
-            existing_worker.address = f"{client_ip}:{reported_port}"
-            existing_worker.gpu_info = (
+            original_worker.name = worker_in.name  # Update name in case it changed
+            original_worker.address = f"{client_ip}:{reported_port}"
+            original_worker.gpu_info = (
                 [gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None
             )
-            existing_worker.system_info = (
+            original_worker.system_info = (
                 worker_in.system_info.model_dump() if worker_in.system_info else None
             )
-            existing_worker.status = WorkerStatus.ONLINE.value
-            existing_worker.last_heartbeat = datetime.now(UTC)
+            original_worker.status = WorkerStatus.ONLINE.value
+            original_worker.last_heartbeat = datetime.now(UTC)
 
             # Update labels to mark as local if token is for local worker
             if token.is_local:
-                worker_labels = dict(existing_worker.labels) if existing_worker.labels else {}
+                worker_labels = dict(original_worker.labels) if original_worker.labels else {}
                 worker_labels["type"] = "local"
-                existing_worker.labels = worker_labels
+                original_worker.labels = worker_labels
 
             await db.commit()
-            await db.refresh(existing_worker)
+            await db.refresh(original_worker)
 
             return WorkerResponse(
-                id=existing_worker.id,
-                name=existing_worker.name,
-                address=existing_worker.address,
-                description=existing_worker.description,
-                labels=existing_worker.labels,
-                status=existing_worker.status,
-                gpu_info=existing_worker.gpu_info,
-                system_info=existing_worker.system_info,
-                created_at=existing_worker.created_at,
-                updated_at=existing_worker.updated_at,
-                last_heartbeat=existing_worker.last_heartbeat,
+                id=original_worker.id,
+                name=original_worker.name,
+                address=original_worker.address,
+                description=original_worker.description,
+                labels=original_worker.labels,
+                status=original_worker.status,
+                gpu_info=original_worker.gpu_info,
+                system_info=original_worker.system_info,
+                created_at=original_worker.created_at,
+                updated_at=original_worker.updated_at,
+                last_heartbeat=original_worker.last_heartbeat,
                 deployment_count=0,
             )
-        elif original_worker is None:
+        else:
             # Original worker was deleted, allow re-registration with new worker
             # Reset token for reuse
             token.is_used = False
@@ -176,8 +178,6 @@ async def create_worker(
             token.used_by_worker_id = None
             await db.commit()
             # Continue to create new worker below
-        else:
-            raise HTTPException(status_code=401, detail="Registration token has already been used")
 
     if not token.is_valid:
         raise HTTPException(status_code=401, detail="Registration token has expired")
