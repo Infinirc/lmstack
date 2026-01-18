@@ -290,15 +290,21 @@ class ContainerManager:
         """
         logger.info(f"Creating container: {name} from image {image}")
 
-        # Verify image exists, pull if not found
-        # Note: We catch both ImageNotFound and APIError because when a tag exists
-        # but points to a deleted/pruned image SHA, Docker returns a 404 APIError
-        # instead of ImageNotFound.
+        # Verify image exists and is valid, pull if needed
+        # Note: We need to handle the case where a tag exists but points to a
+        # deleted/pruned image SHA. In this case, images.get() may succeed but
+        # container creation will fail with a 404 error.
+        image_valid = False
         try:
-            self.client.images.get(image)
-            logger.info(f"Image {image} found locally")
+            img = self.client.images.get(image)
+            # Try to inspect the image to verify the SHA exists
+            img.attrs  # This will fail if SHA is pruned
+            logger.info(f"Image {image} found locally and valid")
+            image_valid = True
         except (ImageNotFound, APIError) as e:
             logger.info(f"Image {image} not found or invalid ({type(e).__name__}), pulling...")
+
+        if not image_valid:
             self.client.images.pull(image)
             logger.info(f"Image {image} pulled successfully")
 
@@ -348,25 +354,38 @@ class ContainerManager:
         if restart_policy == "on-failure":
             restart_config["MaximumRetryCount"] = 3
 
-        container = self.client.containers.run(
-            image=image,
-            name=name,
-            command=command,
-            entrypoint=entrypoint,
-            detach=True,
-            remove=False,
-            ports=port_bindings if port_bindings else None,
-            volumes=volume_bindings if volume_bindings else None,
-            device_requests=device_requests,
-            environment=environment,
-            labels=container_labels,
-            restart_policy=restart_config,
-            cpu_period=100000 if cpu_limit else None,
-            cpu_quota=int(cpu_limit * 100000) if cpu_limit else None,
-            mem_limit=memory_limit,
-            cap_add=cap_add,
-            extra_hosts=extra_hosts,
-        )
+        # Try to create container, retry with fresh pull if image is stale
+        run_kwargs = {
+            "image": image,
+            "name": name,
+            "command": command,
+            "entrypoint": entrypoint,
+            "detach": True,
+            "remove": False,
+            "ports": port_bindings if port_bindings else None,
+            "volumes": volume_bindings if volume_bindings else None,
+            "device_requests": device_requests,
+            "environment": environment,
+            "labels": container_labels,
+            "restart_policy": restart_config,
+            "cpu_period": 100000 if cpu_limit else None,
+            "cpu_quota": int(cpu_limit * 100000) if cpu_limit else None,
+            "mem_limit": memory_limit,
+            "cap_add": cap_add,
+            "extra_hosts": extra_hosts,
+        }
+
+        try:
+            container = self.client.containers.run(**run_kwargs)
+        except APIError as e:
+            # If error is related to missing image SHA, re-pull and retry
+            if "No such image" in str(e) or "not found" in str(e).lower():
+                logger.warning(f"Image {image} appears stale, re-pulling...")
+                self.client.images.pull(image)
+                logger.info(f"Image {image} re-pulled, retrying container creation")
+                container = self.client.containers.run(**run_kwargs)
+            else:
+                raise
 
         logger.info(f"Container {name} created with ID {container.short_id}")
         return self.get_container_detail(container.id)
