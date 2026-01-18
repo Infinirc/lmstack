@@ -80,17 +80,31 @@ class WorkerAgent:
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._running = True
 
+    def _is_local_worker(self) -> bool:
+        """Check if this worker is running on the same machine as the server."""
+        # Check if server_url contains localhost or host.docker.internal
+        local_indicators = ["localhost", "127.0.0.1", "host.docker.internal", "::1"]
+        server_host = self.server_url.split("://")[-1].split(":")[0].split("/")[0].lower()
+        return server_host in local_indicators
+
     async def register(self) -> bool:
         """Register this worker with the server."""
         try:
             gpu_info = self.gpu_detector.detect()
             system_info = self.system_detector.detect()
 
+            # Build labels - mark as local if connecting to localhost/host.docker.internal
+            labels = {}
+            if self._is_local_worker():
+                labels["type"] = "local"
+                logger.info("Detected local worker (same machine as LMStack server)")
+
             registration_data = {
                 "name": self.name,
                 "address": f"{self._get_advertise_address()}:{self.port}",
                 "gpu_info": gpu_info,
                 "system_info": system_info,
+                "labels": labels if labels else None,
             }
 
             # Include registration token if provided

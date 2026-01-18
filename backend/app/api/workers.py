@@ -24,12 +24,7 @@ from app.schemas.worker import (
     WorkerResponse,
     WorkerUpdate,
 )
-from app.services.local_worker import (
-    get_local_hostname,
-    get_local_ip,
-    spawn_docker_worker,
-    stop_docker_worker,
-)
+from app.services.local_worker import get_local_hostname, spawn_docker_worker, stop_docker_worker
 
 router = APIRouter()
 
@@ -150,6 +145,12 @@ async def create_worker(
             existing_worker.status = WorkerStatus.ONLINE.value
             existing_worker.last_heartbeat = datetime.now(UTC)
 
+            # Update labels to mark as local if token is for local worker
+            if token.is_local:
+                worker_labels = dict(existing_worker.labels) if existing_worker.labels else {}
+                worker_labels["type"] = "local"
+                existing_worker.labels = worker_labels
+
             await db.commit()
             await db.refresh(existing_worker)
 
@@ -192,11 +193,16 @@ async def create_worker(
         reported_port = worker_in.address.split(":")[-1]
     real_address = f"{client_ip}:{reported_port}"
 
+    # Set labels for local workers (created via /local endpoint)
+    worker_labels = dict(worker_in.labels) if worker_in.labels else {}
+    if token.is_local:
+        worker_labels["type"] = "local"
+
     worker = Worker(
         name=worker_in.name,
         address=real_address,
         description=worker_in.description,
-        labels=worker_in.labels,
+        labels=worker_labels if worker_labels else None,
         gpu_info=([gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None),
         system_info=(worker_in.system_info.model_dump() if worker_in.system_info else None),
         status=WorkerStatus.ONLINE.value,
@@ -380,15 +386,15 @@ async def register_local_worker(
     hostname = get_local_hostname()
     worker_name = hostname
 
-    # Get backend URL - use local IP so the Docker container can reach it
-    local_ip = get_local_ip()
+    # Use localhost since local worker uses --network host mode
     settings = get_settings()
-    backend_url = f"http://{local_ip}:{settings.port}"
+    backend_url = f"http://localhost:{settings.port}"
 
-    # Create a registration token for this worker
+    # Create a registration token for this worker (marked as local)
     token = RegistrationToken.create(
         name=worker_name,
         expires_in_hours=24,  # Token valid for 24 hours
+        is_local=True,  # Mark as local worker
     )
 
     db.add(token)
@@ -425,19 +431,42 @@ def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
     1. Worker registers with localhost/host IP (not Docker internal IP)
     2. Apps deployed by Worker are accessible via host network
     3. Works seamlessly on both regular machines and WSL
+
+    Uses --restart unless-stopped so worker auto-starts after system reboot.
+
+    Command is single-line for cross-platform compatibility (Linux/Mac/Windows).
     """
-    return f"""docker run -d \\
-  --name lmstack-worker \\
-  --network host \\
-  --gpus all \\
-  --privileged \\
-  -v /var/run/docker.sock:/var/run/docker.sock \\
-  -v ~/.cache/huggingface:/root/.cache/huggingface \\
-  -v /:/host:ro \\
-  -e BACKEND_URL={backend_url} \\
-  -e WORKER_NAME={name} \\
-  -e REGISTRATION_TOKEN={token} \\
-  infinirc/lmstack-worker:latest"""
+    return (
+        f"docker run -d --name lmstack-worker --restart unless-stopped "
+        f"--network host --gpus all --privileged "
+        f"-v /var/run/docker.sock:/var/run/docker.sock "
+        f"-v ~/.cache/huggingface:/root/.cache/huggingface "
+        f"-v /:/host:ro "
+        f"-e BACKEND_URL={backend_url} "
+        f"-e WORKER_NAME={name} "
+        f"-e REGISTRATION_TOKEN={token} "
+        f"infinirc/lmstack-worker:latest"
+    )
+
+
+def _get_wsl_windows_ip() -> str | None:
+    """Get Windows host IP from WSL."""
+    try:
+        # Check if we're in WSL
+        with open("/proc/version") as f:
+            if "microsoft" not in f.read().lower():
+                return None
+        # Read Windows host IP from resolv.conf (nameserver is Windows host)
+        with open("/etc/resolv.conf") as f:
+            for line in f:
+                if line.startswith("nameserver"):
+                    ip = line.split()[1].strip()
+                    # Filter out localhost entries
+                    if not ip.startswith("127."):
+                        return ip
+    except Exception:
+        pass
+    return None
 
 
 def _get_backend_url(request: Request) -> str:
@@ -445,6 +474,12 @@ def _get_backend_url(request: Request) -> str:
     settings = get_settings()
     if settings.external_url:
         return settings.external_url.rstrip("/")
+
+    # For WSL, try to get the Windows host IP for external access
+    windows_ip = _get_wsl_windows_ip()
+    if windows_ip:
+        return f"http://{windows_ip}:{settings.port}"
+
     # Check X-Forwarded headers (from nginx/vite proxy)
     forwarded_host = request.headers.get("X-Forwarded-Host")
     if forwarded_host:

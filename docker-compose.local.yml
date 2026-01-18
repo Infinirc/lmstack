@@ -9,7 +9,9 @@ services:
     image: infinirc/lmstack-backend:local
     container_name: lmstack-backend
     user: root
-    network_mode: host
+    # Use bridge network for Windows compatibility (network_mode: host doesn't work on Windows)
+    ports:
+      - "0.0.0.0:52000:52000"
     volumes:
       - lmstack-data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
@@ -18,21 +20,27 @@ services:
       - LMSTACK_SECRET_KEY=${SECRET_KEY:-dev-secret-key}
       - LMSTACK_EXTERNAL_URL=${EXTERNAL_URL:-}
     restart: unless-stopped
+    networks:
+      - lmstack
 
   frontend:
     image: infinirc/lmstack-frontend:local
     container_name: lmstack-frontend
     ports:
-      - "3000:80"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "0.0.0.0:3000:80"
     environment:
-      - BACKEND_HOST=host.docker.internal
+      - BACKEND_HOST=server
       - NGINX_ENVSUBST_FILTER=BACKEND_HOST
     depends_on:
       - server
     restart: unless-stopped
+    networks:
+      - lmstack
 
 volumes:
   lmstack-data:
     driver: local
+
+networks:
+  lmstack:
+    driver: bridge

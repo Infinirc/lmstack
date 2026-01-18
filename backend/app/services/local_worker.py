@@ -160,12 +160,15 @@ def spawn_docker_worker(
 
     # Build the docker run command
     # Use --network host so worker can access backend and deployed apps
+    # Use --restart unless-stopped so worker auto-starts after reboot
     cmd = [
         "docker",
         "run",
         "-d",
         "--name",
         container_name,
+        "--restart",
+        "unless-stopped",
         "--network",
         "host",
         "--gpus",

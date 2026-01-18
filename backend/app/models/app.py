@@ -49,6 +49,7 @@ APP_DEFINITIONS = {
             "OLLAMA_BASE_URL": "",  # Disable Ollama
             "WEBUI_SECRET_KEY": "",
             "ENABLE_OLLAMA_API": "false",
+            "RESET_CONFIG_ON_START": "true",  # Force use env vars on restart
         },
         "volumes": [{"name": "open-webui-data", "destination": "/app/backend/data"}],
     },

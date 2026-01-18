@@ -122,6 +122,7 @@ export default function DeployApps() {
   const [logs, setLogs] = useState<string>("");
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsFullscreen, setLogsFullscreen] = useState(true);
+  const [logsAutoRefresh, setLogsAutoRefresh] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
   const logsRef = useRef<HTMLPreElement>(null);
   const { isMobile } = useResponsive();
@@ -175,9 +176,9 @@ export default function DeployApps() {
     return () => clearInterval(interval);
   }, [deployedApps]);
 
-  // Auto-refresh logs when modal is open
+  // Auto-refresh logs when modal is open and auto-refresh is enabled
   useEffect(() => {
-    if (!logsModal) return;
+    if (!logsModal || !logsAutoRefresh) return;
 
     const interval = setInterval(async () => {
       try {
@@ -189,7 +190,7 @@ export default function DeployApps() {
     }, 2000); // Refresh every 2 seconds
 
     return () => clearInterval(interval);
-  }, [logsModal]);
+  }, [logsModal, logsAutoRefresh]);
 
   // Auto-scroll logs to bottom
   useEffect(() => {
@@ -303,10 +304,24 @@ export default function DeployApps() {
       // Use current hostname (LMStack IP) + app port
       return `http://${window.location.hostname}:${app.port}`;
     } else {
-      // Direct connection to worker
+      // Direct connection - for local workers, use current hostname
+      // Check if worker_address is a private/internal IP (Docker network, etc.)
       if (app.worker_address) {
         const workerHost = app.worker_address.split(":")[0];
-        return `http://${workerHost}:${app.port}`;
+        const isInternalIp =
+          workerHost.startsWith("172.") ||
+          workerHost.startsWith("10.") ||
+          workerHost.startsWith("192.168.") ||
+          workerHost === "localhost" ||
+          workerHost === "127.0.0.1";
+
+        if (isInternalIp) {
+          // Local worker - use current browser hostname
+          return `http://${window.location.hostname}:${app.port}`;
+        } else {
+          // Remote worker - use worker's IP
+          return `http://${workerHost}:${app.port}`;
+        }
       }
       return null;
     }
@@ -343,6 +358,12 @@ export default function DeployApps() {
         <Text type="secondary" style={{ fontSize: isMobile ? 13 : 14 }}>
           Deploy companion applications that integrate with LMStack
         </Text>
+        <div style={{ marginTop: 8 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Apps connect to LMStack API via{" "}
+            <code>http://host.docker.internal:52000/v1</code>
+          </Text>
+        </div>
       </div>
 
       {/* Available Apps */}
@@ -510,18 +531,19 @@ export default function DeployApps() {
                             {app.status === "starting" && <LoadingOutlined />}
                             {app.status === "pending" && <SyncOutlined spin />}
                             <Text type="secondary" style={{ fontSize: 13 }}>
-                              {progress?.stage === "unknown" ||
-                              !progress?.message
-                                ? app.status === "starting"
-                                  ? "Starting app (first startup may take 1-3 minutes)..."
-                                  : app.status === "pulling"
+                              {app.status === "starting"
+                                ? "Starting app (first startup may take 1-3 minutes)..."
+                                : progress?.stage === "unknown" ||
+                                    !progress?.message
+                                  ? app.status === "pulling"
                                     ? "Pulling image..."
                                     : "Preparing..."
-                                : progress.message}
+                                  : progress.message}
                             </Text>
                           </div>
-                          {/* Use indeterminate style when no real progress data */}
-                          {!progress ||
+                          {/* Use indeterminate style for starting stage or when no real progress data */}
+                          {app.status === "starting" ||
+                          !progress ||
                           progress.stage === "unknown" ||
                           (app.status === "pulling" &&
                             progress.progress === 0) ? (
@@ -560,15 +582,25 @@ export default function DeployApps() {
                       )}
 
                       {app.status === "running" && appUrl && (
-                        <Button
-                          type="link"
-                          icon={<LinkOutlined />}
-                          href={appUrl}
-                          target="_blank"
-                          style={{ padding: 0, height: "auto" }}
-                        >
-                          Open {app.name}
-                        </Button>
+                        <div>
+                          <Button
+                            type="link"
+                            icon={<LinkOutlined />}
+                            href={appUrl}
+                            target="_blank"
+                            style={{ padding: 0, height: "auto" }}
+                          >
+                            Open {app.name}
+                          </Button>
+                          {app.port && (
+                            <Text
+                              type="secondary"
+                              style={{ fontSize: 12, marginLeft: 8 }}
+                            >
+                              Port: {app.port}
+                            </Text>
+                          )}
+                        </div>
                       )}
 
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -659,12 +691,14 @@ export default function DeployApps() {
             value={selectedWorker}
             onChange={(value) => {
               setSelectedWorker(value);
-              // Auto-disable proxy for localhost workers
+              // Auto-disable proxy for local workers (same machine as LMStack)
               const worker = workers.find((w) => w.id === value);
               if (worker) {
-                const workerHost = worker.address.split(":")[0];
-                if (workerHost === "localhost" || workerHost === "127.0.0.1") {
+                const isLocalWorker = worker.labels?.type === "local";
+                if (isLocalWorker) {
                   setUseProxy(false);
+                } else {
+                  setUseProxy(true);
                 }
               }
             }}
@@ -675,13 +709,11 @@ export default function DeployApps() {
           />
         </div>
 
-        {/* Hide proxy option for localhost workers (they use direct connection) */}
+        {/* Hide proxy option for local workers (same machine as LMStack) */}
         {(() => {
           const worker = workers.find((w) => w.id === selectedWorker);
-          const workerHost = worker?.address.split(":")[0];
-          const isLocalhost =
-            workerHost === "localhost" || workerHost === "127.0.0.1";
-          if (isLocalhost) return null;
+          const isLocalWorker = worker?.labels?.type === "local";
+          if (isLocalWorker) return null;
           return (
             <div style={{ marginBottom: 16 }}>
               <div
@@ -728,13 +760,20 @@ export default function DeployApps() {
             }}
           >
             <span>Logs: {logsModal?.name}</span>
-            <Tag color="green">Auto-refresh</Tag>
+            <Tag
+              color={logsAutoRefresh ? "green" : "default"}
+              style={{ cursor: "pointer" }}
+              onClick={() => setLogsAutoRefresh(!logsAutoRefresh)}
+            >
+              Auto-refresh {logsAutoRefresh ? "ON" : "OFF"}
+            </Tag>
           </div>
         }
         open={!!logsModal}
         onCancel={() => {
           setLogsModal(null);
           setLogsFullscreen(false);
+          setLogsAutoRefresh(true);
           setAutoScroll(true);
         }}
         footer={
@@ -765,7 +804,7 @@ export default function DeployApps() {
               onClick={() => setLogsFullscreen(!logsFullscreen)}
               size="small"
             >
-              {logsFullscreen ? "Exit" : "Fullscreen"}
+              {logsFullscreen ? "Minimize" : "Fullscreen"}
             </Button>
           </Space>
         }

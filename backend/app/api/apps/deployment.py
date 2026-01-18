@@ -96,6 +96,9 @@ async def pull_image_with_progress(
             )
 
             # Poll for progress while waiting
+            # Track last known progress to avoid regression when status is "unknown"
+            last_known_progress = 0
+
             while not pull_task.done():
                 try:
                     progress_resp = await client.get(progress_url, timeout=5.0)
@@ -105,12 +108,15 @@ async def pull_image_with_progress(
                         progress = progress_data.get("progress", 0)
 
                         if status == "pulling":
-                            set_deployment_progress(
-                                app_id,
-                                "pulling",
-                                progress,
-                                f"Pulling image {image}... ({progress}%)",
-                            )
+                            # Only update if progress is moving forward (avoid regression)
+                            if progress >= last_known_progress:
+                                last_known_progress = progress
+                                set_deployment_progress(
+                                    app_id,
+                                    "pulling",
+                                    progress,
+                                    f"Pulling image {image}... ({progress}%)",
+                                )
                         elif status == "completed":
                             set_deployment_progress(
                                 app_id,
@@ -118,6 +124,7 @@ async def pull_image_with_progress(
                                 100,
                                 "Image pulled successfully",
                             )
+                        # Ignore "unknown" status - keep showing last known progress
                 except Exception:
                     pass  # Progress polling is best-effort
 
@@ -145,7 +152,6 @@ async def wait_for_container_healthy(
     container_id: str,
     app_id: int,
     port: int,
-    max_wait: int = 600,
     poll_interval: int = 2,
 ) -> bool:
     """Wait for container to become healthy.
@@ -155,21 +161,22 @@ async def wait_for_container_healthy(
         container_id: Container ID to check
         app_id: App ID for progress tracking
         port: App port for HTTP health check
-        max_wait: Maximum wait time in seconds
         poll_interval: Time between checks in seconds
 
     Returns:
-        True if healthy, False if timeout
+        True if healthy (waits indefinitely until healthy or error)
     """
     waited = 0
     consecutive_failures = 0
     max_consecutive_failures = 10  # Fail after 20 seconds of no connection
+    slow_threshold = 1800  # 30 minutes before showing "check" message
+    shown_slow_message = False
 
     worker_host = worker_address.split(":")[0]
     app_url = f"http://{worker_host}:{port}"
 
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        while waited < max_wait:
+        while True:  # Wait indefinitely
             try:
                 response = await client.get(f"http://{worker_address}/containers/{container_id}")
 
@@ -205,13 +212,34 @@ async def wait_for_container_healthy(
 
                         elif "health:" in status or "starting)" in status:
                             # Health check still running
-                            progress_pct = min(50 + int(waited / max_wait * 40), 90)
-                            set_deployment_progress(
-                                app_id,
-                                "starting",
-                                progress_pct,
-                                f"App is initializing ({waited}s, please wait)...",
-                            )
+                            mins = waited // 60
+                            secs = waited % 60
+                            time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+
+                            if waited >= slow_threshold and not shown_slow_message:
+                                set_deployment_progress(
+                                    app_id,
+                                    "starting",
+                                    80,
+                                    f"App is initializing ({time_str}) - Taking longer than expected. "
+                                    "Please check container logs for issues.",
+                                )
+                                shown_slow_message = True
+                            elif shown_slow_message:
+                                set_deployment_progress(
+                                    app_id,
+                                    "starting",
+                                    80,
+                                    f"App is initializing ({time_str}) - Please check logs if needed.",
+                                )
+                            else:
+                                progress_pct = min(50 + int(waited / 600 * 40), 90)
+                                set_deployment_progress(
+                                    app_id,
+                                    "starting",
+                                    progress_pct,
+                                    f"App is initializing ({time_str}, please wait)...",
+                                )
 
                         elif "health" not in status:
                             # No health check defined, verify HTTP access directly
@@ -242,8 +270,6 @@ async def wait_for_container_healthy(
 
             await asyncio.sleep(poll_interval)
             waited += poll_interval
-
-    return False
 
 
 async def _verify_http_access(
@@ -354,27 +380,20 @@ async def deploy_app_background(
             app.port = port
             await db.commit()
 
-            # Phase 3: Wait for health
+            # Phase 3: Wait for health (waits indefinitely until healthy or error)
             set_deployment_progress(
                 app_id,
                 "starting",
                 50,
-                "Waiting for app to start (this may take 1-3 minutes)...",
+                "Waiting for app to start...",
             )
 
-            is_healthy = await wait_for_container_healthy(
+            await wait_for_container_healthy(
                 worker_address=worker_address,
                 container_id=container_id,
                 app_id=app_id,
                 port=port,
             )
-
-            if not is_healthy:
-                app.status = AppStatus.ERROR.value
-                app.status_message = "Container health check timed out after 10 minutes"
-                await db.commit()
-                set_deployment_progress(app_id, "error", 0, "Container health check timed out")
-                return
 
             # Phase 4: Setup proxy
             if use_proxy:
@@ -451,6 +470,8 @@ async def _create_container(
             "lmstack.app.type": app_type.value,
             "lmstack.app.id": str(app_id),
         },
+        # Add host.docker.internal mapping for container to access host services
+        "extra_hosts": {"host.docker.internal": "host-gateway"},
     }
 
     # Add Linux capabilities if specified (e.g., SYS_ADMIN for AnythingLLM)

@@ -215,6 +215,7 @@ async def chat_completions(
     upstream_url = gateway_service.build_upstream_url(
         deployment.worker.address,
         deployment.port,
+        deployment.container_name,
     )
 
     # Replace model name with the actual model_id for vLLM
@@ -317,6 +318,7 @@ async def completions(
     upstream_url = gateway_service.build_upstream_url(
         deployment.worker.address,
         deployment.port,
+        deployment.container_name,
     )
 
     # Replace model name with the actual model_id for vLLM
@@ -587,6 +589,7 @@ async def embeddings(
     upstream_url = gateway_service.build_upstream_url(
         deployment.worker.address,
         deployment.port,
+        deployment.container_name,
     )
 
     # Replace model name with the actual model_id for vLLM
@@ -930,6 +933,7 @@ async def responses(
     upstream_url = gateway_service.build_upstream_url(
         deployment.worker.address,
         deployment.port,
+        deployment.container_name,
     )
 
     # Convert Responses API format to Chat Completions format

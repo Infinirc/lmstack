@@ -32,6 +32,7 @@ import type {
   ConversationMessage,
 } from "../services/api";
 import { useResponsive } from "../hooks";
+import { STORAGE_KEYS } from "../constants";
 
 // Conversation type for UI (maps from API type)
 interface Conversation {
@@ -278,18 +279,15 @@ export default function Chat() {
   }, [isStreaming]);
 
   /**
-   * Get endpoint URL for deployment
+   * Get endpoint URL for deployment (uses backend proxy to handle Docker networking)
    */
   const getEndpointUrl = (deployment: Deployment): string | null => {
-    if (
-      !deployment.worker ||
-      !deployment.port ||
-      deployment.status !== "running"
-    ) {
+    if (deployment.status !== "running") {
       return null;
     }
-    const workerIp = deployment.worker.address.split(":")[0];
-    return `http://${workerIp}:${deployment.port}/v1/chat/completions`;
+    // Use backend proxy endpoint instead of direct model URL
+    // This handles Docker internal networking correctly (especially on Windows)
+    return `/api/deployments/${deployment.id}/chat`;
   };
 
   /**
@@ -354,9 +352,13 @@ export default function Chat() {
       try {
         abortControllerRef.current = new AbortController();
 
+        const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
           body: JSON.stringify({
             model: selectedDeployment.model?.model_id || "default",
             messages: [

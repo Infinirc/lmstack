@@ -52,6 +52,33 @@ docker compose -f docker-compose.deploy.yml up -d
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:52000
 
+### Windows Docker Desktop - LAN Access
+
+Windows Firewall blocks LAN access by default. Choose one of the following options:
+
+**Option 1: Disable Firewall (Simplest)**
+
+```powershell
+# Run in PowerShell (Administrator)
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+```
+
+**Option 2: Add Firewall Rules (More Secure)**
+
+```powershell
+# Run in PowerShell (Administrator)
+# Base ports (Frontend + Backend API)
+New-NetFirewallRule -DisplayName "LMStack" -Direction Inbound -LocalPort 3000,52000 -Protocol TCP -Action Allow
+
+# Model deployment ports (add ports as needed, e.g., 40000-40100)
+New-NetFirewallRule -DisplayName "LMStack Models" -Direction Inbound -LocalPort 40000-40100 -Protocol TCP -Action Allow
+
+# App ports (e.g., Open WebUI on 46488)
+New-NetFirewallRule -DisplayName "LMStack Apps" -Direction Inbound -LocalPort 46000-46500 -Protocol TCP -Action Allow
+```
+
+> **Note**: When you deploy models or apps, check the assigned port in the UI and ensure it's allowed through the firewall.
+
 ### Usage
 
 1. Login with `admin` / `admin` (change password after first login)

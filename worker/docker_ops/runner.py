@@ -131,23 +131,46 @@ class DockerRunner:
 
         try:
             for line in self.client.api.pull(image, stream=True, decode=True):
-                if "id" in line and "progressDetail" in line:
+                if "id" in line:
                     layer_id = line["id"]
+                    status = line.get("status", "")
                     detail = line.get("progressDetail", {})
-                    current = detail.get("current", 0)
-                    total = detail.get("total", 0)
 
                     progress_data = _pull_progress.get(str(deployment_id), {})
                     layers = progress_data.get("layers", {})
-                    layers[layer_id] = {
-                        "status": line.get("status", ""),
-                        "current": current,
-                        "total": total,
-                    }
 
-                    # Calculate overall progress
-                    total_size = sum(layer.get("total", 0) for layer in layers.values())
-                    downloaded = sum(layer.get("current", 0) for layer in layers.values())
+                    # Only update download progress for "Downloading" status
+                    # Once downloaded, keep the layer at 100% (total = total, current = total)
+                    if status == "Downloading":
+                        current = detail.get("current", 0)
+                        total = detail.get("total", 0)
+                        layers[layer_id] = {
+                            "status": status,
+                            "current": current,
+                            "total": total,
+                        }
+                    elif status in ("Download complete", "Pull complete", "Already exists"):
+                        # Layer is complete, mark as 100%
+                        existing = layers.get(layer_id, {})
+                        total = existing.get("total", 0)
+                        layers[layer_id] = {
+                            "status": status,
+                            "current": total,  # current = total = 100%
+                            "total": total,
+                        }
+                    elif status == "Pulling fs layer":
+                        # New layer, initialize with 0
+                        layers[layer_id] = {
+                            "status": status,
+                            "current": 0,
+                            "total": 0,
+                        }
+                    # Ignore "Extracting" and other statuses to avoid progress reset
+
+                    # Calculate overall progress (only count layers with total > 0)
+                    layers_with_size = [lyr for lyr in layers.values() if lyr.get("total", 0) > 0]
+                    total_size = sum(lyr.get("total", 0) for lyr in layers_with_size)
+                    downloaded = sum(lyr.get("current", 0) for lyr in layers_with_size)
                     overall_progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
 
                     _set_pull_progress(
@@ -193,8 +216,20 @@ class DockerRunner:
         environment: dict[str, str],
         deployment_id: int = 0,
         port: Optional[int] = None,
+        network: Optional[str] = None,
     ) -> tuple[str, int]:
-        """Run a container and return (container_id, port)."""
+        """Run a container and return (container_id, port).
+
+        Args:
+            name: Container name
+            image: Docker image
+            command: Container command
+            gpu_indexes: GPU indices to use
+            environment: Environment variables
+            deployment_id: Deployment ID for progress tracking
+            port: Optional specific port to use
+            network: Optional Docker network to join (for Windows compatibility)
+        """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
@@ -206,6 +241,7 @@ class DockerRunner:
             environment,
             deployment_id,
             port,
+            network,
         )
 
     def _run_sync(
@@ -217,6 +253,7 @@ class DockerRunner:
         environment: dict[str, str],
         deployment_id: int = 0,
         port: Optional[int] = None,
+        network: Optional[str] = None,
     ) -> tuple[str, int]:
         """Synchronous container run."""
         # Check if container with same name exists
@@ -228,10 +265,13 @@ class DockerRunner:
             pass
 
         # Pull image if not exists
+        # Note: We catch both NotFound and APIError because when a tag exists
+        # but points to a deleted/pruned image SHA, Docker returns a 404 APIError
+        # instead of NotFound.
         try:
             self.client.images.get(image)
-        except NotFound:
-            logger.info(f"Pulling image {image}...")
+        except (NotFound, APIError) as e:
+            logger.info(f"Image {image} not found or invalid ({type(e).__name__}), pulling...")
             self.pull_image_with_progress(image, deployment_id)
 
         # Update progress to starting
@@ -263,24 +303,32 @@ class DockerRunner:
             **environment,
         }
 
-        # Run container
-        container = self.client.containers.run(
-            image=image,
-            name=name,
-            command=command,
-            detach=True,
-            remove=False,
-            ports={"8000/tcp": host_port},
-            device_requests=device_requests,
-            environment=env,
-            shm_size="16g",
-            volumes={
+        # Build container run kwargs
+        run_kwargs = {
+            "image": image,
+            "name": name,
+            "command": command,
+            "detach": True,
+            "remove": False,
+            "ports": {"8000/tcp": host_port},
+            "device_requests": device_requests,
+            "environment": env,
+            "shm_size": "16g",
+            "volumes": {
                 "/root/.cache/huggingface": {
                     "bind": "/root/.cache/huggingface",
                     "mode": "rw",
                 },
             },
-        )
+        }
+
+        # Add network if specified (for Windows Docker Desktop compatibility)
+        if network:
+            run_kwargs["network"] = network
+            logger.info(f"Creating container on network: {network}")
+
+        # Run container
+        container = self.client.containers.run(**run_kwargs)
 
         return container.id, host_port
 

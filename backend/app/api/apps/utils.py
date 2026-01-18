@@ -141,6 +141,9 @@ async def call_worker_api(
 def get_host_ip(request: Request, worker: Worker) -> str:
     """Determine the host IP that the container can use to reach LMStack.
 
+    For Docker containers to reach the host, we use host.docker.internal which
+    is mapped via extra_hosts to host-gateway when creating the container.
+
     Args:
         request: FastAPI request object
         worker: Worker where app is deployed
@@ -148,27 +151,35 @@ def get_host_ip(request: Request, worker: Worker) -> str:
     Returns:
         Host IP address string
     """
-    import socket
+    # Check if worker is local (on same machine as LMStack)
+    worker_ip = worker.address.split(":")[0]
+    worker_labels = worker.labels or {}
+    is_local_worker = (
+        worker_ip in ("localhost", "127.0.0.1") or worker_labels.get("type") == "local"
+    )
 
+    if is_local_worker:
+        # For local workers, use host.docker.internal which is mapped to
+        # host-gateway via extra_hosts when creating the container.
+        # This works on all platforms (Linux, Windows, Mac).
+        return "host.docker.internal"
+
+    # For remote workers, use the LMStack host IP that the worker can reach
     lmstack_host = request.headers.get("host", "localhost:52000")
     host_ip = lmstack_host.split(":")[0] if ":" in lmstack_host else lmstack_host
 
-    # If host is localhost, try alternatives
+    # If host is localhost, try to find our external IP
     if host_ip in ("localhost", "127.0.0.1"):
-        forwarded_host = request.headers.get("x-forwarded-host")
-        if forwarded_host:
-            host_ip = forwarded_host.split(":")[0]
-        else:
-            # Try to get our IP on the same network as the worker
-            try:
-                worker_ip = worker.address.split(":")[0]
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect((worker_ip, 80))
-                host_ip = s.getsockname()[0]
-                s.close()
-            except OSError as e:
-                logger.warning(f"Could not determine host IP for worker {worker_ip}: {e}")
-                host_ip = "host.docker.internal"  # Fallback for Docker Desktop
+        import socket
+
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect((worker_ip, 80))
+            host_ip = s.getsockname()[0]
+            s.close()
+        except OSError as e:
+            logger.warning(f"Could not determine host IP for worker {worker_ip}: {e}")
+            host_ip = "host.docker.internal"  # Fallback
 
     return host_ip
 

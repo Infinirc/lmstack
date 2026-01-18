@@ -764,10 +764,17 @@ export default function ApiKeys() {
           <div style={{ padding: 24 }}>
             <Text
               type="secondary"
-              style={{ display: "block", marginBottom: 16 }}
+              style={{ display: "block", marginBottom: 8 }}
             >
               Use the OpenAI SDK with your LMStack endpoint. Base URL:{" "}
               <code>{baseUrl}/v1</code>
+            </Text>
+            <Text
+              type="secondary"
+              style={{ display: "block", marginBottom: 16, fontSize: 12 }}
+            >
+              For Docker containers (e.g., Open WebUI, n8n), use:{" "}
+              <code>http://host.docker.internal:52000/v1</code>
             </Text>
             <Tabs
               items={[

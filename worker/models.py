@@ -87,6 +87,7 @@ class ContainerCreateRequest(BaseModel):
     cpu_limit: Optional[float] = None
     memory_limit: Optional[int] = None
     cap_add: Optional[list[str]] = None
+    extra_hosts: Optional[dict[str, str]] = None
 
 
 class ContainerActionRequest(BaseModel):

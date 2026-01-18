@@ -37,11 +37,38 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
+async def _run_migrations(conn):
+    """Run schema migrations for new columns (SQLite compatible)."""
+    from sqlalchemy import text
+
+    async def column_exists(table_name: str, column_name: str) -> bool:
+        """Check if a column exists in a table."""
+        result = await conn.execute(text(f"PRAGMA table_info({table_name})"))
+        columns = [row[1] for row in result.fetchall()]
+        return column_name in columns
+
+    # Migration: Add container_name to deployments (for Windows Docker compatibility)
+    if not await column_exists("deployments", "container_name"):
+        logger.info("Adding 'container_name' column to deployments table...")
+        await conn.execute(text("ALTER TABLE deployments ADD COLUMN container_name VARCHAR(255)"))
+        logger.info("'container_name' column added!")
+
+    # Migration: Add is_local to registration_tokens (for local worker detection)
+    if not await column_exists("registration_tokens", "is_local"):
+        logger.info("Adding 'is_local' column to registration_tokens table...")
+        await conn.execute(
+            text("ALTER TABLE registration_tokens ADD COLUMN is_local BOOLEAN DEFAULT 0")
+        )
+        logger.info("'is_local' column added!")
+
+
 async def init_db():
-    """Initialize database tables"""
+    """Initialize database tables and run migrations"""
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # Run schema migrations for any new columns
+            await _run_migrations(conn)
     except Exception as e:
         # Ignore "already exists" errors from race conditions with multiple workers
         if "already exists" in str(e):

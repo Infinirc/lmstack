@@ -52,6 +52,33 @@ docker compose -f docker-compose.deploy.yml up -d
 - 前端: http://localhost:3000
 - 後端 API: http://localhost:52000
 
+### Windows Docker Desktop - 區域網路存取
+
+Windows 防火牆預設會阻擋區域網路存取。請選擇以下其中一種方式：
+
+**方式一：關閉防火牆（最簡單）**
+
+```powershell
+# 在 PowerShell（系統管理員）中執行
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+```
+
+**方式二：新增防火牆規則（較安全）**
+
+```powershell
+# 在 PowerShell（系統管理員）中執行
+# 基本端口（前端 + 後端 API）
+New-NetFirewallRule -DisplayName "LMStack" -Direction Inbound -LocalPort 3000,52000 -Protocol TCP -Action Allow
+
+# 模型部署端口（依需求新增，例如 40000-40100）
+New-NetFirewallRule -DisplayName "LMStack Models" -Direction Inbound -LocalPort 40000-40100 -Protocol TCP -Action Allow
+
+# App 端口（例如 Open WebUI 使用 46488）
+New-NetFirewallRule -DisplayName "LMStack Apps" -Direction Inbound -LocalPort 46000-46500 -Protocol TCP -Action Allow
+```
+
+> **注意**：部署模型或 App 時，請在 UI 中查看分配的端口，並確保該端口已在防火牆中開放。
+
 ### 使用方式
 
 1. 使用 `admin` / `admin` 登入（首次登入後請更改密碼）

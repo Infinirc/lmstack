@@ -263,12 +263,27 @@ class GatewayService:
         await db.commit()
 
     @staticmethod
-    def build_upstream_url(worker_address: str, port: int) -> str:
+    def build_upstream_url(
+        worker_address: str, port: int, container_name: str | None = None
+    ) -> str:
         """Build the upstream URL for the deployment.
 
-        worker_address may include port (e.g., "192.168.1.1:8080"),
-        we only need the host part.
+        For local deployments with container_name, use Docker internal networking
+        (container_name:8000) for container-to-container communication.
+        This is required for Windows Docker Desktop where host.docker.internal:port
+        doesn't work for backend-to-model communication.
+
+        For remote workers, use worker_address:port as before.
+
+        Args:
+            worker_address: Worker address (may include port, e.g., "192.168.1.1:8080")
+            port: Host port for the deployment
+            container_name: Docker container name for local deployments
         """
+        # For local deployments with container name, use Docker internal networking
+        if container_name:
+            return f"http://{container_name}:8000"
+
         # Extract host from worker address (remove agent port if present)
         host = worker_address.split(":")[0]
         return f"http://{host}:{port}"

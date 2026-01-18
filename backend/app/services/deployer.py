@@ -23,7 +23,7 @@ class DeployerService:
 
     # Health check configuration
     HEALTH_CHECK_INTERVAL = 5  # seconds between checks
-    HEALTH_CHECK_TIMEOUT = 600  # max seconds to wait (10 minutes for large models)
+    HEALTH_CHECK_SLOW_THRESHOLD = 600  # seconds before showing "slow loading" message (10 min)
     HEALTH_CHECK_REQUEST_TIMEOUT = 10  # timeout for each health check request
 
     async def deploy(self, deployment_id: int) -> None:
@@ -81,7 +81,11 @@ class DeployerService:
                         return
                     deployment.container_id = result.get("container_id")
                     deployment.port = result.get("port")
+                    # Store container_name for internal Docker network communication
+                    local_container_name = result.get("container_name")
+                    deployment.container_name = local_container_name
                 else:
+                    local_container_name = None  # Remote workers use IP:port
                     # Send to remote worker agent
                     worker_url = f"http://{deployment.worker.address}/deploy"
                     progress_url = (
@@ -149,6 +153,7 @@ class DeployerService:
                     ollama_ready = await self._wait_for_ollama_ready(
                         deployment.worker.address,
                         deployment.port,
+                        container_name=local_container_name,
                     )
                     if not ollama_ready:
                         deployment.status = DeploymentStatus.ERROR.value
@@ -163,6 +168,7 @@ class DeployerService:
                         deployment.worker.address,
                         deployment.port,
                         deployment.model.model_id,
+                        container_name=local_container_name,
                     )
                     if not pull_success:
                         deployment.status = DeploymentStatus.ERROR.value
@@ -180,6 +186,7 @@ class DeployerService:
                     deployment_id,
                     db,
                     backend=deployment.backend,
+                    container_name=local_container_name,
                 )
 
                 # Refresh deployment object after health check updates
@@ -189,12 +196,10 @@ class DeployerService:
                     # Deployment was cancelled, don't update status
                     logger.info(f"Deployment {deployment_id} cancelled during startup")
                     return
-                elif api_ready:
+                else:
+                    # api_ready is True, model is ready
                     deployment.status = DeploymentStatus.RUNNING.value
                     deployment.status_message = "Model ready"
-                else:
-                    deployment.status = DeploymentStatus.ERROR.value
-                    deployment.status_message = "Model failed to start within timeout"
 
             except httpx.ConnectError:
                 deployment.status = DeploymentStatus.ERROR.value
@@ -213,6 +218,7 @@ class DeployerService:
         worker_address: str,
         port: int,
         timeout: int = 60,
+        container_name: str | None = None,
     ) -> bool:
         """Wait for Ollama API to be available.
 
@@ -220,12 +226,17 @@ class DeployerService:
             worker_address: Worker address (host:port)
             port: Ollama container port
             timeout: Maximum wait time in seconds
+            container_name: Container name for Docker network (Windows compatibility)
 
         Returns:
             True if Ollama is ready, False on timeout
         """
-        worker_ip = worker_address.split(":")[0]
-        api_url = f"http://{worker_ip}:{port}/api/tags"
+        # Ollama is configured to use port 8000 (OLLAMA_HOST=0.0.0.0:8000)
+        if container_name:
+            api_url = f"http://{container_name}:8000/api/tags"
+        else:
+            worker_ip = worker_address.split(":")[0]
+            api_url = f"http://{worker_ip}:{port}/api/tags"
 
         logger.info(f"Waiting for Ollama API at {api_url}")
 
@@ -255,14 +266,19 @@ class DeployerService:
         worker_address: str,
         port: int,
         model_id: str,
+        container_name: str | None = None,
     ) -> bool:
         """Pull a model using Ollama API.
 
         Ollama requires models to be pulled before they can be used.
         This method calls the /api/pull endpoint and waits for completion.
         """
-        worker_ip = worker_address.split(":")[0]
-        api_url = f"http://{worker_ip}:{port}/api/pull"
+        # Ollama is configured to use port 8000 (OLLAMA_HOST=0.0.0.0:8000)
+        if container_name:
+            api_url = f"http://{container_name}:8000/api/pull"
+        else:
+            worker_ip = worker_address.split(":")[0]
+            api_url = f"http://{worker_ip}:{port}/api/pull"
 
         logger.info(f"Pulling Ollama model: {model_id}")
 
@@ -319,17 +335,33 @@ class DeployerService:
         deployment_id: int,
         db,
         backend: str = BackendType.VLLM.value,
+        container_name: str | None = None,
     ) -> bool | None:
         """
-        Poll the OpenAI API endpoint until it's ready or timeout.
+        Poll the OpenAI API endpoint until it's ready or cancelled.
+
+        Args:
+            worker_address: Worker address (host:port)
+            port: Host port for the model API
+            deployment_id: Deployment ID for status updates
+            db: Database session
+            backend: Backend type (vllm, ollama, etc.)
+            container_name: Container name for local Docker network communication.
+                           If set, uses container_name:8000 instead of worker_ip:port.
+                           This is needed for Windows Docker Desktop compatibility.
 
         Returns:
             True: API is ready
-            False: Timeout or error
             None: Cancelled (user stopped deployment)
         """
-        worker_ip = worker_address.split(":")[0]
-        api_base_url = f"http://{worker_ip}:{port}"
+        # For local deployments with container_name, use Docker internal networking
+        # All backends (vLLM, SGLang, Ollama) are configured to use port 8000
+        if container_name:
+            api_base_url = f"http://{container_name}:8000"
+            logger.info(f"Using Docker network for API: {api_base_url}")
+        else:
+            worker_ip = worker_address.split(":")[0]
+            api_base_url = f"http://{worker_ip}:{port}"
 
         # Both vLLM and Ollama support OpenAI-compatible /v1/models endpoint
         health_endpoint = f"{api_base_url}/v1/models"
@@ -339,11 +371,12 @@ class DeployerService:
 
         elapsed = 0
         check_count = 0
+        shown_slow_message = False
 
         logger.info(f"Waiting for API to be ready at {health_endpoint} (backend={backend})")
 
         async with httpx.AsyncClient(timeout=self.HEALTH_CHECK_REQUEST_TIMEOUT) as client:
-            while elapsed < self.HEALTH_CHECK_TIMEOUT:
+            while True:  # Wait indefinitely until ready or cancelled
                 check_count += 1
 
                 # Check if deployment was cancelled
@@ -408,18 +441,31 @@ class DeployerService:
                             mins = elapsed // 60
                             secs = elapsed % 60
                             time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
-                            deployment.status_message = (
-                                f"Loading model into GPU memory... ({time_str})"
-                            )
+
+                            # Show patience message after threshold
+                            if (
+                                elapsed >= self.HEALTH_CHECK_SLOW_THRESHOLD
+                                and not shown_slow_message
+                            ):
+                                deployment.status_message = (
+                                    f"Loading model... ({time_str}) - "
+                                    "Large model or slow network detected. Please be patient."
+                                )
+                                shown_slow_message = True
+                            elif shown_slow_message:
+                                deployment.status_message = (
+                                    f"Loading model... ({time_str}) - Please be patient."
+                                )
+                            else:
+                                deployment.status_message = (
+                                    f"Loading model into GPU memory... ({time_str})"
+                                )
                             await db.commit()
                     except Exception as e:
                         logger.debug(f"Error updating deployment status message: {e}")
 
                 await asyncio.sleep(self.HEALTH_CHECK_INTERVAL)
                 elapsed += self.HEALTH_CHECK_INTERVAL
-
-        logger.warning(f"API health check timed out after {elapsed}s ({check_count} checks)")
-        return False
 
     def _is_local_worker(self, address: str) -> bool:
         """Check if the worker address refers to the local machine."""
@@ -479,6 +525,10 @@ class DeployerService:
 
         This is used for local workers where we don't need to go through
         a remote worker agent.
+
+        On Windows Docker Desktop, containers must be on the same network
+        to communicate. We put model containers on the 'lmstack' network
+        so the backend can reach them via container name.
         """
         try:
             client = docker.from_env()
@@ -489,11 +539,25 @@ class DeployerService:
             gpu_indexes = deploy_request.get("gpu_indexes", [0])
             deployment_name = deploy_request.get("deployment_name", "lmstack-deployment")
 
-            # Find available port
+            # Find available port (still used for external access)
             host_port = self._find_available_port()
 
-            # Container name
+            # Container name - used for internal Docker network communication
             container_name = f"lmstack-{deployment_name}-{deploy_request['deployment_id']}"
+
+            # Ensure lmstack network exists (for Windows Docker Desktop compatibility)
+            network_name = "lmstack_lmstack"
+            try:
+                client.networks.get(network_name)
+            except docker.errors.NotFound:
+                # Try alternative network name (depends on compose project name)
+                try:
+                    network_name = "lmstack"
+                    client.networks.get(network_name)
+                except docker.errors.NotFound:
+                    # Create the network if it doesn't exist
+                    logger.info(f"Creating Docker network: {network_name}")
+                    client.networks.create(network_name, driver="bridge")
 
             # Build GPU device requests
             device_requests = [
@@ -526,12 +590,17 @@ class DeployerService:
                 },
                 shm_size="16g",  # Required for large model inference
                 restart_policy={"Name": "unless-stopped"},
+                network=network_name,  # Join lmstack network for Windows compatibility
             )
 
-            logger.info(f"Started local container: {container.id[:12]} on port {host_port}")
+            logger.info(
+                f"Started local container: {container.id[:12]} "
+                f"(name={container_name}) on network={network_name}, port={host_port}"
+            )
 
             return {
                 "container_id": container.id,
+                "container_name": container_name,
                 "port": host_port,
             }
 
