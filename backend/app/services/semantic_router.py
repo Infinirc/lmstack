@@ -143,18 +143,10 @@ class SemanticRouterService:
                 "ttl_seconds": 86400,
                 "max_responses": 1000,
             },
-            # Semantic cache
+            # Semantic cache - disabled by default (requires embedding model)
+            # Enable and configure embedding_model if you have HF_TOKEN for gated models
             "semantic_cache": {
-                "enabled": True,
-                "backend_type": "memory",
-                "similarity_threshold": 0.85,
-                "max_entries": 1000,
-                "ttl_seconds": 3600,
-                "eviction_policy": "fifo",
-                "use_hnsw": True,
-                "hnsw_m": 16,
-                "hnsw_ef_construction": 200,
-                "embedding_model": "bert",
+                "enabled": False,
             },
             # Prompt guard (jailbreak protection)
             "prompt_guard": {

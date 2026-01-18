@@ -24,6 +24,10 @@ class AppDeploy(BaseModel):
         True,
         description="Use LMStack nginx proxy (recommended) or direct worker connection",
     )
+    hf_token: str | None = Field(
+        None,
+        description="HuggingFace API token (required for Semantic Router)",
+    )
 
 
 class AppResponse(BaseModel):

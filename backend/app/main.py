@@ -127,10 +127,13 @@ async def check_app_health():
             stats = await app_sync_service.sync_all_apps()
 
             if stats["total"] > 0:
-                logger.debug(
-                    f"App health check: {stats['running_verified']} healthy, "
-                    f"{stats['container_missing']} missing"
-                )
+                log_parts = [
+                    f"{stats['running_verified']} healthy",
+                    f"{stats['container_missing']} missing",
+                ]
+                if stats.get("proxy_repaired", 0) > 0:
+                    log_parts.append(f"{stats['proxy_repaired']} proxy repaired")
+                logger.debug(f"App health check: {', '.join(log_parts)}")
 
         except asyncio.CancelledError:
             logger.info("App health check task cancelled")
@@ -184,10 +187,13 @@ async def lifespan(app: FastAPI):
         logger.info("Synchronizing app status...")
         app_stats = await app_sync_service.sync_all_apps()
         if app_stats["total"] > 0:
-            logger.info(
-                f"App sync complete: {app_stats['running_verified']} running, "
-                f"{app_stats['container_missing']} missing"
-            )
+            log_parts = [
+                f"{app_stats['running_verified']} running",
+                f"{app_stats['container_missing']} missing",
+            ]
+            if app_stats.get("proxy_repaired", 0) > 0:
+                log_parts.append(f"{app_stats['proxy_repaired']} proxy repaired")
+            logger.info(f"App sync complete: {', '.join(log_parts)}")
     except Exception as e:
         logger.error(f"Failed to sync apps on startup: {e}")
 

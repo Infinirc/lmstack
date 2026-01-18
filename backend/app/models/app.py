@@ -114,10 +114,10 @@ APP_DEFINITIONS = {
         "name": "Semantic Router",
         "description": "Intelligent LLM router that automatically selects the best model based on query intent",
         "image": "ghcr.io/vllm-project/semantic-router/vllm-sr:latest",
-        "internal_port": 8801,  # Main OpenAI-compatible API port
+        "internal_port": 8888,  # Main OpenAI-compatible API port (Envoy listens on 8888)
         "additional_ports": [8700],  # Dashboard port
         "env_template": {
-            "ENVOY_LISTEN_PORT": "8801",
+            "ENVOY_LISTEN_PORT": "8888",
             "DASHBOARD_PORT": "8700",
             "HF_TOKEN": "{hf_token}",  # Optional: for gated models
         },

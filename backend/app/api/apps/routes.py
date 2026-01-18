@@ -211,6 +211,7 @@ async def deploy_app(
         full_key=full_key,
         port=port,
         db=db,
+        hf_token=deploy_request.hf_token,
     )
 
     # Initialize progress
@@ -293,6 +294,7 @@ async def _build_env_vars(
     full_key: str,
     port: int,
     db: AsyncSession,
+    hf_token: str | None = None,
 ) -> dict:
     """Build environment variables for the app container."""
     # Always use backend API port (52000), not the frontend port from request
@@ -337,6 +339,9 @@ async def _build_env_vars(
             env_vars[key] = app_secret_key
         elif value == "{model_list}":
             env_vars[key] = model_list
+        elif value == "{hf_token}":
+            # HuggingFace token - use provided token or empty string
+            env_vars[key] = hf_token or ""
         else:
             env_vars[key] = value
 

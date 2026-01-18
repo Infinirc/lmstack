@@ -20,6 +20,8 @@ import {
   Progress,
   Switch,
   Space,
+  Input,
+  Alert,
 } from "antd";
 import {
   RocketOutlined,
@@ -38,6 +40,7 @@ import {
   FullscreenOutlined,
   FullscreenExitOutlined,
   VerticalAlignBottomOutlined,
+  BranchesOutlined,
 } from "@ant-design/icons";
 import { appsApi, workersApi } from "../services/api";
 import type { Worker } from "../types";
@@ -55,6 +58,7 @@ import n8nLogo from "../assets/apps/n8n.png";
 import flowiseLogo from "../assets/apps/flowise-icon.png";
 import anythingllmLogo from "../assets/apps/anythingllm.jpeg";
 import lobechatLogo from "../assets/apps/lobechat.webp";
+import semanticRouterLogo from "../assets/apps/semantic-router.webp";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -65,6 +69,7 @@ const appLogos: Record<string, string> = {
   flowise: flowiseLogo,
   anythingllm: anythingllmLogo,
   lobechat: lobechatLogo,
+  "semantic-router": semanticRouterLogo,
 };
 
 const REFRESH_INTERVAL = 5000;
@@ -111,6 +116,7 @@ export default function DeployApps() {
   const [selectedApp, setSelectedApp] = useState<AppDefinition | null>(null);
   const [selectedWorker, setSelectedWorker] = useState<number | null>(null);
   const [useProxy, setUseProxy] = useState(true);
+  const [hfToken, setHfToken] = useState("");
   const [deploying, setDeploying] = useState(false);
   const [progressMap, setProgressMap] = useState<
     Record<number, DeployProgress>
@@ -231,18 +237,26 @@ export default function DeployApps() {
       return;
     }
 
+    // Semantic Router requires HF token
+    if (selectedApp.type === "semantic-router" && !hfToken.trim()) {
+      message.error("HuggingFace Token is required for Semantic Router");
+      return;
+    }
+
     setDeploying(true);
     try {
       await appsApi.deploy({
         app_type: selectedApp.type,
         worker_id: selectedWorker,
         use_proxy: useProxy,
+        hf_token: hfToken.trim() || undefined,
       });
       message.success(`${selectedApp.name} deployment started`);
       setDeployModalOpen(false);
       setSelectedApp(null);
       setSelectedWorker(null);
       setUseProxy(true);
+      setHfToken("");
       fetchData();
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } };
@@ -392,7 +406,7 @@ export default function DeployApps() {
                       marginBottom: 12,
                     }}
                   >
-                    {appLogos[app.type] && (
+                    {appLogos[app.type] ? (
                       <img
                         src={appLogos[app.type]}
                         alt={app.name}
@@ -403,7 +417,24 @@ export default function DeployApps() {
                           objectFit: "contain",
                         }}
                       />
-                    )}
+                    ) : app.type === "semantic-router" ? (
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 6,
+                          background:
+                            "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <BranchesOutlined
+                          style={{ color: "#fff", fontSize: 18 }}
+                        />
+                      </div>
+                    ) : null}
                     <Title level={5} style={{ margin: 0 }}>
                       {app.name}
                     </Title>
@@ -487,7 +518,7 @@ export default function DeployApps() {
                             gap: 12,
                           }}
                         >
-                          {appLogos[app.app_type] && (
+                          {appLogos[app.app_type] ? (
                             <img
                               src={appLogos[app.app_type]}
                               alt={app.name}
@@ -499,7 +530,24 @@ export default function DeployApps() {
                                 objectFit: "contain",
                               }}
                             />
-                          )}
+                          ) : app.app_type === "semantic-router" ? (
+                            <div
+                              style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 6,
+                                background:
+                                  "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <BranchesOutlined
+                                style={{ color: "#fff", fontSize: 18 }}
+                              />
+                            </div>
+                          ) : null}
                           <div>
                             <Title level={5} style={{ margin: 0 }}>
                               {app.name}
@@ -672,6 +720,7 @@ export default function DeployApps() {
           setSelectedApp(null);
           setSelectedWorker(null);
           setUseProxy(true);
+          setHfToken("");
         }}
         okText="Deploy"
         okButtonProps={{ loading: deploying, disabled: !selectedWorker }}
@@ -738,6 +787,61 @@ export default function DeployApps() {
             </div>
           );
         })()}
+
+        {/* HuggingFace Token - required for Semantic Router */}
+        {selectedApp?.type === "semantic-router" && (
+          <div style={{ marginBottom: 16 }}>
+            <Alert
+              message="HuggingFace Token Required"
+              description={
+                <div>
+                  <p style={{ margin: "8px 0" }}>
+                    Semantic Router requires a HuggingFace Token to download
+                    required AI models.
+                  </p>
+                  <ol style={{ margin: 0, paddingLeft: 20 }}>
+                    <li>
+                      Go to{" "}
+                      <a
+                        href="https://huggingface.co/settings/tokens"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        HuggingFace Token Settings
+                      </a>
+                    </li>
+                    <li>
+                      Create a token with <strong>Read</strong> permission
+                    </li>
+                    <li>
+                      Visit{" "}
+                      <a
+                        href="https://huggingface.co/google/embeddinggemma-300m"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        google/embeddinggemma-300m
+                      </a>{" "}
+                      and accept the license agreement
+                    </li>
+                  </ol>
+                </div>
+              }
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+            />
+            <Text strong>
+              HuggingFace Token <Text type="danger">*</Text>
+            </Text>
+            <Input.Password
+              style={{ width: "100%", marginTop: 8 }}
+              placeholder="hf_xxxxxxxxxxxxxxxxxxxx"
+              value={hfToken}
+              onChange={(e) => setHfToken(e.target.value)}
+            />
+          </div>
+        )}
 
         {workers.length === 0 && (
           <div style={{ marginTop: 16 }}>

@@ -279,14 +279,18 @@ async def _verify_http_access(
     app_url: str,
     app_id: int,
 ) -> bool:
-    """Verify app is accessible via HTTP."""
+    """Verify app is accessible via HTTP.
+
+    Returns True if the app responds to HTTP requests (any status code).
+    A 500 error still means the app is running and accepting connections,
+    just that it may be initializing or the endpoint doesn't exist.
+    """
     try:
         http_check = await client.get(app_url, timeout=10.0)
-        if http_check.status_code < 500:
-            logger.info(f"App {app_id} HTTP check passed: {http_check.status_code}")
-            return True
-        else:
-            logger.warning(f"App {app_id} HTTP check failed: {http_check.status_code}")
+        # Any HTTP response (including 500) means the app is running
+        # Only connection errors should be treated as failures
+        logger.info(f"App {app_id} HTTP check passed: {http_check.status_code}")
+        return True
     except Exception as http_err:
         logger.warning(f"App {app_id} HTTP check error: {http_err}")
     return False

@@ -36,6 +36,7 @@ export interface AppDeployRequest {
   worker_id: number;
   name?: string;
   use_proxy?: boolean;
+  hf_token?: string;
 }
 
 export interface DeployProgress {
