@@ -36,6 +36,9 @@ services:
       LMSTACK_CORS_ORIGINS: ${CORS_ORIGINS:-*}
     ports:
       - "${BACKEND_PORT:-52000}:52000"
+    volumes:
+      # Mount docker socket for local worker management
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       db:
         condition: service_healthy
