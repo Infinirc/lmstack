@@ -125,6 +125,12 @@ APP_DEFINITIONS = {
             {"name": "semantic-router-config", "destination": "/app/config"},
             {"name": "semantic-router-models", "destination": "/app/models"},
         ],
+        # Override entrypoint to create symlink before starting supervisord
+        # (supervisord.conf hardcodes /app/config.yaml path)
+        "entrypoint": ["/bin/sh", "-c"],
+        "command": [
+            "ln -sf /app/config/config.yaml /app/config.yaml && exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf"
+        ],
         "requires_config": True,  # Indicates this app needs dynamic config generation
         "singleton": True,  # Only one instance should be deployed per cluster
     },

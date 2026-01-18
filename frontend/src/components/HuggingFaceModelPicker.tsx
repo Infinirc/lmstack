@@ -627,7 +627,7 @@ export default function HuggingFaceModelPicker({
                                 : "success"
                           }
                           format={() =>
-                            `${vramEstimate.estimated_vram_gb.toFixed(1)} / ${gpuMemoryGb} GB`
+                            `${vramEstimate.estimated_vram_gb.toFixed(1)} / ${gpuMemoryGb?.toFixed(1) ?? "N/A"} GB`
                           }
                         />
                       </div>

@@ -502,6 +502,12 @@ async def _create_container(
         "extra_hosts": {"host.docker.internal": "host-gateway"},
     }
 
+    # Add entrypoint/command if specified (e.g., for semantic router config symlink)
+    if app_def.get("entrypoint"):
+        payload["entrypoint"] = app_def["entrypoint"]
+    if app_def.get("command"):
+        payload["command"] = app_def["command"]
+
     # Add Linux capabilities if specified (e.g., SYS_ADMIN for AnythingLLM)
     if app_def.get("cap_add"):
         payload["cap_add"] = app_def["cap_add"]
