@@ -4,6 +4,7 @@ Contains the background task logic for deploying apps including:
 - Image pulling with progress tracking
 - Container creation and health checking
 - Nginx proxy setup
+- Semantic Router config generation
 """
 
 import asyncio
@@ -16,6 +17,7 @@ from app.api.apps.utils import CONTAINER_ACTION_TIMEOUT, DEFAULT_TIMEOUT, IMAGE_
 from app.models.app import App, AppStatus, AppType
 from app.models.worker import Worker
 from app.services.app_proxy_manager import get_proxy_manager
+from app.services.semantic_router import semantic_router_service
 
 logger = logging.getLogger(__name__)
 
@@ -362,12 +364,22 @@ async def deploy_app_background(
                 await db.commit()
                 return
 
-            # Phase 2: Create container
+            # Phase 2: Pre-deployment setup (e.g., config files)
+            if app_type == AppType.SEMANTIC_ROUTER:
+                set_deployment_progress(app_id, "starting", 0, "Generating config...")
+                try:
+                    lmstack_api_url = "http://host.docker.internal:52000"
+                    await write_semantic_router_config(worker_address, lmstack_api_url, db)
+                except Exception as e:
+                    logger.warning(f"Failed to write semantic router config: {e}")
+                    # Continue anyway, config can be updated later
+
+            # Phase 3: Create container
             app.status = AppStatus.STARTING.value
             app.status_message = "Starting container..."
             await db.commit()
 
-            set_deployment_progress(app_id, "starting", 0, "Creating container...")
+            set_deployment_progress(app_id, "starting", 10, "Creating container...")
 
             container_id = await _create_container(
                 worker_address, app_id, app_type, app_def, env_vars, port
@@ -452,17 +464,33 @@ async def _create_container(
             }
         )
 
+    # Build port mappings
+    ports = [
+        {
+            "container_port": app_def["internal_port"],
+            "host_port": port,
+            "protocol": "tcp",
+        }
+    ]
+
+    # Add additional ports (e.g., dashboard port for semantic router)
+    additional_ports = app_def.get("additional_ports", [])
+    for i, additional_port in enumerate(additional_ports):
+        # Map additional ports starting from port + 1
+        host_port = port + 1 + i
+        ports.append(
+            {
+                "container_port": additional_port,
+                "host_port": host_port,
+                "protocol": "tcp",
+            }
+        )
+
     payload = {
         "name": container_name,
         "image": app_def["image"],
         "env": env_vars,
-        "ports": [
-            {
-                "container_port": app_def["internal_port"],
-                "host_port": port,
-                "protocol": "tcp",
-            }
-        ],
+        "ports": ports,
         "volumes": volumes,
         "restart_policy": "unless-stopped",
         "labels": {
@@ -526,3 +554,78 @@ async def _setup_nginx_proxy(
     except Exception as e:
         logger.warning(f"Failed to setup nginx proxy: {e}")
         # Continue anyway, user can access directly via worker IP
+
+
+# =============================================================================
+# Semantic Router Config
+# =============================================================================
+
+
+async def write_semantic_router_config(
+    worker_address: str,
+    lmstack_api_url: str,
+    db,
+) -> None:
+    """Write semantic router config.yaml to the worker volume.
+
+    Args:
+        worker_address: Worker address (host:port)
+        lmstack_api_url: LMStack API URL for the semantic router to call
+        db: Database session
+    """
+    # Generate config
+    config = await semantic_router_service.generate_config(db, lmstack_api_url)
+    config_yaml = semantic_router_service.config_to_yaml(config)
+
+    # Write to worker volume
+    volume_name = "lmstack-app-semantic-router-semantic-router-config"
+
+    async with httpx.AsyncClient(timeout=CONTAINER_ACTION_TIMEOUT) as client:
+        response = await client.post(
+            f"http://{worker_address}/storage/volumes/write-file",
+            json={
+                "volume_name": volume_name,
+                "file_path": "config.yaml",
+                "content": config_yaml,
+            },
+        )
+        if response.status_code >= 400:
+            raise Exception(f"Failed to write config: {response.text}")
+
+    logger.info(f"Wrote semantic router config to {volume_name}/config.yaml")
+
+
+async def update_semantic_router_config_if_deployed(db) -> bool:
+    """Update semantic router config if it's deployed.
+
+    This should be called when deployments change (add/remove models).
+
+    Args:
+        db: Database session
+
+    Returns:
+        True if config was updated, False if semantic router not deployed
+    """
+
+    # Check if semantic router is deployed
+    app = await semantic_router_service.get_semantic_router_app(db)
+    if not app:
+        return False
+
+    # Get worker address
+    result = await db.execute(select(Worker).where(Worker.id == app.worker_id))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        return False
+
+    # Build LMStack API URL
+    # Use host.docker.internal since semantic router runs in a container
+    lmstack_api_url = "http://host.docker.internal:52000"
+
+    try:
+        await write_semantic_router_config(worker.address, lmstack_api_url, db)
+        logger.info("Updated semantic router config with latest deployments")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update semantic router config: {e}")
+        return False

@@ -17,6 +17,10 @@ from sqlalchemy.orm import selectinload
 from app.database import async_session_maker, get_db
 from app.models.deployment import Deployment
 from app.services.gateway import gateway_service
+from app.services.semantic_router import semantic_router_service
+
+# Special model names that trigger semantic routing
+SEMANTIC_ROUTER_MODEL_NAMES = {"mom", "mixture-of-models", "auto", "semantic-router"}
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +179,15 @@ async def chat_completions(
                     "type": "invalid_request_error",
                 }
             },
+        )
+
+    # Check if using semantic routing (model="MoM", "auto", etc.)
+    if model_name.lower() in SEMANTIC_ROUTER_MODEL_NAMES:
+        return await _proxy_to_semantic_router(
+            db=db,
+            body=body,
+            api_key=api_key,
+            endpoint="/v1/chat/completions",
         )
 
     # Find deployment for model
@@ -1011,3 +1024,139 @@ async def responses(
     logger.info(f"Responses API response: {json.dumps(responses_response)[:500]}")
 
     return JSONResponse(content=responses_response)
+
+
+# =============================================================================
+# Semantic Router Proxy
+# =============================================================================
+
+
+async def _proxy_to_semantic_router(
+    db: AsyncSession,
+    body: dict,
+    api_key,
+    endpoint: str,
+) -> JSONResponse | StreamingResponse:
+    """Proxy request to Semantic Router for intelligent model selection.
+
+    Args:
+        db: Database session
+        body: Request body
+        api_key: Validated API key
+        endpoint: API endpoint (e.g., /v1/chat/completions)
+
+    Returns:
+        Response from Semantic Router
+    """
+    # Check if Semantic Router is deployed
+    router_url = await semantic_router_service.get_semantic_router_url(db)
+    if not router_url:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": {
+                    "message": "Semantic Router is not deployed. Deploy it from the Apps page to use automatic model routing.",
+                    "type": "service_unavailable",
+                    "hint": "Use a specific model name instead, or deploy Semantic Router first.",
+                }
+            },
+        )
+
+    # Remove the special model name and let Semantic Router decide
+    # The router will use its config to select the best model
+    body_copy = body.copy()
+    body_copy.pop("model", None)  # Let Semantic Router handle model selection
+
+    upstream_url = f"{router_url}{endpoint}"
+    is_streaming = body.get("stream", False)
+
+    if is_streaming:
+        return await _proxy_semantic_router_streaming(upstream_url, body_copy, api_key.id)
+    else:
+        return await _proxy_semantic_router_request(upstream_url, body_copy, api_key.id)
+
+
+async def _proxy_semantic_router_request(
+    upstream_url: str,
+    body: dict,
+    api_key_id: int,
+) -> JSONResponse:
+    """Proxy non-streaming request to Semantic Router."""
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.post(
+                upstream_url,
+                json=body,
+                headers={"Content-Type": "application/json"},
+            )
+            return JSONResponse(content=response.json(), status_code=response.status_code)
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "error": {
+                    "message": "Request to Semantic Router timed out",
+                    "type": "timeout_error",
+                }
+            },
+        )
+    except httpx.RequestError as e:
+        logger.error(f"Semantic Router request error: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": {
+                    "message": "Failed to connect to Semantic Router",
+                    "type": "connection_error",
+                }
+            },
+        )
+
+
+async def _proxy_semantic_router_streaming(
+    upstream_url: str,
+    body: dict,
+    api_key_id: int,
+) -> StreamingResponse:
+    """Proxy streaming request to Semantic Router."""
+
+    async def stream_generator() -> AsyncGenerator[bytes, None]:
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                async with client.stream(
+                    "POST",
+                    upstream_url,
+                    json=body,
+                    headers={"Content-Type": "application/json"},
+                ) as response:
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+
+        except httpx.TimeoutException:
+            error_data = {
+                "error": {
+                    "message": "Request to Semantic Router timed out",
+                    "type": "timeout_error",
+                }
+            }
+            yield f"data: {json.dumps(error_data)}\n\n".encode()
+        except httpx.RequestError as e:
+            logger.error(f"Semantic Router streaming error: {e}")
+            error_data = {
+                "error": {
+                    "message": f"Connection error: {e}",
+                    "type": "connection_error",
+                }
+            }
+            yield f"data: {json.dumps(error_data)}\n\n".encode()
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

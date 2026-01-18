@@ -22,6 +22,7 @@ class AppType(str, Enum):
     FLOWISE = "flowise"
     ANYTHINGLLM = "anythingllm"
     LOBECHAT = "lobechat"
+    SEMANTIC_ROUTER = "semantic-router"
 
 
 class AppStatus(str, Enum):
@@ -108,6 +109,24 @@ APP_DEFINITIONS = {
             "ACCESS_CODE": "{secret_key}",  # Access password for security
         },
         "volumes": [],  # LobeChat is stateless by default
+    },
+    AppType.SEMANTIC_ROUTER: {
+        "name": "Semantic Router",
+        "description": "Intelligent LLM router that automatically selects the best model based on query intent",
+        "image": "ghcr.io/vllm-project/semantic-router/vllm-sr:latest",
+        "internal_port": 8801,  # Main OpenAI-compatible API port
+        "additional_ports": [8700],  # Dashboard port
+        "env_template": {
+            "ENVOY_LISTEN_PORT": "8801",
+            "DASHBOARD_PORT": "8700",
+            "HF_TOKEN": "{hf_token}",  # Optional: for gated models
+        },
+        "volumes": [
+            {"name": "semantic-router-config", "destination": "/app/config"},
+            {"name": "semantic-router-models", "destination": "/app/models"},
+        ],
+        "requires_config": True,  # Indicates this app needs dynamic config generation
+        "singleton": True,  # Only one instance should be deployed per cluster
     },
 }
 

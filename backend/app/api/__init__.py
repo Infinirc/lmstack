@@ -16,6 +16,7 @@ from app.api import (
     model_files,
     models,
     ollama,
+    semantic_router,
     storage,
     system,
     workers,
@@ -58,3 +59,6 @@ api_router.include_router(apps.router, prefix="/apps", tags=["apps"])
 
 # Headscale VPN
 api_router.include_router(headscale.router, prefix="/headscale", tags=["headscale"])
+
+# Semantic Router
+api_router.include_router(semantic_router.router)
