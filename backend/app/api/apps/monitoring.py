@@ -689,19 +689,24 @@ async def _update_parent_monitoring_urls(db: AsyncSession, parent_app_id: int) -
         monitoring_apps = list(result.scalars().all())
 
         # Build monitoring URLs
+        # These URLs are accessed from INSIDE the Semantic Router container
+        # So we use host.docker.internal to access services on the same host
         await fresh_db.refresh(parent_app, ["worker"])
-        worker_host = parent_app.worker.address.split(":")[0]
+
+        # Use host.docker.internal for container-to-host communication
+        # This works regardless of the worker's external IP
+        internal_host = "host.docker.internal"
 
         monitoring_urls = {}
         all_running = True
         for mon_app in monitoring_apps:
             if mon_app.status == AppStatus.RUNNING.value and mon_app.port:
                 if mon_app.app_type == "grafana":
-                    monitoring_urls["grafana_url"] = f"http://{worker_host}:{mon_app.port}"
+                    monitoring_urls["grafana_url"] = f"http://{internal_host}:{mon_app.port}"
                 elif mon_app.app_type == "prometheus":
-                    monitoring_urls["prometheus_url"] = f"http://{worker_host}:{mon_app.port}"
+                    monitoring_urls["prometheus_url"] = f"http://{internal_host}:{mon_app.port}"
                 elif mon_app.app_type == "jaeger":
-                    monitoring_urls["jaeger_url"] = f"http://{worker_host}:{mon_app.port}"
+                    monitoring_urls["jaeger_url"] = f"http://{internal_host}:{mon_app.port}"
             elif mon_app.status not in (AppStatus.ERROR.value, AppStatus.STOPPED.value):
                 all_running = False
 
