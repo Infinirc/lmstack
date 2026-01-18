@@ -101,6 +101,7 @@ def _get_client_ip(request: Request) -> str:
 async def create_worker(
     worker_in: WorkerCreate | WorkerRegisterWithToken,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """Register a new worker (requires registration token)"""
@@ -159,6 +160,9 @@ async def create_worker(
 
             await db.commit()
             await db.refresh(original_worker)
+
+            # Refresh deployments and apps status on this worker
+            background_tasks.add_task(_refresh_worker_resources, original_worker.id)
 
             return WorkerResponse(
                 id=original_worker.id,
