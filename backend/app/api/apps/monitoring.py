@@ -672,47 +672,60 @@ async def _update_parent_monitoring_urls(db: AsyncSession, parent_app_id: int) -
     This updates the Semantic Router container with the URLs of deployed monitoring services.
     When all monitoring services are running, it restarts the parent container with new env vars.
     """
-    # Get parent app
-    result = await db.execute(select(App).where(App.id == parent_app_id))
-    parent_app = result.scalar_one_or_none()
-    if not parent_app:
-        return
+    # IMPORTANT: Use a fresh session to see commits from other parallel background tasks
+    # Each background task has its own isolated session, so we need a new one to get
+    # the current state of all monitoring services
+    from app.database import async_session_maker
 
-    # Get all monitoring services
-    result = await db.execute(select(App).where(App.parent_app_id == parent_app_id))
-    monitoring_apps = list(result.scalars().all())
+    async with async_session_maker() as fresh_db:
+        # Get parent app
+        result = await fresh_db.execute(select(App).where(App.id == parent_app_id))
+        parent_app = result.scalar_one_or_none()
+        if not parent_app:
+            return
 
-    # Build monitoring URLs
-    await db.refresh(parent_app, ["worker"])
-    worker_host = parent_app.worker.address.split(":")[0]
+        # Get all monitoring services
+        result = await fresh_db.execute(select(App).where(App.parent_app_id == parent_app_id))
+        monitoring_apps = list(result.scalars().all())
 
-    monitoring_urls = {}
-    all_running = True
-    for mon_app in monitoring_apps:
-        if mon_app.status == AppStatus.RUNNING.value and mon_app.port:
-            if mon_app.app_type == "grafana":
-                monitoring_urls["grafana_url"] = f"http://{worker_host}:{mon_app.port}"
-            elif mon_app.app_type == "prometheus":
-                monitoring_urls["prometheus_url"] = f"http://{worker_host}:{mon_app.port}"
-            elif mon_app.app_type == "jaeger":
-                monitoring_urls["jaeger_url"] = f"http://{worker_host}:{mon_app.port}"
-        elif mon_app.status not in (AppStatus.ERROR.value, AppStatus.STOPPED.value):
-            all_running = False
+        # Build monitoring URLs
+        await fresh_db.refresh(parent_app, ["worker"])
+        worker_host = parent_app.worker.address.split(":")[0]
 
-    # Store in parent app's config for reference
-    config = parent_app.config or {}
-    config["monitoring_urls"] = monitoring_urls
-    parent_app.config = config
-    await db.commit()
+        monitoring_urls = {}
+        all_running = True
+        for mon_app in monitoring_apps:
+            if mon_app.status == AppStatus.RUNNING.value and mon_app.port:
+                if mon_app.app_type == "grafana":
+                    monitoring_urls["grafana_url"] = f"http://{worker_host}:{mon_app.port}"
+                elif mon_app.app_type == "prometheus":
+                    monitoring_urls["prometheus_url"] = f"http://{worker_host}:{mon_app.port}"
+                elif mon_app.app_type == "jaeger":
+                    monitoring_urls["jaeger_url"] = f"http://{worker_host}:{mon_app.port}"
+            elif mon_app.status not in (AppStatus.ERROR.value, AppStatus.STOPPED.value):
+                all_running = False
 
-    logger.info(f"Updated monitoring URLs for app {parent_app_id}: {monitoring_urls}")
+        # Store in parent app's config for reference
+        config = parent_app.config or {}
+        config["monitoring_urls"] = monitoring_urls
+        parent_app.config = config
+        await fresh_db.commit()
 
-    # If all monitoring services are running, restart parent app to pick up new URLs
-    if all_running and monitoring_urls and parent_app.status == AppStatus.RUNNING.value:
+        logger.info(f"Updated monitoring URLs for app {parent_app_id}: {monitoring_urls}")
         logger.info(
-            f"All monitoring services running, restarting parent app {parent_app_id} to apply URLs"
+            f"Restart check: all_running={all_running}, has_urls={bool(monitoring_urls)}, "
+            f"parent_status={parent_app.status}, services={[(m.app_type, m.status) for m in monitoring_apps]}"
         )
-        await _restart_parent_with_monitoring_urls(db, parent_app, monitoring_urls)
+
+        # If all monitoring services are running, restart parent app to pick up new URLs
+        if all_running and monitoring_urls and parent_app.status == AppStatus.RUNNING.value:
+            logger.info(
+                f"All monitoring services running, restarting parent app {parent_app_id} to apply URLs"
+            )
+            try:
+                await _restart_parent_with_monitoring_urls(fresh_db, parent_app, monitoring_urls)
+            except Exception as e:
+                logger.exception(f"Failed to restart parent app with monitoring URLs: {e}")
 
 
 async def _restart_parent_with_monitoring_urls(
