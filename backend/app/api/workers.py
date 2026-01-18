@@ -375,6 +375,13 @@ async def worker_heartbeat(
     if heartbeat.system_info:
         worker.system_info = heartbeat.system_info.model_dump()
 
+    # Check if worker is going offline
+    is_going_offline = heartbeat.status == WorkerStatus.OFFLINE
+
+    # If worker is going offline, immediately update all deployments and apps
+    if is_going_offline:
+        await _mark_worker_resources_offline(db, worker.id, worker.name)
+
     await db.commit()
 
     # If worker came back online, refresh deployments and apps status
@@ -632,6 +639,55 @@ async def delete_registration_token(
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+
+async def _mark_worker_resources_offline(db: AsyncSession, worker_id: int, worker_name: str):
+    """Mark all deployments and apps on an offline worker as unavailable.
+
+    This is called synchronously when a worker sends an offline heartbeat.
+    """
+    # Update deployments on this worker
+    dep_result = await db.execute(
+        select(Deployment).where(
+            Deployment.worker_id == worker_id,
+            Deployment.status.in_(
+                [
+                    DeploymentStatus.RUNNING.value,
+                    DeploymentStatus.STARTING.value,
+                ]
+            ),
+        )
+    )
+    deployments = dep_result.scalars().all()
+
+    for deployment in deployments:
+        deployment.status = DeploymentStatus.ERROR.value
+        deployment.status_message = f"Worker {worker_name} is offline"
+
+    # Update apps on this worker
+    app_result = await db.execute(
+        select(App).where(
+            App.worker_id == worker_id,
+            App.status.in_(
+                [
+                    AppStatus.RUNNING.value,
+                    AppStatus.STARTING.value,
+                    AppStatus.PULLING.value,
+                ]
+            ),
+        )
+    )
+    apps = app_result.scalars().all()
+
+    for app in apps:
+        app.status = AppStatus.ERROR.value
+        app.status_message = f"Worker {worker_name} is offline"
+
+    if deployments or apps:
+        logger.info(
+            f"Marked {len(deployments)} deployments and {len(apps)} apps as offline "
+            f"for worker {worker_name}"
+        )
 
 
 async def _refresh_worker_resources(worker_id: int):
