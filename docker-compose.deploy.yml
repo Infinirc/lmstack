@@ -3,11 +3,14 @@
 # Usage: docker compose -f docker-compose.deploy.yml up -d
 
 services:
-  server:
+  backend:
     image: infinirc/lmstack-backend:latest
     container_name: lmstack-backend
     user: root
-    network_mode: host
+    ports:
+      - "52000:52000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - lmstack-data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
@@ -15,6 +18,12 @@ services:
     environment:
       - LMSTACK_SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - LMSTACK_EXTERNAL_URL=${EXTERNAL_URL:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; r=httpx.get('http://127.0.0.1:52000/health'); exit(0 if r.status_code==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   frontend:
@@ -28,7 +37,8 @@ services:
       - BACKEND_HOST=host.docker.internal
       - NGINX_ENVSUBST_FILTER=BACKEND_HOST
     depends_on:
-      - server
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
