@@ -13,9 +13,9 @@ from fastapi import HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.app import App, AppStatus
+from app.models.app import APP_DEFINITIONS, App, AppStatus, AppType
 from app.models.worker import Worker
-from app.schemas.app import AppResponse
+from app.schemas.app import AppPortInfo, AppResponse
 
 logger = logging.getLogger(__name__)
 
@@ -202,18 +202,48 @@ def app_to_response(app: App, request: Request) -> AppResponse:
     if app.status == AppStatus.RUNNING.value and app.proxy_path:
         proxy_url = str(request.base_url).rstrip("/") + app.proxy_path
 
+    # Determine host for URL building
+    if app.use_proxy:
+        # Use LMStack host (nginx proxy)
+        url_host = request.headers.get("host", "localhost:52000").split(":")[0]
+    else:
+        # Direct connection to worker
+        url_host = worker_address.split(":")[0] if worker_address else None
+
     # Build access URL based on proxy setting
     access_url = None
-    if app.status == AppStatus.RUNNING.value and app.port:
-        if app.use_proxy:
-            # Use LMStack host with app port (nginx proxy)
-            host = request.headers.get("host", "localhost:52000").split(":")[0]
-            access_url = f"http://{host}:{app.port}"
-        else:
-            # Direct connection to worker
-            if worker_address:
-                worker_host = worker_address.split(":")[0]
-                access_url = f"http://{worker_host}:{app.port}"
+    if app.status == AppStatus.RUNNING.value and app.port and url_host:
+        access_url = f"http://{url_host}:{app.port}"
+
+    # Build additional URLs for apps with multiple ports
+    additional_urls = None
+    has_monitoring = False
+    try:
+        app_type = AppType(app.app_type)
+        app_def = APP_DEFINITIONS.get(app_type, {})
+        has_monitoring = app_def.get("has_monitoring", False)
+
+        if app.status == AppStatus.RUNNING.value and app.port and url_host:
+            additional_ports = app_def.get("additional_ports", [])
+
+            if additional_ports:
+                additional_urls = []
+                for i, port_info in enumerate(additional_ports):
+                    if isinstance(port_info, dict):
+                        port_name = port_info.get("name", f"Port {i + 1}")
+                    else:
+                        port_name = f"Port {i + 1}"
+
+                    host_port = app.port + 1 + i
+                    additional_urls.append(
+                        AppPortInfo(
+                            name=port_name,
+                            port=host_port,
+                            url=f"http://{url_host}:{host_port}",
+                        )
+                    )
+    except (ValueError, KeyError):
+        pass  # Invalid app type, skip additional URLs
 
     return AppResponse(
         id=app.id,
@@ -230,7 +260,9 @@ def app_to_response(app: App, request: Request) -> AppResponse:
         proxy_url=proxy_url,
         use_proxy=app.use_proxy,
         access_url=access_url,
+        additional_urls=additional_urls,
         api_key_id=app.api_key_id,
+        has_monitoring=has_monitoring,
         created_at=app.created_at,
         updated_at=app.updated_at,
     )

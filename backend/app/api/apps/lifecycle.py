@@ -70,6 +70,7 @@ async def stop_app(
 
         app.status = AppStatus.STOPPED.value
         await db.commit()
+        await db.refresh(app, ["worker"])
 
     except Exception as e:
         logger.exception(f"Failed to stop app: {e}")
@@ -124,6 +125,7 @@ async def start_app(
         app.status = AppStatus.RUNNING.value
         app.status_message = None
         await db.commit()
+        await db.refresh(app, ["worker"])
 
     except Exception as e:
         logger.exception(f"Failed to start app: {e}")
@@ -149,6 +151,34 @@ async def delete_app(
         raise HTTPException(status_code=404, detail="App not found")
 
     await db.refresh(app, ["worker", "api_key"])
+
+    # Delete child apps (monitoring services) first
+    child_result = await db.execute(select(App).where(App.parent_app_id == app_id))
+    child_apps = child_result.scalars().all()
+
+    for child in child_apps:
+        # Remove child container
+        if child.container_id and app.worker and app.worker.status == "online":
+            try:
+                await call_worker_api(
+                    app.worker,
+                    "DELETE",
+                    f"/containers/{child.container_id}",
+                    params={"force": True, "volumes": False},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to remove child container {child.app_type}: {e}")
+
+        # Remove child nginx proxy
+        if child.use_proxy:
+            try:
+                proxy_manager = get_proxy_manager()
+                await proxy_manager.remove_app_proxy(child.id)
+            except Exception as e:
+                logger.warning(f"Failed to remove child nginx proxy: {e}")
+
+        # Delete child app record
+        await db.delete(child)
 
     # Try to remove container if it exists
     if app.container_id and app.worker and app.worker.status == "online":

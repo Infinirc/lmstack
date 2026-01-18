@@ -102,6 +102,8 @@ export type {
   DeployedApp,
   AppDeployRequest,
   DeployProgress,
+  MonitoringServiceStatus,
+  MonitoringStatus,
 } from "./apps";
 
 // Types - Headscale

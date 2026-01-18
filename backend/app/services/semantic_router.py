@@ -143,35 +143,10 @@ class SemanticRouterService:
                 "ttl_seconds": 86400,
                 "max_responses": 1000,
             },
-            # Semantic cache - disabled by default (requires embedding model)
-            # Enable and configure embedding_model if you have HF_TOKEN for gated models
-            "semantic_cache": {
-                "enabled": False,
-            },
-            # Prompt guard (jailbreak protection)
-            "prompt_guard": {
-                "enabled": True,
-                "model_id": "models/mom-jailbreak-classifier",
-                "threshold": 0.7,
-                "use_cpu": True,
-            },
-            # Classifier
-            "classifier": {
-                "category_model": {
-                    "model_id": "models/mom-domain-classifier",
-                    "threshold": 0.6,
-                    "use_cpu": True,
-                },
-                "pii_model": {
-                    "model_id": "models/mom-pii-classifier",
-                    "threshold": 0.9,
-                    "use_cpu": True,
-                },
-            },
-            # Hallucination mitigation (disabled by default)
-            "hallucination_mitigation": {
-                "enabled": False,
-            },
+            # Note: The following features require ML models to be downloaded.
+            # They are omitted from config to avoid startup errors.
+            # To enable: prompt_guard, classifier, semantic_cache, hallucination_mitigation
+            # See: https://vllm-semantic-router.com/docs/installation/configuration
             # Signals (domains for routing)
             "signals": {
                 "domains": self.DEFAULT_DOMAINS,
@@ -280,10 +255,6 @@ class SemanticRouterService:
                     {
                         "type": "system_prompt",
                         "configuration": {"system_prompt": "You are a helpful assistant."},
-                    },
-                    {
-                        "type": "semantic-cache",
-                        "configuration": {"enabled": True, "similarity_threshold": 0.85},
                     },
                 ],
             }

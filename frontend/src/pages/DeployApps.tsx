@@ -41,6 +41,9 @@ import {
   FullscreenExitOutlined,
   VerticalAlignBottomOutlined,
   BranchesOutlined,
+  DashboardOutlined,
+  PlusOutlined,
+  MinusOutlined,
 } from "@ant-design/icons";
 import { appsApi, workersApi } from "../services/api";
 import type { Worker } from "../types";
@@ -48,6 +51,8 @@ import type {
   AppDefinition,
   DeployedApp,
   DeployProgress,
+  MonitoringStatus,
+  MonitoringServiceStatus,
 } from "../services/api";
 import { useResponsive } from "../hooks";
 import Loading from "../components/Loading";
@@ -133,6 +138,14 @@ export default function DeployApps() {
   const logsRef = useRef<HTMLPreElement>(null);
   const { isMobile } = useResponsive();
 
+  // Monitoring state
+  const [monitoringStatus, setMonitoringStatus] = useState<
+    Record<number, MonitoringStatus>
+  >({});
+  const [monitoringLoading, setMonitoringLoading] = useState<
+    Record<number, boolean>
+  >({});
+
   const fetchData = useCallback(async () => {
     try {
       const [availableRes, deployedRes, workersRes] = await Promise.all([
@@ -155,6 +168,23 @@ export default function DeployApps() {
     const interval = setInterval(fetchData, REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Fetch monitoring status for apps that support it
+  useEffect(() => {
+    const appsWithMonitoring = deployedApps.filter(
+      (app) => app.has_monitoring && app.status === "running",
+    );
+    appsWithMonitoring.forEach((app) => {
+      if (!monitoringStatus[app.id]) {
+        appsApi
+          .getMonitoringStatus(app.id)
+          .then((status) => {
+            setMonitoringStatus((prev) => ({ ...prev, [app.id]: status }));
+          })
+          .catch(console.error);
+      }
+    });
+  }, [deployedApps]);
 
   // Poll progress for deploying apps
   useEffect(() => {
@@ -338,6 +368,66 @@ export default function DeployApps() {
         }
       }
       return null;
+    }
+  };
+
+  // Monitoring handlers
+  const fetchMonitoringStatus = async (appId: number) => {
+    try {
+      const status = await appsApi.getMonitoringStatus(appId);
+      setMonitoringStatus((prev) => ({ ...prev, [appId]: status }));
+    } catch (error) {
+      console.error("Failed to fetch monitoring status:", error);
+    }
+  };
+
+  const handleDeployMonitoring = async (app: DeployedApp) => {
+    setMonitoringLoading((prev) => ({ ...prev, [app.id]: true }));
+    try {
+      const status = await appsApi.deployMonitoring(app.id);
+      setMonitoringStatus((prev) => ({ ...prev, [app.id]: status }));
+      message.success("Monitoring deployment started");
+      // Poll for status updates
+      const pollInterval = setInterval(async () => {
+        const newStatus = await appsApi.getMonitoringStatus(app.id);
+        setMonitoringStatus((prev) => ({ ...prev, [app.id]: newStatus }));
+        // Stop polling when all services are running or errored
+        const allDone = newStatus.services.every(
+          (s) =>
+            s.status === "running" ||
+            s.status === "error" ||
+            s.status === "stopped",
+        );
+        if (allDone) {
+          clearInterval(pollInterval);
+          setMonitoringLoading((prev) => ({ ...prev, [app.id]: false }));
+        }
+      }, 3000);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(
+        err.response?.data?.detail || "Failed to deploy monitoring",
+      );
+      setMonitoringLoading((prev) => ({ ...prev, [app.id]: false }));
+    }
+  };
+
+  const handleRemoveMonitoring = async (app: DeployedApp) => {
+    setMonitoringLoading((prev) => ({ ...prev, [app.id]: true }));
+    try {
+      await appsApi.removeMonitoring(app.id);
+      setMonitoringStatus((prev) => ({
+        ...prev,
+        [app.id]: { enabled: false, services: [] },
+      }));
+      message.success("Monitoring removed");
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(
+        err.response?.data?.detail || "Failed to remove monitoring",
+      );
+    } finally {
+      setMonitoringLoading((prev) => ({ ...prev, [app.id]: false }));
     }
   };
 
@@ -630,7 +720,14 @@ export default function DeployApps() {
                       )}
 
                       {app.status === "running" && appUrl && (
-                        <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                          }}
+                        >
                           <Button
                             type="link"
                             icon={<LinkOutlined />}
@@ -638,13 +735,30 @@ export default function DeployApps() {
                             target="_blank"
                             style={{ padding: 0, height: "auto" }}
                           >
-                            Open {app.name}
+                            {app.additional_urls &&
+                            app.additional_urls.length > 0
+                              ? `API (${app.port})`
+                              : `Open ${app.name}`}
                           </Button>
-                          {app.port && (
-                            <Text
-                              type="secondary"
-                              style={{ fontSize: 12, marginLeft: 8 }}
-                            >
+                          {app.additional_urls &&
+                            app.additional_urls.length > 0 && (
+                              <>
+                                {app.additional_urls.map((portInfo) => (
+                                  <Button
+                                    key={portInfo.port}
+                                    type="link"
+                                    icon={<LinkOutlined />}
+                                    href={`http://${window.location.hostname}:${portInfo.port}`}
+                                    target="_blank"
+                                    style={{ padding: 0, height: "auto" }}
+                                  >
+                                    {portInfo.name} ({portInfo.port})
+                                  </Button>
+                                ))}
+                              </>
+                            )}
+                          {!app.additional_urls && app.port && (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
                               Port: {app.port}
                             </Text>
                           )}
@@ -701,6 +815,139 @@ export default function DeployApps() {
                           </Button>
                         </Popconfirm>
                       </div>
+
+                      {/* Monitoring Section for apps that support it */}
+                      {app.has_monitoring && app.status === "running" && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            paddingTop: 12,
+                            borderTop: "1px solid rgba(0,0,0,0.06)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: 8,
+                            }}
+                          >
+                            <Text strong style={{ fontSize: 13 }}>
+                              <DashboardOutlined style={{ marginRight: 6 }} />
+                              Monitoring
+                            </Text>
+                            {!monitoringStatus[app.id]?.enabled ? (
+                              <Button
+                                type="primary"
+                                size="small"
+                                icon={<PlusOutlined />}
+                                loading={monitoringLoading[app.id]}
+                                onClick={() => {
+                                  fetchMonitoringStatus(app.id);
+                                  handleDeployMonitoring(app);
+                                }}
+                              >
+                                Deploy
+                              </Button>
+                            ) : (
+                              <Popconfirm
+                                title="Remove monitoring?"
+                                description="This will stop and remove all monitoring services."
+                                onConfirm={() => handleRemoveMonitoring(app)}
+                                okText="Remove"
+                                okButtonProps={{ danger: true }}
+                              >
+                                <Button
+                                  size="small"
+                                  icon={<MinusOutlined />}
+                                  loading={monitoringLoading[app.id]}
+                                  danger
+                                >
+                                  Remove
+                                </Button>
+                              </Popconfirm>
+                            )}
+                          </div>
+
+                          {monitoringStatus[app.id]?.services &&
+                            monitoringStatus[app.id].services.length > 0 && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 6,
+                                }}
+                              >
+                                {monitoringStatus[app.id].services.map(
+                                  (svc: MonitoringServiceStatus) => (
+                                    <div
+                                      key={svc.type}
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      <span>
+                                        {svc.name}
+                                        <Tag
+                                          color={
+                                            svc.status === "running"
+                                              ? "success"
+                                              : svc.status === "error"
+                                                ? "error"
+                                                : "processing"
+                                          }
+                                          style={{
+                                            marginLeft: 8,
+                                            fontSize: 10,
+                                          }}
+                                        >
+                                          {svc.status === "running"
+                                            ? "Running"
+                                            : svc.status === "error"
+                                              ? "Error"
+                                              : svc.status === "pulling"
+                                                ? "Pulling"
+                                                : "Starting"}
+                                        </Tag>
+                                      </span>
+                                      {svc.status === "running" && svc.port && (
+                                        <Button
+                                          type="link"
+                                          size="small"
+                                          icon={<LinkOutlined />}
+                                          href={`http://${window.location.hostname}:${svc.port}`}
+                                          target="_blank"
+                                          style={{
+                                            padding: 0,
+                                            height: "auto",
+                                            fontSize: 12,
+                                          }}
+                                        >
+                                          Open ({svc.port})
+                                        </Button>
+                                      )}
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            )}
+
+                          {!monitoringStatus[app.id] && (
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={() => fetchMonitoringStatus(app.id)}
+                              style={{ padding: 0, fontSize: 12 }}
+                            >
+                              Check status
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </Card>
                 </Col>

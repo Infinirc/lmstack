@@ -413,7 +413,7 @@ async def deploy_app_background(
 
             # Phase 4: Setup proxy
             if use_proxy:
-                await _setup_nginx_proxy(app_id, app_type, worker_address, port)
+                await _setup_nginx_proxy(app_id, app_type, worker_address, port, app_def)
             else:
                 logger.info(f"Proxy disabled for app {app_id}, using direct worker connection")
 
@@ -479,12 +479,17 @@ async def _create_container(
 
     # Add additional ports (e.g., dashboard port for semantic router)
     additional_ports = app_def.get("additional_ports", [])
-    for i, additional_port in enumerate(additional_ports):
+    for i, additional_port_info in enumerate(additional_ports):
+        # Handle both old format (int) and new format (dict with container_port and name)
+        if isinstance(additional_port_info, dict):
+            container_port = additional_port_info["container_port"]
+        else:
+            container_port = additional_port_info
         # Map additional ports starting from port + 1
         host_port = port + 1 + i
         ports.append(
             {
-                "container_port": additional_port,
+                "container_port": container_port,
                 "host_port": host_port,
                 "protocol": "tcp",
             }
@@ -546,13 +551,16 @@ async def _setup_nginx_proxy(
     app_type: AppType,
     worker_address: str,
     port: int,
+    app_def: dict | None = None,
 ) -> None:
-    """Setup nginx proxy for app."""
+    """Setup nginx proxy for app and its additional ports."""
     set_deployment_progress(app_id, "starting", 95, "Setting up proxy...")
 
     try:
         proxy_manager = get_proxy_manager()
         proxy_worker_host = worker_address.split(":")[0]
+
+        # Setup main port proxy
         await proxy_manager.add_app_proxy(
             app_id=app_id,
             app_type=app_type.value,
@@ -560,7 +568,27 @@ async def _setup_nginx_proxy(
             worker_host=proxy_worker_host,
             worker_port=port,
         )
-        logger.info(f"Nginx proxy configured for app {app_id}")
+        logger.info(f"Nginx proxy configured for app {app_id} main port {port}")
+
+        # Setup additional port proxies (e.g., dashboard for semantic router)
+        if app_def:
+            additional_ports = app_def.get("additional_ports", [])
+            for i, port_info in enumerate(additional_ports):
+                if isinstance(port_info, dict):
+                    port_name = port_info.get("name", f"port{i+1}")
+                else:
+                    port_name = f"port{i+1}"
+
+                host_port = port + 1 + i
+                await proxy_manager.add_app_proxy(
+                    app_id=app_id * 1000 + i + 1,  # Unique ID for additional port
+                    app_type=f"{app_type.value}-{port_name.lower()}",
+                    listen_port=host_port,
+                    worker_host=proxy_worker_host,
+                    worker_port=host_port,
+                )
+                logger.info(f"Nginx proxy configured for app {app_id} {port_name} port {host_port}")
+
     except Exception as e:
         logger.warning(f"Failed to setup nginx proxy: {e}")
         # Continue anyway, user can access directly via worker IP

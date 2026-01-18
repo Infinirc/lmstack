@@ -115,11 +115,25 @@ APP_DEFINITIONS = {
         "description": "Intelligent LLM router that automatically selects the best model based on query intent",
         "image": "ghcr.io/vllm-project/semantic-router/vllm-sr:latest",
         "internal_port": 8888,  # Main OpenAI-compatible API port (Envoy listens on 8888)
-        "additional_ports": [8700],  # Dashboard port
+        "port_name": "API",  # Name for the main port
+        "additional_ports": [
+            {"container_port": 8700, "name": "Dashboard"},
+            {"container_port": 9190, "name": "Metrics"},
+        ],
         "env_template": {
             "ENVOY_LISTEN_PORT": "8888",
             "DASHBOARD_PORT": "8700",
             "HF_TOKEN": "{hf_token}",  # Optional: for gated models
+            # Redirect HuggingFace cache to the models volume for persistence
+            "HF_HOME": "/app/models",
+            "TRANSFORMERS_CACHE": "/app/models",
+            # Router API URL (internal)
+            "TARGET_ROUTER_API_URL": "http://localhost:8080",
+            "TARGET_ROUTER_METRICS_URL": "http://localhost:9190/metrics",
+            # Optional: Monitoring URLs (leave empty to disable)
+            "TARGET_GRAFANA_URL": "{grafana_url}",
+            "TARGET_PROMETHEUS_URL": "{prometheus_url}",
+            "TARGET_JAEGER_URL": "{jaeger_url}",
         },
         "volumes": [
             {"name": "semantic-router-config", "destination": "/app/config"},
@@ -133,6 +147,59 @@ APP_DEFINITIONS = {
         ],
         "requires_config": True,  # Indicates this app needs dynamic config generation
         "singleton": True,  # Only one instance should be deployed per cluster
+        "has_monitoring": True,  # Supports optional monitoring stack
+    },
+}
+
+
+# Internal monitoring service definitions (not user-deployable, only as sub-services)
+MONITORING_DEFINITIONS = {
+    "grafana": {
+        "name": "Grafana",
+        "description": "Metrics visualization dashboard",
+        "image": "grafana/grafana:latest",
+        "internal_port": 3000,
+        "env_template": {
+            "GF_SECURITY_ADMIN_PASSWORD": "admin",
+            "GF_USERS_ALLOW_SIGN_UP": "false",
+            "GF_AUTH_ANONYMOUS_ENABLED": "true",
+            "GF_AUTH_ANONYMOUS_ORG_ROLE": "Viewer",
+            # Allow embedding in iframes (for Semantic Router dashboard)
+            "GF_SECURITY_ALLOW_EMBEDDING": "true",
+            "GF_AUTH_ANONYMOUS_ORG_NAME": "Main Org.",
+            # Disable features we don't need
+            "GF_ALERTING_ENABLED": "false",
+            "GF_UNIFIED_ALERTING_ENABLED": "false",
+        },
+        "volumes": [
+            {"name": "grafana-data", "destination": "/var/lib/grafana"},
+            # Provisioning directories will be mounted
+        ],
+        # Grafana needs special provisioning - see monitoring.py
+        "requires_provisioning": True,
+    },
+    "prometheus": {
+        "name": "Prometheus",
+        "description": "Metrics collection and alerting",
+        "image": "prom/prometheus:latest",
+        "internal_port": 9090,
+        "env_template": {},
+        "volumes": [
+            {"name": "prometheus-data", "destination": "/prometheus"},
+            {"name": "prometheus-config", "destination": "/etc/prometheus"},
+        ],
+        # Prometheus needs custom config - see monitoring.py
+        "requires_config": True,
+    },
+    "jaeger": {
+        "name": "Jaeger",
+        "description": "Distributed tracing",
+        "image": "jaegertracing/all-in-one:latest",
+        "internal_port": 16686,
+        "env_template": {
+            "COLLECTOR_OTLP_ENABLED": "true",
+        },
+        "volumes": [],
     },
 }
 
@@ -152,6 +219,11 @@ class App(Base):
 
     # Worker where app is deployed
     worker_id: Mapped[int] = mapped_column(Integer, ForeignKey("workers.id"), nullable=False)
+
+    # Parent app (for monitoring services linked to Semantic Router, etc.)
+    parent_app_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("apps.id", ondelete="CASCADE"), nullable=True
+    )
 
     # Associated API key (auto-created for the app)
     api_key_id: Mapped[int | None] = mapped_column(
@@ -184,6 +256,12 @@ class App(Base):
     # Relationships
     worker: Mapped["Worker"] = relationship("Worker")
     api_key: Mapped[Optional["ApiKey"]] = relationship("ApiKey")
+    parent_app: Mapped[Optional["App"]] = relationship(
+        "App", remote_side="App.id", back_populates="child_apps"
+    )
+    child_apps: Mapped[list["App"]] = relationship(
+        "App", back_populates="parent_app", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<App(id={self.id}, type='{self.app_type}', status='{self.status}')>"

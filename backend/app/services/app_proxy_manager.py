@@ -146,22 +146,18 @@ class AppProxyManager:
             logger.info(f"Pulling {NGINX_IMAGE}...")
             self.client.images.pull(NGINX_IMAGE)
 
-        # Get all ports from existing configs
-        ports = self._get_used_ports()
-        port_bindings = {f"{p}/tcp": ("0.0.0.0", p) for p in ports}
-
-        # Start container
+        # Start container with host network so it can access worker IPs
         logger.info("Creating nginx proxy container")
         try:
             self.client.containers.run(
                 NGINX_IMAGE,
                 name=NGINX_CONTAINER_NAME,
                 detach=True,
+                network_mode="host",  # Use host network to access worker IPs
                 volumes={
                     NGINX_CONF_PATH: {"bind": "/etc/nginx/nginx.conf", "mode": "ro"},
                     NGINX_CONFD_PATH: {"bind": "/etc/nginx/conf.d", "mode": "ro"},
                 },
-                ports=port_bindings,
                 restart_policy={"Name": "unless-stopped"},
             )
             return True
@@ -200,20 +196,19 @@ class AppProxyManager:
             container.stop()
             container.remove()
 
-        # Start with all port bindings
+        # Start with host network
         ports = self._get_used_ports()
-        port_bindings = {f"{p}/tcp": ("0.0.0.0", p) for p in ports}
 
         try:
             self.client.containers.run(
                 NGINX_IMAGE,
                 name=NGINX_CONTAINER_NAME,
                 detach=True,
+                network_mode="host",  # Use host network to access worker IPs
                 volumes={
                     NGINX_CONF_PATH: {"bind": "/etc/nginx/nginx.conf", "mode": "ro"},
                     NGINX_CONFD_PATH: {"bind": "/etc/nginx/conf.d", "mode": "ro"},
                 },
-                ports=port_bindings,
                 restart_policy={"Name": "unless-stopped"},
             )
             logger.info(f"Nginx proxy container started with ports: {list(ports)}")
@@ -241,17 +236,16 @@ class AppProxyManager:
             logger.info("No more app proxies, nginx container removed")
             return True
 
-        port_bindings = {f"{p}/tcp": ("0.0.0.0", p) for p in ports}
         try:
             self.client.containers.run(
                 NGINX_IMAGE,
                 name=NGINX_CONTAINER_NAME,
                 detach=True,
+                network_mode="host",  # Use host network to access worker IPs
                 volumes={
                     NGINX_CONF_PATH: {"bind": "/etc/nginx/nginx.conf", "mode": "ro"},
                     NGINX_CONFD_PATH: {"bind": "/etc/nginx/conf.d", "mode": "ro"},
                 },
-                ports=port_bindings,
                 restart_policy={"Name": "unless-stopped"},
             )
             return True

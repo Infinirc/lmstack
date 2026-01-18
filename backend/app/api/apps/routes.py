@@ -17,6 +17,7 @@ from app.api.apps.deployment import (
     set_deployment_progress,
 )
 from app.api.apps.lifecycle import router as lifecycle_router
+from app.api.apps.monitoring import router as monitoring_router
 from app.api.apps.utils import (
     API_KEY_PREFIX,
     app_to_response,
@@ -48,6 +49,9 @@ router = APIRouter()
 # Include lifecycle routes (start/stop/delete/logs)
 router.include_router(lifecycle_router)
 
+# Include monitoring routes (grafana/prometheus/jaeger for semantic router)
+router.include_router(monitoring_router)
+
 
 # =============================================================================
 # List & Discovery Endpoints
@@ -67,6 +71,7 @@ async def list_available_apps(
                 name=definition["name"],
                 description=definition["description"],
                 image=definition["image"],
+                has_monitoring=definition.get("has_monitoring", False),
             )
         )
     return AvailableAppsResponse(items=items)
@@ -80,12 +85,24 @@ async def list_apps(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_viewer),
 ):
-    """List all deployed apps (requires viewer+)."""
-    # Count total
-    total = await db.scalar(select(func.count()).select_from(App))
+    """List all deployed apps (requires viewer+).
 
-    # Get paginated results with worker relationship
-    result = await db.execute(select(App).offset(skip).limit(limit).order_by(App.created_at.desc()))
+    Note: Child apps (monitoring services) are filtered out - they appear
+    in their parent app's monitoring section instead.
+    """
+    # Count total (excluding child apps)
+    total = await db.scalar(
+        select(func.count()).select_from(App).where(App.parent_app_id.is_(None))
+    )
+
+    # Get paginated results, excluding child apps (monitoring services)
+    result = await db.execute(
+        select(App)
+        .where(App.parent_app_id.is_(None))
+        .offset(skip)
+        .limit(limit)
+        .order_by(App.created_at.desc())
+    )
     apps = result.scalars().all()
 
     # Load worker relationships
@@ -188,6 +205,11 @@ async def deploy_app(
         use_proxy = False
         logger.info(f"Auto-disabled proxy for localhost worker {worker.name}")
 
+    # Store deployment config for later use (e.g., when restarting with monitoring URLs)
+    app_config = {}
+    if deploy_request.hf_token:
+        app_config["hf_token"] = deploy_request.hf_token
+
     # Create app record
     app = App(
         app_type=app_type.value,
@@ -198,6 +220,7 @@ async def deploy_app(
         proxy_path=proxy_path,
         port=port,
         use_proxy=use_proxy,
+        config=app_config if app_config else None,
     )
     db.add(app)
     await db.commit()
@@ -342,6 +365,9 @@ async def _build_env_vars(
         elif value == "{hf_token}":
             # HuggingFace token - use provided token or empty string
             env_vars[key] = hf_token or ""
+        elif value in ("{grafana_url}", "{prometheus_url}", "{jaeger_url}"):
+            # Optional monitoring URLs - leave empty if not configured
+            env_vars[key] = ""
         else:
             env_vars[key] = value
 
