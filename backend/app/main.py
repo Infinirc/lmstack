@@ -150,7 +150,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
-    # Check all workers' status first
+    # Check all workers' status first, then refresh resources on online workers
     try:
         logger.info("Checking worker status...")
         worker_stats = await worker_sync_service.sync_all_workers()
@@ -159,6 +159,9 @@ async def lifespan(app: FastAPI):
                 f"Worker sync complete: {worker_stats['online']} online, "
                 f"{worker_stats['offline']} offline"
             )
+        # Refresh resources on online workers
+        if worker_stats["online"] > 0:
+            await worker_sync_service.refresh_online_workers_resources()
     except Exception as e:
         logger.error(f"Failed to sync workers on startup: {e}")
 
