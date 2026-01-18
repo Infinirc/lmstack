@@ -19,6 +19,7 @@ from app.database import async_session_maker, init_db
 from app.models.worker import Worker, WorkerStatus
 from app.services.app_sync import app_sync_service
 from app.services.deployment_sync import deployment_sync_service
+from app.services.worker_sync import worker_sync_service
 
 # Configure logging
 logging.basicConfig(
@@ -148,6 +149,18 @@ async def lifespan(app: FastAPI):
     logger.info("Starting LMStack API Server...")
     await init_db()
     logger.info("Database initialized")
+
+    # Check all workers' status first
+    try:
+        logger.info("Checking worker status...")
+        worker_stats = await worker_sync_service.sync_all_workers()
+        if worker_stats["total"] > 0:
+            logger.info(
+                f"Worker sync complete: {worker_stats['online']} online, "
+                f"{worker_stats['offline']} offline"
+            )
+    except Exception as e:
+        logger.error(f"Failed to sync workers on startup: {e}")
 
     # Synchronize deployment status with actual container state
     # This is important after system reboot

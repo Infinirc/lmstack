@@ -212,14 +212,17 @@ class WorkerAgent:
             except httpx.HTTPError as e:
                 logger.warning(f"Heartbeat error: {e}")
 
-    async def _notify_offline(self):
-        """Notify server that this worker is going offline."""
+    def _notify_offline_sync(self):
+        """Synchronously notify server that this worker is going offline."""
         if not self.worker_id:
             return
 
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.post(
+            # Use synchronous httpx to ensure we wait for the response
+            import httpx as httpx_sync
+
+            with httpx_sync.Client(timeout=5.0) as client:
+                response = client.post(
                     f"{self.server_url}/api/workers/heartbeat",
                     json={
                         "worker_id": self.worker_id,
@@ -241,13 +244,8 @@ class WorkerAgent:
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
 
-        # Notify server we're going offline (run in new event loop if needed)
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._notify_offline())
-        except RuntimeError:
-            # No running loop, create one
-            asyncio.run(self._notify_offline())
+        # Notify server we're going offline synchronously
+        self._notify_offline_sync()
 
 
 # Global agent instance
