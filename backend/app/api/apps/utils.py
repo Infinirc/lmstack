@@ -141,8 +141,8 @@ async def call_worker_api(
 def get_host_ip(request: Request, worker: Worker) -> str:
     """Determine the host IP that the container can use to reach LMStack.
 
-    For Docker containers to reach the host, we use the Docker bridge gateway IP
-    (typically 172.17.0.1) which is more reliable than the host's LAN IP.
+    For Docker containers to reach the host, we use host.docker.internal which
+    is mapped via extra_hosts to host-gateway when creating the container.
 
     Args:
         request: FastAPI request object
@@ -159,11 +159,10 @@ def get_host_ip(request: Request, worker: Worker) -> str:
     )
 
     if is_local_worker:
-        # For local workers, containers need to use Docker bridge gateway
-        # to reach host services. 172.17.0.1 is the default Docker bridge gateway.
-        # This works on Linux. For Docker Desktop (Windows/Mac), host.docker.internal
-        # would be used, but that's handled by Docker's DNS.
-        return "172.17.0.1"
+        # For local workers, use host.docker.internal which is mapped to
+        # host-gateway via extra_hosts when creating the container.
+        # This works on all platforms (Linux, Windows, Mac).
+        return "host.docker.internal"
 
     # For remote workers, use the LMStack host IP that the worker can reach
     lmstack_host = request.headers.get("host", "localhost:52000")
@@ -180,7 +179,7 @@ def get_host_ip(request: Request, worker: Worker) -> str:
             s.close()
         except OSError as e:
             logger.warning(f"Could not determine host IP for worker {worker_ip}: {e}")
-            host_ip = "172.17.0.1"  # Fallback to Docker bridge
+            host_ip = "host.docker.internal"  # Fallback
 
     return host_ip
 

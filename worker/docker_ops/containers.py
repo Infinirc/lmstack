@@ -265,6 +265,7 @@ class ContainerManager:
         cpu_limit: Optional[float] = None,
         memory_limit: Optional[int] = None,
         cap_add: Optional[list[str]] = None,
+        extra_hosts: Optional[dict[str, str]] = None,
     ) -> dict[str, Any]:
         """Create and start a new container.
 
@@ -282,6 +283,7 @@ class ContainerManager:
             cpu_limit: CPU limit (number of CPUs)
             memory_limit: Memory limit in bytes
             cap_add: Linux capabilities to add (e.g., ["SYS_ADMIN"])
+            extra_hosts: Extra hostname mappings (e.g., {"host.docker.internal": "host-gateway"})
 
         Returns:
             Created container information
@@ -363,6 +365,7 @@ class ContainerManager:
             cpu_quota=int(cpu_limit * 100000) if cpu_limit else None,
             mem_limit=memory_limit,
             cap_add=cap_add,
+            extra_hosts=extra_hosts,
         )
 
         logger.info(f"Container {name} created with ID {container.short_id}")

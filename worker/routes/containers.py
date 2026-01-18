@@ -95,6 +95,7 @@ async def create_container(request: ContainerCreateRequest):
             cpu_limit=request.cpu_limit,
             memory_limit=request.memory_limit,
             cap_add=request.cap_add,
+            extra_hosts=request.extra_hosts,
         )
     except Exception as e:
         logger.error(f"Failed to create container {request.name}: {e}")

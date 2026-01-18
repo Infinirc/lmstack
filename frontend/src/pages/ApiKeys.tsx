@@ -774,7 +774,7 @@ export default function ApiKeys() {
               style={{ display: "block", marginBottom: 16, fontSize: 12 }}
             >
               For Docker containers (e.g., Open WebUI, n8n), use:{" "}
-              <code>http://172.17.0.1:52000/v1</code>
+              <code>http://host.docker.internal:52000/v1</code>
             </Text>
             <Tabs
               items={[

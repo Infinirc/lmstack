@@ -470,6 +470,8 @@ async def _create_container(
             "lmstack.app.type": app_type.value,
             "lmstack.app.id": str(app_id),
         },
+        # Add host.docker.internal mapping for container to access host services
+        "extra_hosts": {"host.docker.internal": "host-gateway"},
     }
 
     # Add Linux capabilities if specified (e.g., SYS_ADMIN for AnythingLLM)
