@@ -265,3 +265,114 @@ async def get_all_api_keys_stats(
         ),
         "per_key_stats": per_key_stats,
     }
+
+
+@router.get("/stats/by-model")
+async def get_stats_by_model(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
+):
+    """Get usage statistics grouped by model (requires viewer+)"""
+    from datetime import timedelta
+
+    from sqlalchemy.orm import selectinload
+
+    from app.models.api_key import Usage
+    from app.models.deployment import Deployment
+    from app.models.llm_model import LLMModel
+
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+
+    # Get per-model stats
+    model_result = await db.execute(
+        select(
+            Usage.model_id,
+            func.sum(Usage.request_count).label("requests"),
+            func.sum(Usage.prompt_tokens).label("prompt_tokens"),
+            func.sum(Usage.completion_tokens).label("completion_tokens"),
+        )
+        .where(Usage.date >= thirty_days_ago)
+        .where(Usage.model_id.isnot(None))
+        .group_by(Usage.model_id)
+    )
+
+    # Get model info
+    models_result = await db.execute(select(LLMModel))
+    models_map = {m.id: m for m in models_result.scalars().all()}
+
+    # Get running deployments to know which models are active
+    deployments_result = await db.execute(
+        select(Deployment)
+        .options(selectinload(Deployment.model))
+        .where(Deployment.status == "running")
+    )
+    running_deployments = deployments_result.scalars().all()
+    running_model_ids = {d.model_id for d in running_deployments}
+
+    per_model_stats = []
+    for row in model_result:
+        model = models_map.get(row.model_id)
+        if model:
+            per_model_stats.append(
+                {
+                    "model_id": row.model_id,
+                    "model_name": model.name,
+                    "model_source": model.source,
+                    "requests": row.requests or 0,
+                    "prompt_tokens": row.prompt_tokens or 0,
+                    "completion_tokens": row.completion_tokens or 0,
+                    "total_tokens": (row.prompt_tokens or 0) + (row.completion_tokens or 0),
+                    "is_running": row.model_id in running_model_ids,
+                }
+            )
+
+    # Add models with no usage but are running
+    for deployment in running_deployments:
+        if deployment.model_id not in {s["model_id"] for s in per_model_stats}:
+            model = deployment.model
+            if model:
+                per_model_stats.append(
+                    {
+                        "model_id": model.id,
+                        "model_name": model.name,
+                        "model_source": model.source,
+                        "requests": 0,
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                        "is_running": True,
+                    }
+                )
+
+    # Get stats for MoM (Semantic Router) - model_id is NULL
+    mom_result = await db.execute(
+        select(
+            func.sum(Usage.request_count).label("requests"),
+            func.sum(Usage.prompt_tokens).label("prompt_tokens"),
+            func.sum(Usage.completion_tokens).label("completion_tokens"),
+        )
+        .where(Usage.date >= thirty_days_ago)
+        .where(Usage.model_id.is_(None))
+    )
+    mom_row = mom_result.first()
+
+    mom_stats = None
+    if mom_row and (mom_row.requests or 0) > 0:
+        mom_stats = {
+            "model_id": None,
+            "model_name": "MoM (Semantic Router)",
+            "model_source": "semantic-router",
+            "requests": mom_row.requests or 0,
+            "prompt_tokens": mom_row.prompt_tokens or 0,
+            "completion_tokens": mom_row.completion_tokens or 0,
+            "total_tokens": (mom_row.prompt_tokens or 0) + (mom_row.completion_tokens or 0),
+            "is_running": True,  # Check from Semantic Router status
+        }
+
+    # Sort by total tokens descending
+    per_model_stats.sort(key=lambda x: x["total_tokens"], reverse=True)
+
+    return {
+        "models": per_model_stats,
+        "mom_stats": mom_stats,
+    }

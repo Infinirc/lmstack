@@ -4,10 +4,21 @@ Contains endpoints for managing Docker disk usage, volumes, and pruning.
 """
 
 import logging
+import os
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class VolumeFileWrite(BaseModel):
+    """Request to write a file to a volume."""
+
+    volume_name: str
+    file_path: str  # Path within the volume (e.g., "config.yaml")
+    content: str
+
 
 router = APIRouter(prefix="/storage", tags=["storage"])
 
@@ -193,4 +204,72 @@ async def prune_storage(
         return result
     except Exception as e:
         logger.error(f"Failed to prune storage: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/volumes/write-file")
+async def write_file_to_volume(request: VolumeFileWrite):
+    """Write a file to a Docker volume.
+
+    This is useful for writing configuration files to volumes
+    before or after a container starts.
+    """
+    agent = get_agent()
+
+    try:
+        # Create or get the volume
+        try:
+            volume = agent.docker.client.volumes.get(request.volume_name)
+        except Exception:
+            # Create volume if it doesn't exist
+            volume = agent.docker.client.volumes.create(name=request.volume_name)
+            logger.info(f"Created volume: {request.volume_name}")
+
+        # Get volume mountpoint
+        mountpoint = volume.attrs.get("Mountpoint")
+        if not mountpoint:
+            raise HTTPException(status_code=500, detail="Could not get volume mountpoint")
+
+        file_path = request.file_path.lstrip("/")
+
+        # Try direct write first (works if we have permission)
+        try:
+            target_path = os.path.join(mountpoint, file_path)
+            target_dir = os.path.dirname(target_path)
+            os.makedirs(target_dir, exist_ok=True)
+            with open(target_path, "w") as f:
+                f.write(request.content)
+            logger.info(f"Wrote file {file_path} to volume {request.volume_name} (direct)")
+            return {"status": "success", "volume": request.volume_name, "file": file_path}
+        except PermissionError:
+            logger.debug("Direct write failed, trying helper container")
+
+        # Fallback: Use a helper container to write the file
+        # This handles permission issues by running as root in the container
+        import base64
+
+        # Encode content as base64 to avoid shell escaping issues
+        content_b64 = base64.b64encode(request.content.encode()).decode()
+        full_path = f"/volume/{file_path}"
+        dir_path = os.path.dirname(full_path)
+
+        # Run alpine container to write the file
+        agent.docker.client.containers.run(
+            "alpine:latest",
+            command=[
+                "sh",
+                "-c",
+                f"mkdir -p {dir_path} && echo '{content_b64}' | base64 -d > {full_path}",
+            ],
+            volumes={request.volume_name: {"bind": "/volume", "mode": "rw"}},
+            remove=True,
+        )
+
+        logger.info(f"Wrote file {file_path} to volume {request.volume_name} (container)")
+        return {"status": "success", "volume": request.volume_name, "file": file_path}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to write file to volume: {e}")
         raise HTTPException(status_code=500, detail=str(e))

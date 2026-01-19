@@ -82,6 +82,20 @@ class GatewayService:
         return model_id in api_key.allowed_model_ids
 
     @staticmethod
+    async def check_mom_access(api_key: ApiKey) -> bool:
+        """Check if API key has access to MoM (Semantic Router).
+
+        MoM access is granted if:
+        - allowed_model_ids is empty/null (all models allowed)
+        - "mom" is explicitly in allowed_model_ids
+        """
+        if not api_key.allowed_model_ids:
+            # No restrictions, allow all including MoM
+            return True
+
+        return "mom" in api_key.allowed_model_ids
+
+    @staticmethod
     async def find_deployment_for_model(
         db: AsyncSession,
         model_name: str,

@@ -30,6 +30,7 @@ export { ollamaApi } from "./ollama";
 export { conversationsApi } from "./conversations";
 export { appsApi } from "./apps";
 export { headscaleApi } from "./headscale";
+export { semanticRouterApi } from "./semanticRouter";
 
 // Types - Workers
 export type { WorkerListParams } from "./workers";
@@ -50,7 +51,12 @@ export type { ChangePasswordRequest } from "./auth";
 export type { UserListParams } from "./users";
 
 // Types - API Keys
-export type { ApiKeyListParams, ApiKeyStats } from "./apiKeys";
+export type {
+  ApiKeyListParams,
+  ApiKeyStats,
+  ModelUsageStats,
+  ModelStatsResponse,
+} from "./apiKeys";
 
 // Types - Images
 export type { ImageListParams, ImageSearchResult } from "./images";
@@ -102,6 +108,8 @@ export type {
   DeployedApp,
   AppDeployRequest,
   DeployProgress,
+  MonitoringServiceStatus,
+  MonitoringStatus,
 } from "./apps";
 
 // Types - Headscale
@@ -111,3 +119,6 @@ export type {
   PreauthKeyResponse,
   HeadscaleProgress,
 } from "./headscale";
+
+// Types - Semantic Router
+export type { SemanticRouterStatus } from "./semanticRouter";

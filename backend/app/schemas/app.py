@@ -12,6 +12,7 @@ class AppDefinition(BaseModel):
     name: str
     description: str
     image: str
+    has_monitoring: bool = False  # Whether app supports monitoring stack
 
 
 class AppDeploy(BaseModel):
@@ -24,6 +25,18 @@ class AppDeploy(BaseModel):
         True,
         description="Use LMStack nginx proxy (recommended) or direct worker connection",
     )
+    hf_token: str | None = Field(
+        None,
+        description="HuggingFace API token (required for Semantic Router)",
+    )
+
+
+class AppPortInfo(BaseModel):
+    """Information about an app port"""
+
+    name: str  # e.g., "API", "Dashboard"
+    port: int  # Host port
+    url: str | None = None  # Access URL
 
 
 class AppResponse(BaseModel):
@@ -42,8 +55,10 @@ class AppResponse(BaseModel):
     proxy_path: str
     proxy_url: str | None = None
     use_proxy: bool = True
-    access_url: str | None = None  # The URL to access the app
+    access_url: str | None = None  # The URL to access the app (main port)
+    additional_urls: list[AppPortInfo] | None = None  # Additional ports/URLs
     api_key_id: int | None = None
+    has_monitoring: bool = False  # Whether app supports monitoring stack
     created_at: datetime
     updated_at: datetime
 

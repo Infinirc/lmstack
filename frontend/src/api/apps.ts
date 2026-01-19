@@ -9,6 +9,13 @@ export interface AppDefinition {
   name: string;
   description: string;
   image: string;
+  has_monitoring?: boolean;
+}
+
+export interface AppPortInfo {
+  name: string;
+  port: number;
+  url?: string;
 }
 
 export interface DeployedApp {
@@ -26,9 +33,24 @@ export interface DeployedApp {
   proxy_url?: string;
   use_proxy: boolean;
   access_url?: string;
+  additional_urls?: AppPortInfo[];
   api_key_id?: number;
+  has_monitoring?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface MonitoringServiceStatus {
+  name: string;
+  type: string;
+  status: string;
+  port?: number;
+  url?: string;
+}
+
+export interface MonitoringStatus {
+  enabled: boolean;
+  services: MonitoringServiceStatus[];
 }
 
 export interface AppDeployRequest {
@@ -36,6 +58,7 @@ export interface AppDeployRequest {
   worker_id: number;
   name?: string;
   use_proxy?: boolean;
+  hf_token?: string;
 }
 
 export interface DeployProgress {
@@ -96,5 +119,35 @@ export const appsApi = {
       params: { tail },
     });
     return response.data;
+  },
+
+  // Monitoring endpoints
+  getMonitoringStatus: async (id: number): Promise<MonitoringStatus> => {
+    const response = await api.get<MonitoringStatus>(`/apps/${id}/monitoring`);
+    return response.data;
+  },
+
+  deployMonitoring: async (
+    id: number,
+    services?: string[],
+  ): Promise<MonitoringStatus> => {
+    const response = await api.post<MonitoringStatus>(
+      `/apps/${id}/monitoring`,
+      {
+        services,
+      },
+    );
+    return response.data;
+  },
+
+  removeMonitoring: async (id: number): Promise<void> => {
+    await api.delete(`/apps/${id}/monitoring`);
+  },
+
+  removeMonitoringService: async (
+    id: number,
+    serviceType: string,
+  ): Promise<void> => {
+    await api.delete(`/apps/${id}/monitoring/${serviceType}`);
   },
 };

@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+async def _update_semantic_router_config_background():
+    """Background task to update semantic router config after deployment changes."""
+    try:
+        from app.api.apps.deployment import update_semantic_router_config_if_deployed
+
+        async with async_session_maker() as db:
+            await update_semantic_router_config_if_deployed(db)
+    except Exception as e:
+        logger.debug(f"Failed to update semantic router config: {e}")
+
+
 class DeployerService:
     """Service for deploying models to workers"""
 
@@ -200,6 +211,9 @@ class DeployerService:
                     # api_ready is True, model is ready
                     deployment.status = DeploymentStatus.RUNNING.value
                     deployment.status_message = "Model ready"
+
+                    # Update semantic router config if deployed
+                    asyncio.create_task(_update_semantic_router_config_background())
 
             except httpx.ConnectError:
                 deployment.status = DeploymentStatus.ERROR.value

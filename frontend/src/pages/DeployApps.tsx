@@ -10,7 +10,6 @@ import {
   Modal,
   Tag,
   message,
-  Popconfirm,
   Row,
   Col,
   Typography,
@@ -20,6 +19,9 @@ import {
   Progress,
   Switch,
   Space,
+  Input,
+  Alert,
+  Popconfirm,
 } from "antd";
 import {
   RocketOutlined,
@@ -38,6 +40,8 @@ import {
   FullscreenOutlined,
   FullscreenExitOutlined,
   VerticalAlignBottomOutlined,
+  BranchesOutlined,
+  DashboardOutlined,
 } from "@ant-design/icons";
 import { appsApi, workersApi } from "../services/api";
 import type { Worker } from "../types";
@@ -45,6 +49,8 @@ import type {
   AppDefinition,
   DeployedApp,
   DeployProgress,
+  MonitoringStatus,
+  MonitoringServiceStatus,
 } from "../services/api";
 import { useResponsive } from "../hooks";
 import Loading from "../components/Loading";
@@ -55,6 +61,7 @@ import n8nLogo from "../assets/apps/n8n.png";
 import flowiseLogo from "../assets/apps/flowise-icon.png";
 import anythingllmLogo from "../assets/apps/anythingllm.jpeg";
 import lobechatLogo from "../assets/apps/lobechat.webp";
+import semanticRouterLogo from "../assets/apps/semantic-router.webp";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -65,6 +72,7 @@ const appLogos: Record<string, string> = {
   flowise: flowiseLogo,
   anythingllm: anythingllmLogo,
   lobechat: lobechatLogo,
+  "semantic-router": semanticRouterLogo,
 };
 
 const REFRESH_INTERVAL = 5000;
@@ -111,6 +119,7 @@ export default function DeployApps() {
   const [selectedApp, setSelectedApp] = useState<AppDefinition | null>(null);
   const [selectedWorker, setSelectedWorker] = useState<number | null>(null);
   const [useProxy, setUseProxy] = useState(true);
+  const [hfToken, setHfToken] = useState("");
   const [deploying, setDeploying] = useState(false);
   const [progressMap, setProgressMap] = useState<
     Record<number, DeployProgress>
@@ -126,6 +135,11 @@ export default function DeployApps() {
   const [autoScroll, setAutoScroll] = useState(true);
   const logsRef = useRef<HTMLPreElement>(null);
   const { isMobile } = useResponsive();
+
+  // Monitoring state
+  const [monitoringStatus, setMonitoringStatus] = useState<
+    Record<number, MonitoringStatus>
+  >({});
 
   const fetchData = useCallback(async () => {
     try {
@@ -149,6 +163,33 @@ export default function DeployApps() {
     const interval = setInterval(fetchData, REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Fetch and poll monitoring status for apps that support it
+  useEffect(() => {
+    const appsWithMonitoring = deployedApps.filter(
+      (app) => app.has_monitoring && app.status === "running",
+    );
+
+    if (appsWithMonitoring.length === 0) return;
+
+    // Fetch monitoring status
+    const fetchAllStatus = async () => {
+      for (const app of appsWithMonitoring) {
+        try {
+          const status = await appsApi.getMonitoringStatus(app.id);
+          setMonitoringStatus((prev) => ({ ...prev, [app.id]: status }));
+        } catch (error) {
+          console.error("Failed to fetch monitoring status:", error);
+        }
+      }
+    };
+
+    fetchAllStatus();
+
+    // Poll every 5 seconds (reasonable interval)
+    const interval = setInterval(fetchAllStatus, 5000);
+    return () => clearInterval(interval);
+  }, [deployedApps]);
 
   // Poll progress for deploying apps
   useEffect(() => {
@@ -231,18 +272,26 @@ export default function DeployApps() {
       return;
     }
 
+    // Semantic Router requires HF token
+    if (selectedApp.type === "semantic-router" && !hfToken.trim()) {
+      message.error("HuggingFace Token is required for Semantic Router");
+      return;
+    }
+
     setDeploying(true);
     try {
       await appsApi.deploy({
         app_type: selectedApp.type,
         worker_id: selectedWorker,
         use_proxy: useProxy,
+        hf_token: hfToken.trim() || undefined,
       });
       message.success(`${selectedApp.name} deployment started`);
       setDeployModalOpen(false);
       setSelectedApp(null);
       setSelectedWorker(null);
       setUseProxy(true);
+      setHfToken("");
       fetchData();
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } };
@@ -392,7 +441,7 @@ export default function DeployApps() {
                       marginBottom: 12,
                     }}
                   >
-                    {appLogos[app.type] && (
+                    {appLogos[app.type] ? (
                       <img
                         src={appLogos[app.type]}
                         alt={app.name}
@@ -403,7 +452,24 @@ export default function DeployApps() {
                           objectFit: "contain",
                         }}
                       />
-                    )}
+                    ) : app.type === "semantic-router" ? (
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 6,
+                          background:
+                            "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <BranchesOutlined
+                          style={{ color: "#fff", fontSize: 18 }}
+                        />
+                      </div>
+                    ) : null}
                     <Title level={5} style={{ margin: 0 }}>
                       {app.name}
                     </Title>
@@ -487,7 +553,7 @@ export default function DeployApps() {
                             gap: 12,
                           }}
                         >
-                          {appLogos[app.app_type] && (
+                          {appLogos[app.app_type] ? (
                             <img
                               src={appLogos[app.app_type]}
                               alt={app.name}
@@ -499,7 +565,24 @@ export default function DeployApps() {
                                 objectFit: "contain",
                               }}
                             />
-                          )}
+                          ) : app.app_type === "semantic-router" ? (
+                            <div
+                              style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 6,
+                                background:
+                                  "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <BranchesOutlined
+                                style={{ color: "#fff", fontSize: 18 }}
+                              />
+                            </div>
+                          ) : null}
                           <div>
                             <Title level={5} style={{ margin: 0 }}>
                               {app.name}
@@ -582,7 +665,14 @@ export default function DeployApps() {
                       )}
 
                       {app.status === "running" && appUrl && (
-                        <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                          }}
+                        >
                           <Button
                             type="link"
                             icon={<LinkOutlined />}
@@ -590,13 +680,30 @@ export default function DeployApps() {
                             target="_blank"
                             style={{ padding: 0, height: "auto" }}
                           >
-                            Open {app.name}
+                            {app.additional_urls &&
+                            app.additional_urls.length > 0
+                              ? `API (${app.port})`
+                              : `Open ${app.name}`}
                           </Button>
-                          {app.port && (
-                            <Text
-                              type="secondary"
-                              style={{ fontSize: 12, marginLeft: 8 }}
-                            >
+                          {app.additional_urls &&
+                            app.additional_urls.length > 0 && (
+                              <>
+                                {app.additional_urls.map((portInfo) => (
+                                  <Button
+                                    key={portInfo.port}
+                                    type="link"
+                                    icon={<LinkOutlined />}
+                                    href={`http://${window.location.hostname}:${portInfo.port}`}
+                                    target="_blank"
+                                    style={{ padding: 0, height: "auto" }}
+                                  >
+                                    {portInfo.name} ({portInfo.port})
+                                  </Button>
+                                ))}
+                              </>
+                            )}
+                          {!app.additional_urls && app.port && (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
                               Port: {app.port}
                             </Text>
                           )}
@@ -653,6 +760,154 @@ export default function DeployApps() {
                           </Button>
                         </Popconfirm>
                       </div>
+
+                      {/* Monitoring Section for apps that support it */}
+                      {/* Monitoring is auto-deployed with Semantic Router */}
+                      {app.has_monitoring && app.status === "running" && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            paddingTop: 12,
+                            borderTop: "1px solid rgba(0,0,0,0.06)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: 8,
+                            }}
+                          >
+                            <Text strong style={{ fontSize: 13 }}>
+                              <DashboardOutlined style={{ marginRight: 6 }} />
+                              Monitoring
+                            </Text>
+                          </div>
+
+                          {monitoringStatus[app.id]?.services &&
+                            monitoringStatus[app.id].services.length > 0 && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 6,
+                                }}
+                              >
+                                {/* Show overall progress if any service is deploying */}
+                                {monitoringStatus[app.id].services.some(
+                                  (svc) =>
+                                    svc.status === "pending" ||
+                                    svc.status === "pulling" ||
+                                    svc.status === "starting",
+                                ) && (
+                                  <div style={{ marginBottom: 4 }}>
+                                    <Progress
+                                      percent={100}
+                                      size="small"
+                                      status="active"
+                                      showInfo={false}
+                                      strokeColor={{
+                                        from: "#108ee9",
+                                        to: "#87d068",
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                                {monitoringStatus[app.id].services.map(
+                                  (svc: MonitoringServiceStatus) => (
+                                    <div
+                                      key={svc.type}
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 4,
+                                        }}
+                                      >
+                                        {svc.status === "pulling" && (
+                                          <CloudDownloadOutlined
+                                            style={{ color: "#1890ff" }}
+                                          />
+                                        )}
+                                        {(svc.status === "pending" ||
+                                          svc.status === "starting") && (
+                                          <LoadingOutlined
+                                            style={{ color: "#1890ff" }}
+                                          />
+                                        )}
+                                        {svc.status === "running" && (
+                                          <CheckCircleOutlined
+                                            style={{ color: "#52c41a" }}
+                                          />
+                                        )}
+                                        {svc.status === "error" && (
+                                          <CloseCircleOutlined
+                                            style={{ color: "#ff4d4f" }}
+                                          />
+                                        )}
+                                        {svc.name}
+                                        <Tag
+                                          color={
+                                            svc.status === "running"
+                                              ? "success"
+                                              : svc.status === "error"
+                                                ? "error"
+                                                : "processing"
+                                          }
+                                          style={{
+                                            marginLeft: 4,
+                                            fontSize: 10,
+                                          }}
+                                        >
+                                          {svc.status === "running"
+                                            ? "Running"
+                                            : svc.status === "error"
+                                              ? "Error"
+                                              : svc.status === "pulling"
+                                                ? "Pulling..."
+                                                : svc.status === "pending"
+                                                  ? "Pending"
+                                                  : "Starting..."}
+                                        </Tag>
+                                      </span>
+                                      {svc.status === "running" && svc.port && (
+                                        <Button
+                                          type="link"
+                                          size="small"
+                                          icon={<LinkOutlined />}
+                                          href={`http://${window.location.hostname}:${svc.port}`}
+                                          target="_blank"
+                                          style={{
+                                            padding: 0,
+                                            height: "auto",
+                                            fontSize: 12,
+                                          }}
+                                        >
+                                          Open ({svc.port})
+                                        </Button>
+                                      )}
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            )}
+
+                          {!monitoringStatus[app.id] && (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              <LoadingOutlined style={{ marginRight: 4 }} />
+                              Loading monitoring status...
+                            </Text>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </Card>
                 </Col>
@@ -672,6 +927,7 @@ export default function DeployApps() {
           setSelectedApp(null);
           setSelectedWorker(null);
           setUseProxy(true);
+          setHfToken("");
         }}
         okText="Deploy"
         okButtonProps={{ loading: deploying, disabled: !selectedWorker }}
@@ -738,6 +994,61 @@ export default function DeployApps() {
             </div>
           );
         })()}
+
+        {/* HuggingFace Token - required for Semantic Router */}
+        {selectedApp?.type === "semantic-router" && (
+          <div style={{ marginBottom: 16 }}>
+            <Alert
+              message="HuggingFace Token Required"
+              description={
+                <div>
+                  <p style={{ margin: "8px 0" }}>
+                    Semantic Router requires a HuggingFace Token to download
+                    required AI models.
+                  </p>
+                  <ol style={{ margin: 0, paddingLeft: 20 }}>
+                    <li>
+                      Go to{" "}
+                      <a
+                        href="https://huggingface.co/settings/tokens"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        HuggingFace Token Settings
+                      </a>
+                    </li>
+                    <li>
+                      Create a token with <strong>Read</strong> permission
+                    </li>
+                    <li>
+                      Visit{" "}
+                      <a
+                        href="https://huggingface.co/google/embeddinggemma-300m"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        google/embeddinggemma-300m
+                      </a>{" "}
+                      and accept the license agreement
+                    </li>
+                  </ol>
+                </div>
+              }
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+            />
+            <Text strong>
+              HuggingFace Token <Text type="danger">*</Text>
+            </Text>
+            <Input.Password
+              style={{ width: "100%", marginTop: 8 }}
+              placeholder="hf_xxxxxxxxxxxxxxxxxxxx"
+              value={hfToken}
+              onChange={(e) => setHfToken(e.target.value)}
+            />
+          </div>
+        )}
 
         {workers.length === 0 && (
           <div style={{ marginTop: 16 }}>

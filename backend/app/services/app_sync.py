@@ -2,10 +2,12 @@
 
 Synchronizes app status with actual container state.
 This is important after system reboot to ensure database status matches reality.
+Also verifies and repairs nginx proxy configuration for running apps.
 """
 
 import asyncio
 import logging
+from pathlib import Path
 
 import httpx
 from sqlalchemy import select
@@ -13,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import async_session_maker
 from app.models.app import App, AppStatus
+from app.services.app_proxy_manager import NGINX_CONFD_PATH, get_proxy_manager
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,8 @@ class AppSyncService:
     async def sync_all_apps(self) -> dict:
         """Synchronize all app statuses.
 
+        Also verifies and repairs nginx proxy configurations for running apps.
+
         Returns:
             dict with sync statistics
         """
@@ -38,6 +43,7 @@ class AppSyncService:
             "container_missing": 0,
             "errors": 0,
             "skipped": 0,
+            "proxy_repaired": 0,
         }
 
         async with async_session_maker() as db:
@@ -89,12 +95,79 @@ class AppSyncService:
 
             await db.commit()
 
+            # Verify and repair proxy configurations for running apps
+            proxy_repair_count = await self._verify_and_repair_proxies(apps)
+            stats["proxy_repaired"] = proxy_repair_count
+
         logger.info(
             f"App sync complete: {stats['running_verified']} running, "
-            f"{stats['container_missing']} missing, {stats['errors']} errors"
+            f"{stats['container_missing']} missing, {stats['errors']} errors, "
+            f"{stats['proxy_repaired']} proxy configs repaired"
         )
 
         return stats
+
+    async def _verify_and_repair_proxies(self, apps: list[App]) -> int:
+        """Verify and repair nginx proxy configurations for running apps.
+
+        This ensures that all running apps with use_proxy=True have their
+        nginx proxy configuration file. If missing, creates the config and
+        restarts nginx.
+
+        Args:
+            apps: List of apps to check
+
+        Returns:
+            Number of proxy configs repaired
+        """
+        # Filter to running apps that need proxy
+        running_apps_with_proxy = [
+            app
+            for app in apps
+            if app.status == AppStatus.RUNNING.value and app.use_proxy and app.port and app.worker
+        ]
+
+        if not running_apps_with_proxy:
+            return 0
+
+        # Check which apps are missing proxy configs
+        apps_missing_proxy = []
+        confd_path = Path(NGINX_CONFD_PATH)
+
+        for app in running_apps_with_proxy:
+            config_file = confd_path / f"app_{app.id}.conf"
+            if not config_file.exists():
+                logger.warning(
+                    f"App {app.id} ({app.app_type}) is running with use_proxy=True "
+                    f"but missing proxy config file"
+                )
+                apps_missing_proxy.append(app)
+
+        if not apps_missing_proxy:
+            logger.debug("All running apps have proxy configs")
+            return 0
+
+        # Repair missing proxy configs
+        logger.info(f"Repairing {len(apps_missing_proxy)} missing proxy configs...")
+        proxy_manager = get_proxy_manager()
+        repaired = 0
+
+        for app in apps_missing_proxy:
+            try:
+                worker_host = app.worker.address.split(":")[0]
+                await proxy_manager.add_app_proxy(
+                    app_id=app.id,
+                    app_type=app.app_type,
+                    listen_port=app.port,
+                    worker_host=worker_host,
+                    worker_port=app.port,
+                )
+                logger.info(f"Repaired proxy config for app {app.id}: port {app.port}")
+                repaired += 1
+            except Exception as e:
+                logger.error(f"Failed to repair proxy config for app {app.id}: {e}")
+
+        return repaired
 
     async def _check_and_update_app(self, app: App, db) -> str:
         """Check a single app and update its status.
@@ -109,6 +182,11 @@ class AppSyncService:
             return "skipped"
 
         if not app.container_id:
+            # If app is still being deployed (STARTING/PULLING), skip it
+            if app.status in (AppStatus.STARTING.value, AppStatus.PULLING.value):
+                logger.debug(f"App {app.id} is still deploying, skipping")
+                return "skipped"
+            # Only mark as error if app claims to be RUNNING but has no container
             logger.warning(f"App {app.id} has no container_id, marking as error")
             app.status = AppStatus.ERROR.value
             app.status_message = "Container ID missing"

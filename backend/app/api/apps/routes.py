@@ -17,6 +17,7 @@ from app.api.apps.deployment import (
     set_deployment_progress,
 )
 from app.api.apps.lifecycle import router as lifecycle_router
+from app.api.apps.monitoring import router as monitoring_router
 from app.api.apps.utils import (
     API_KEY_PREFIX,
     app_to_response,
@@ -48,6 +49,9 @@ router = APIRouter()
 # Include lifecycle routes (start/stop/delete/logs)
 router.include_router(lifecycle_router)
 
+# Include monitoring routes (grafana/prometheus/jaeger for semantic router)
+router.include_router(monitoring_router)
+
 
 # =============================================================================
 # List & Discovery Endpoints
@@ -67,6 +71,7 @@ async def list_available_apps(
                 name=definition["name"],
                 description=definition["description"],
                 image=definition["image"],
+                has_monitoring=definition.get("has_monitoring", False),
             )
         )
     return AvailableAppsResponse(items=items)
@@ -80,12 +85,24 @@ async def list_apps(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_viewer),
 ):
-    """List all deployed apps (requires viewer+)."""
-    # Count total
-    total = await db.scalar(select(func.count()).select_from(App))
+    """List all deployed apps (requires viewer+).
 
-    # Get paginated results with worker relationship
-    result = await db.execute(select(App).offset(skip).limit(limit).order_by(App.created_at.desc()))
+    Note: Child apps (monitoring services) are filtered out - they appear
+    in their parent app's monitoring section instead.
+    """
+    # Count total (excluding child apps)
+    total = await db.scalar(
+        select(func.count()).select_from(App).where(App.parent_app_id.is_(None))
+    )
+
+    # Get paginated results, excluding child apps (monitoring services)
+    result = await db.execute(
+        select(App)
+        .where(App.parent_app_id.is_(None))
+        .offset(skip)
+        .limit(limit)
+        .order_by(App.created_at.desc())
+    )
     apps = result.scalars().all()
 
     # Load worker relationships
@@ -188,6 +205,18 @@ async def deploy_app(
         use_proxy = False
         logger.info(f"Auto-disabled proxy for localhost worker {worker.name}")
 
+    # Store deployment config for later use (e.g., when restarting with monitoring URLs)
+    app_config = {}
+    if deploy_request.hf_token:
+        app_config["hf_token"] = deploy_request.hf_token
+
+    # Store API key in config for apps that need it (e.g., Semantic Router config generation)
+    if full_key:
+        app_config["api_key"] = full_key
+
+    # Store LMStack host for apps that need to call back to API Gateway
+    app_config["lmstack_host"] = get_host_ip(request, worker)
+
     # Create app record
     app = App(
         app_type=app_type.value,
@@ -198,6 +227,7 @@ async def deploy_app(
         proxy_path=proxy_path,
         port=port,
         use_proxy=use_proxy,
+        config=app_config if app_config else None,
     )
     db.add(app)
     await db.commit()
@@ -211,6 +241,7 @@ async def deploy_app(
         full_key=full_key,
         port=port,
         db=db,
+        hf_token=deploy_request.hf_token,
     )
 
     # Initialize progress
@@ -218,6 +249,9 @@ async def deploy_app(
 
     # Always use backend API port (52000)
     lmstack_port = "52000"
+
+    # Get correct LMStack host for apps that need to call back to API Gateway
+    lmstack_host = get_host_ip(request, worker)
 
     # Start background deployment
     background_tasks.add_task(
@@ -231,6 +265,7 @@ async def deploy_app(
         app_def=app_def,
         lmstack_port=lmstack_port,
         use_proxy=use_proxy,
+        lmstack_host=lmstack_host,
     )
 
     return app_to_response(app, request)
@@ -273,11 +308,31 @@ async def _create_api_key_if_needed(
 
 
 async def _find_available_port(db: AsyncSession, worker_id: int) -> int:
-    """Find an available port on the worker."""
+    """Find an available port on the worker.
+
+    Also considers additional ports used by apps (e.g., Semantic Router uses
+    main_port, main_port+1 for dashboard, main_port+2 for metrics).
+    """
+    from app.models.app import APP_DEFINITIONS, AppType
+
     result = await db.execute(
-        select(App.port).where(App.worker_id == worker_id, App.port.isnot(None))
+        select(App.port, App.app_type).where(App.worker_id == worker_id, App.port.isnot(None))
     )
-    used_ports = {row[0] for row in result.fetchall()}
+
+    used_ports = set()
+    for row in result.fetchall():
+        port, app_type = row
+        used_ports.add(port)
+
+        # Add additional ports for apps that use them
+        try:
+            app_type_enum = AppType(app_type)
+            app_def = APP_DEFINITIONS.get(app_type_enum, {})
+            additional_ports = app_def.get("additional_ports", [])
+            for i in range(len(additional_ports)):
+                used_ports.add(port + 1 + i)
+        except (ValueError, KeyError):
+            pass
 
     port = 9000  # Start from 9000 to avoid conflicts with dev servers
     while port in used_ports:
@@ -293,6 +348,7 @@ async def _build_env_vars(
     full_key: str,
     port: int,
     db: AsyncSession,
+    hf_token: str | None = None,
 ) -> dict:
     """Build environment variables for the app container."""
     # Always use backend API port (52000), not the frontend port from request
@@ -337,6 +393,12 @@ async def _build_env_vars(
             env_vars[key] = app_secret_key
         elif value == "{model_list}":
             env_vars[key] = model_list
+        elif value == "{hf_token}":
+            # HuggingFace token - use provided token or empty string
+            env_vars[key] = hf_token or ""
+        elif value in ("{grafana_url}", "{prometheus_url}", "{jaeger_url}"):
+            # Optional monitoring URLs - leave empty if not configured
+            env_vars[key] = ""
         else:
             env_vars[key] = value
 

@@ -212,11 +212,40 @@ class WorkerAgent:
             except httpx.HTTPError as e:
                 logger.warning(f"Heartbeat error: {e}")
 
+    def _notify_offline_sync(self):
+        """Synchronously notify server that this worker is going offline."""
+        if not self.worker_id:
+            return
+
+        try:
+            # Use synchronous httpx to ensure we wait for the response
+            import httpx as httpx_sync
+
+            with httpx_sync.Client(timeout=5.0) as client:
+                response = client.post(
+                    f"{self.server_url}/api/workers/heartbeat",
+                    json={
+                        "worker_id": self.worker_id,
+                        "status": "offline",
+                        "gpu_info": [],
+                        "system_info": {},
+                    },
+                )
+                if response.status_code == 200:
+                    logger.info("Notified server of shutdown")
+                else:
+                    logger.warning(f"Failed to notify server: {response.text}")
+        except Exception as e:
+            logger.warning(f"Could not notify server of shutdown: {e}")
+
     def shutdown(self):
         """Shutdown the agent."""
         self._running = False
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
+
+        # Notify server we're going offline synchronously
+        self._notify_offline_sync()
 
 
 # Global agent instance

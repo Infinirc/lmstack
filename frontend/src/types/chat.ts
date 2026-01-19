@@ -9,4 +9,5 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   timestamp: Date;
+  model?: string; // The model that generated this response (for MoM)
 }

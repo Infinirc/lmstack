@@ -7,7 +7,7 @@ export interface ApiKey {
   name: string;
   description?: string;
   access_key: string;
-  allowed_model_ids?: number[];
+  allowed_model_ids?: (number | string)[]; // Can include model IDs and "mom" for MoM access
   monthly_token_limit?: number;
   expires_at?: string;
   created_at: string;
@@ -17,7 +17,7 @@ export interface ApiKey {
 export interface ApiKeyCreate {
   name: string;
   description?: string;
-  allowed_model_ids?: number[];
+  allowed_model_ids?: (number | string)[]; // Can include model IDs and "mom" for MoM access
   monthly_token_limit?: number;
   expires_in_days?: number;
 }

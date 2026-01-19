@@ -17,6 +17,10 @@ from sqlalchemy.orm import selectinload
 from app.database import async_session_maker, get_db
 from app.models.deployment import Deployment
 from app.services.gateway import gateway_service
+from app.services.semantic_router import semantic_router_service
+
+# Special model names that trigger semantic routing
+SEMANTIC_ROUTER_MODEL_NAMES = {"mom", "mixture-of-models", "auto", "semantic-router"}
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +90,47 @@ async def list_models(
             api_key = await gateway_service.validate_api_key(db, access_key, secret_key)
 
     models = await gateway_service.get_available_models(db, api_key)
+
+    # Add Semantic Router "MoM" model if deployed and running
+    # Only show if api_key has access to MoM
+    router_app = await semantic_router_service.get_semantic_router_app(db)
+    if router_app and router_app.status == "running":
+        # Check MoM access if api_key is provided
+        show_mom = True
+        if api_key:
+            show_mom = await gateway_service.check_mom_access(api_key)
+
+        if show_mom:
+            created_timestamp = (
+                int(router_app.created_at.timestamp()) if router_app.created_at else 0
+            )
+            models.append(
+                {
+                    "id": "MoM",
+                    "object": "model",
+                    "created": created_timestamp,
+                    "owned_by": "lmstack-semantic-router",
+                    "root": "Mixture-of-Models",
+                    "parent": None,
+                    "description": "Semantic Router that automatically selects the best model for each request",
+                    "permission": [
+                        {
+                            "id": "modelperm-semantic-router",
+                            "object": "model_permission",
+                            "created": created_timestamp,
+                            "allow_create_engine": False,
+                            "allow_sampling": True,
+                            "allow_logprobs": True,
+                            "allow_search_indices": False,
+                            "allow_view": True,
+                            "allow_fine_tuning": False,
+                            "organization": "*",
+                            "group": None,
+                            "is_blocking": False,
+                        }
+                    ],
+                }
+            )
 
     return {
         "object": "list",
@@ -175,6 +220,26 @@ async def chat_completions(
                     "type": "invalid_request_error",
                 }
             },
+        )
+
+    # Check if using semantic routing (model="MoM", "auto", etc.)
+    if model_name.lower() in SEMANTIC_ROUTER_MODEL_NAMES:
+        # Check MoM access
+        if not await gateway_service.check_mom_access(api_key):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": {
+                        "message": "API key does not have access to MoM (Semantic Router)",
+                        "type": "permission_error",
+                    }
+                },
+            )
+        return await _proxy_to_semantic_router(
+            db=db,
+            body=body,
+            api_key=api_key,
+            endpoint="/v1/chat/completions",
         )
 
     # Find deployment for model
@@ -407,8 +472,8 @@ async def proxy_request(
 
 async def record_usage_background(
     api_key_id: int,
-    model_id: int,
-    deployment_id: int,
+    model_id: int | None,
+    deployment_id: int | None,
     prompt_tokens: int,
     completion_tokens: int,
 ) -> None:
@@ -1011,3 +1076,244 @@ async def responses(
     logger.info(f"Responses API response: {json.dumps(responses_response)[:500]}")
 
     return JSONResponse(content=responses_response)
+
+
+# =============================================================================
+# Semantic Router Proxy
+# =============================================================================
+
+
+async def _proxy_to_semantic_router(
+    db: AsyncSession,
+    body: dict,
+    api_key,
+    endpoint: str,
+) -> JSONResponse | StreamingResponse:
+    """Proxy request to Semantic Router for intelligent model selection.
+
+    Args:
+        db: Database session
+        body: Request body
+        api_key: Validated API key
+        endpoint: API endpoint (e.g., /v1/chat/completions)
+
+    Returns:
+        Response from Semantic Router
+    """
+    # Check if Semantic Router is deployed
+    router_app = await semantic_router_service.get_semantic_router_app(db)
+    if not router_app or router_app.status != "running":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": {
+                    "message": "Semantic Router is not deployed. Deploy it from the Apps page to use automatic model routing.",
+                    "type": "service_unavailable",
+                    "hint": "Use a specific model name instead, or deploy Semantic Router first.",
+                }
+            },
+        )
+
+    router_url = await semantic_router_service.get_semantic_router_url(db)
+    if not router_url:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": {
+                    "message": "Semantic Router URL not available",
+                    "type": "service_unavailable",
+                }
+            },
+        )
+
+    # Get API key from router app config for Semantic Router authentication
+    router_config = router_app.config or {}
+    sr_api_key = router_config.get("api_key")
+
+    # Set a default model - Semantic Router requires a model field
+    body_copy = body.copy()
+    model_name = body_copy.get("model", "")
+    if not model_name or model_name.lower() in SEMANTIC_ROUTER_MODEL_NAMES:
+        # Get the first running deployment's model name
+        from sqlalchemy.orm import selectinload
+
+        from app.models.deployment import Deployment, DeploymentStatus
+
+        result = await db.execute(
+            select(Deployment)
+            .where(Deployment.status == DeploymentStatus.RUNNING.value)
+            .options(selectinload(Deployment.model))
+            .limit(1)
+        )
+        deployment = result.scalar_one_or_none()
+        if deployment and deployment.model:
+            default_model = deployment.model.name.replace("/", "-").replace(":", "-")
+        else:
+            default_model = "default"
+        body_copy["model"] = default_model
+
+    upstream_url = f"{router_url}{endpoint}"
+    is_streaming = body.get("stream", False)
+
+    # Use the caller's API key for usage tracking
+    # This allows users to see their MoM usage in their own API Key dashboard
+    caller_api_key_id = api_key.id if api_key else None
+
+    if is_streaming:
+        return await _proxy_semantic_router_streaming(
+            upstream_url, body_copy, caller_api_key_id, db, sr_api_key
+        )
+    else:
+        return await _proxy_semantic_router_request(
+            upstream_url, body_copy, caller_api_key_id, db, sr_api_key
+        )
+
+
+async def _proxy_semantic_router_request(
+    upstream_url: str,
+    body: dict,
+    api_key_id: int | None,
+    db: AsyncSession,
+    sr_api_key: str | None = None,
+) -> JSONResponse:
+    """Proxy non-streaming request to Semantic Router."""
+    headers = {"Content-Type": "application/json"}
+    if sr_api_key:
+        headers["Authorization"] = f"Bearer {sr_api_key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.post(
+                upstream_url,
+                json=body,
+                headers=headers,
+            )
+            response_data = response.json()
+
+            # Record usage for Semantic Router
+            if api_key_id:
+                usage = response_data.get("usage", {})
+                prompt_tokens = usage.get("prompt_tokens", 0)
+                completion_tokens = usage.get("completion_tokens", 0)
+
+                await gateway_service.record_usage(
+                    db=db,
+                    api_key_id=api_key_id,
+                    model_id=None,  # No specific model for Semantic Router
+                    deployment_id=None,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+
+            return JSONResponse(content=response_data, status_code=response.status_code)
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "error": {
+                    "message": "Request to Semantic Router timed out",
+                    "type": "timeout_error",
+                }
+            },
+        )
+    except httpx.RequestError as e:
+        logger.error(f"Semantic Router request error: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": {
+                    "message": "Failed to connect to Semantic Router",
+                    "type": "connection_error",
+                }
+            },
+        )
+
+
+async def _proxy_semantic_router_streaming(
+    upstream_url: str,
+    body: dict,
+    api_key_id: int | None,
+    db: AsyncSession,
+    sr_api_key: str | None = None,
+) -> StreamingResponse:
+    """Proxy streaming request to Semantic Router."""
+    headers = {"Content-Type": "application/json"}
+    if sr_api_key:
+        headers["Authorization"] = f"Bearer {sr_api_key}"
+
+    usage_info = {"prompt_tokens": 0, "completion_tokens": 0}
+
+    async def stream_generator() -> AsyncGenerator[bytes, None]:
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                async with client.stream(
+                    "POST",
+                    upstream_url,
+                    json=body,
+                    headers=headers,
+                ) as response:
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+
+                        # Try to extract usage from final chunk
+                        try:
+                            chunk_str = chunk.decode("utf-8")
+                            for line in chunk_str.split("\n"):
+                                if line.startswith("data: ") and line != "data: [DONE]":
+                                    data = json.loads(line[6:])
+                                    if "usage" in data:
+                                        usage_info["prompt_tokens"] = data["usage"].get(
+                                            "prompt_tokens", 0
+                                        )
+                                        usage_info["completion_tokens"] = data["usage"].get(
+                                            "completion_tokens", 0
+                                        )
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            pass
+
+        except httpx.TimeoutException:
+            error_data = {
+                "error": {
+                    "message": "Request to Semantic Router timed out",
+                    "type": "timeout_error",
+                }
+            }
+            yield f"data: {json.dumps(error_data)}\n\n".encode()
+        except httpx.RequestError as e:
+            logger.error(f"Semantic Router streaming error: {e}")
+            error_data = {
+                "error": {
+                    "message": f"Connection error: {e}",
+                    "type": "connection_error",
+                }
+            }
+            yield f"data: {json.dumps(error_data)}\n\n".encode()
+
+        # Estimate tokens if not provided
+        if usage_info["prompt_tokens"] == 0:
+            messages = body.get("messages", [])
+            for msg in messages:
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    usage_info["prompt_tokens"] += len(content) // 4
+
+        # Record usage with background task
+        if api_key_id:
+            await record_usage_background(
+                api_key_id=api_key_id,
+                model_id=None,
+                deployment_id=None,
+                prompt_tokens=usage_info["prompt_tokens"],
+                completion_tokens=usage_info["completion_tokens"],
+            )
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
