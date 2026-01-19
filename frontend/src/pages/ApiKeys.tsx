@@ -39,12 +39,17 @@ import {
   CheckCircleOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
+  RobotOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import {
   apiKeysApi,
   deploymentsApi,
   modelsApi,
+  semanticRouterApi,
   type ApiKeyStats,
+  type ModelStatsResponse,
+  type SemanticRouterStatus,
 } from "../services/api";
 import type { ApiKey, ApiKeyCreate, Deployment, LLMModel } from "../types";
 import { useAppTheme, useResponsive } from "../hooks";
@@ -299,12 +304,17 @@ export default function ApiKeys() {
     [],
   );
   const [stats, setStats] = useState<ApiKeyStats | null>(null);
+  const [modelStats, setModelStats] = useState<ModelStatsResponse | null>(null);
+  const [semanticRouterStatus, setSemanticRouterStatus] =
+    useState<SemanticRouterStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editModalKey, setEditModalKey] = useState<ApiKey | null>(null);
   const [codeModalKey, setCodeModalKey] = useState<ApiKey | null>(null);
   const [newKeyModal, setNewKeyModal] = useState<NewKeyModalData | null>(null);
   const [revealedKeys, setRevealedKeys] = useState<Set<number>>(new Set());
   const [createForm] = Form.useForm();
+  const [editForm] = Form.useForm();
   const { isMobile } = useResponsive();
   const { isDark } = useAppTheme();
   const { canEdit } = useAuth();
@@ -317,11 +327,20 @@ export default function ApiKeys() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [keysRes, modelsRes, deploymentsRes, statsRes] = await Promise.all([
+      const [
+        keysRes,
+        modelsRes,
+        deploymentsRes,
+        statsRes,
+        modelStatsRes,
+        srStatusRes,
+      ] = await Promise.all([
         apiKeysApi.list(),
         modelsApi.list(),
         deploymentsApi.list(),
         apiKeysApi.getStats().catch(() => null),
+        apiKeysApi.getModelStats().catch(() => null),
+        semanticRouterApi.getStatus().catch(() => null),
       ]);
       setApiKeys(keysRes.items);
       setModels(modelsRes.items);
@@ -330,6 +349,8 @@ export default function ApiKeys() {
         deploymentsRes.items.filter((d) => d.status === "running"),
       );
       setStats(statsRes);
+      setModelStats(modelStatsRes);
+      setSemanticRouterStatus(srStatusRes);
     } catch (error) {
       console.error("Failed to fetch data:", error);
     } finally {
@@ -364,6 +385,30 @@ export default function ApiKeys() {
       const err = error as { response?: { data?: { detail?: string } } };
       message.error(err.response?.data?.detail || "Failed to delete API key");
     }
+  };
+
+  const handleUpdate = async (values: Partial<ApiKeyCreate>) => {
+    if (!editModalKey) return;
+    try {
+      await apiKeysApi.update(editModalKey.id, values);
+      message.success("API key updated");
+      setEditModalKey(null);
+      editForm.resetFields();
+      fetchData();
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to update API key");
+    }
+  };
+
+  const openEditModal = (record: ApiKey) => {
+    setEditModalKey(record);
+    editForm.setFieldsValue({
+      name: record.name,
+      description: record.description,
+      allowed_model_ids: record.allowed_model_ids,
+      monthly_token_limit: record.monthly_token_limit,
+    });
   };
 
   const copyToClipboard = async (text: string, label = "Copied") => {
@@ -465,7 +510,7 @@ export default function ApiKeys() {
     {
       title: "",
       key: "actions",
-      width: 80,
+      width: 100,
       render: (_: unknown, record: ApiKey) => (
         <Space direction="vertical" size={4}>
           <Button
@@ -475,20 +520,28 @@ export default function ApiKeys() {
             onClick={() => setCodeModalKey(record)}
           />
           {canEdit && (
-            <Popconfirm
-              title="Delete API key?"
-              description="Applications using this key will stop working."
-              onConfirm={() => handleDelete(record.id)}
-              okText="Delete"
-              okButtonProps={{ danger: true }}
-            >
+            <>
               <Button
                 type="text"
                 size="small"
-                danger
-                icon={<DeleteOutlined />}
+                icon={<EditOutlined />}
+                onClick={() => openEditModal(record)}
               />
-            </Popconfirm>
+              <Popconfirm
+                title="Delete API key?"
+                description="Applications using this key will stop working."
+                onConfirm={() => handleDelete(record.id)}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                />
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),
@@ -619,7 +672,7 @@ export default function ApiKeys() {
     {
       title: "",
       key: "actions",
-      width: 120,
+      width: 160,
       render: (_: unknown, record: ApiKey) => (
         <Space>
           <Tooltip title="View Code">
@@ -630,17 +683,26 @@ export default function ApiKeys() {
             />
           </Tooltip>
           {canEdit && (
-            <Popconfirm
-              title="Delete API key?"
-              description="Applications using this key will stop working."
-              onConfirm={() => handleDelete(record.id)}
-              okText="Delete"
-              okButtonProps={{ danger: true }}
-            >
-              <Tooltip title="Delete">
-                <Button type="text" danger icon={<DeleteOutlined />} />
+            <>
+              <Tooltip title="Edit">
+                <Button
+                  type="text"
+                  icon={<EditOutlined />}
+                  onClick={() => openEditModal(record)}
+                />
               </Tooltip>
-            </Popconfirm>
+              <Popconfirm
+                title="Delete API key?"
+                description="Applications using this key will stop working."
+                onConfirm={() => handleDelete(record.id)}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+              >
+                <Tooltip title="Delete">
+                  <Button type="text" danger icon={<DeleteOutlined />} />
+                </Tooltip>
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),
@@ -651,10 +713,18 @@ export default function ApiKeys() {
   const runningModelIds = new Set(runningDeployments.map((d) => d.model_id));
   const availableModels = models.filter((m) => runningModelIds.has(m.id));
 
-  const modelOptions = availableModels.map((m) => ({
-    label: m.name,
-    value: m.id,
-  }));
+  // Build model options including MoM when Semantic Router is deployed
+  const modelOptions = [
+    // Add MoM option if Semantic Router is deployed
+    ...(semanticRouterStatus?.deployed
+      ? [{ label: "MoM (Semantic Router)", value: "mom" }]
+      : []),
+    // Add regular running models
+    ...availableModels.map((m) => ({
+      label: m.name,
+      value: m.id,
+    })),
+  ];
 
   // Use first running model name for code examples
   const defaultModel =
@@ -850,6 +920,169 @@ const client = new OpenAI({ baseURL: '${baseUrl}/v1', apiKey: 'YOUR_API_KEY' });
         </Card>
       )}
 
+      {/* Available Models */}
+      <Card
+        style={{ marginBottom: 24, borderRadius: 12 }}
+        bodyStyle={{ padding: 0 }}
+      >
+        <div
+          style={{ padding: "16px 24px", borderBottom: "1px solid #27272a" }}
+        >
+          <Space>
+            <RobotOutlined />
+            <Text strong>Available Models</Text>
+            {semanticRouterStatus?.deployed && (
+              <Tag color="gold" style={{ marginLeft: 8 }}>
+                <ThunderboltOutlined /> MoM Enabled
+              </Tag>
+            )}
+          </Space>
+        </div>
+        <div style={{ padding: 16 }}>
+          {/* MoM Row - shown when Semantic Router is deployed */}
+          {semanticRouterStatus?.deployed && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px",
+                background: isDark
+                  ? "rgba(250, 173, 20, 0.1)"
+                  : "rgba(250, 173, 20, 0.05)",
+                borderRadius: 8,
+                marginBottom: 12,
+                border: `1px solid ${isDark ? "rgba(250, 173, 20, 0.3)" : "rgba(250, 173, 20, 0.2)"}`,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    background:
+                      "linear-gradient(135deg, #faad14 0%, #fa8c16 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <ThunderboltOutlined
+                    style={{ color: "#fff", fontSize: 18 }}
+                  />
+                </div>
+                <div>
+                  <Text strong style={{ display: "block" }}>
+                    MoM (Semantic Router)
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Auto-selects the best model for each request
+                  </Text>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                {modelStats?.mom_stats ? (
+                  <>
+                    <Text style={{ display: "block" }}>
+                      {modelStats.mom_stats.requests.toLocaleString()} requests
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {modelStats.mom_stats.total_tokens.toLocaleString()}{" "}
+                      tokens
+                    </Text>
+                  </>
+                ) : (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    No usage yet
+                  </Text>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Regular Models */}
+          {modelStats?.models && modelStats.models.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {modelStats.models.map((model) => (
+                <div
+                  key={model.model_id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    background: isDark ? "#18181b" : "#f8fafc",
+                    borderRadius: 8,
+                    border: `1px solid ${isDark ? "#27272a" : "#e2e8f0"}`,
+                  }}
+                >
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 12 }}
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        background: isDark ? "#27272a" : "#e2e8f0",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <RobotOutlined
+                        style={{
+                          color: isDark ? "#a1a1aa" : "#64748b",
+                          fontSize: 18,
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Text strong style={{ display: "block" }}>
+                        {model.model_name}
+                      </Text>
+                      <Space size={4}>
+                        <Tag
+                          color={model.is_running ? "success" : "default"}
+                          style={{ margin: 0, fontSize: 11 }}
+                        >
+                          {model.is_running ? "Running" : "Stopped"}
+                        </Tag>
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          {model.model_source}
+                        </Text>
+                      </Space>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <Text style={{ display: "block" }}>
+                      {model.requests.toLocaleString()} requests
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {model.total_tokens.toLocaleString()} tokens
+                    </Text>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            !semanticRouterStatus?.deployed && (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "24px 0",
+                  color: isDark ? "#71717a" : "#64748b",
+                }}
+              >
+                No models deployed yet. Deploy a model from the Deployments
+                page.
+              </div>
+            )
+          )}
+        </div>
+      </Card>
+
       {/* API Keys Table */}
       <Card style={{ borderRadius: 12 }}>
         <Table
@@ -901,22 +1134,22 @@ const client = new OpenAI({ baseURL: '${baseUrl}/v1', apiKey: 'YOUR_API_KEY' });
             name="allowed_model_ids"
             label="Model Access"
             extra={
-              availableModels.length > 0
-                ? "Leave empty for all running models"
-                : "No models are currently running"
+              modelOptions.length > 0
+                ? "Leave empty for all available models (including MoM if deployed)"
+                : "No models are currently available"
             }
           >
             <Select
               mode="multiple"
               placeholder={
-                availableModels.length > 0
-                  ? "All running models"
-                  : "No running models"
+                modelOptions.length > 0
+                  ? "All available models"
+                  : "No available models"
               }
               options={modelOptions}
               allowClear
               size="large"
-              disabled={availableModels.length === 0}
+              disabled={modelOptions.length === 0}
             />
           </Form.Item>
 
@@ -958,6 +1191,93 @@ const client = new OpenAI({ baseURL: '${baseUrl}/v1', apiKey: 'YOUR_API_KEY' });
               </Button>
               <Button type="primary" htmlType="submit" size="large">
                 Create Key
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal
+        title={null}
+        open={!!editModalKey}
+        onCancel={() => {
+          setEditModalKey(null);
+          editForm.resetFields();
+        }}
+        footer={null}
+        width={isMobile ? "100%" : 480}
+        style={
+          isMobile ? { top: 20, maxWidth: "100%", margin: "0 8px" } : undefined
+        }
+      >
+        <div style={{ marginBottom: 24 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
+            Edit API Key
+          </h2>
+          <Text type="secondary">Update key settings and permissions</Text>
+        </div>
+
+        <Form form={editForm} layout="vertical" onFinish={handleUpdate}>
+          <Form.Item
+            name="name"
+            label="Name"
+            rules={[{ required: true, message: "Enter a name" }]}
+          >
+            <Input placeholder="e.g., Production API" size="large" />
+          </Form.Item>
+
+          <Form.Item name="description" label="Description">
+            <Input.TextArea placeholder="Optional description" rows={2} />
+          </Form.Item>
+
+          <Form.Item
+            name="allowed_model_ids"
+            label="Model Access"
+            extra={
+              modelOptions.length > 0
+                ? "Leave empty for all available models (including MoM if deployed)"
+                : "No models are currently available"
+            }
+          >
+            <Select
+              mode="multiple"
+              placeholder={
+                modelOptions.length > 0
+                  ? "All available models"
+                  : "No available models"
+              }
+              options={modelOptions}
+              allowClear
+              size="large"
+              disabled={modelOptions.length === 0}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="monthly_token_limit"
+            label="Monthly Token Limit (tokens)"
+            extra="Leave empty for unlimited"
+          >
+            <InputNumber<number>
+              min={1000}
+              placeholder="Unlimited"
+              style={{ width: "100%" }}
+              size="large"
+              formatter={(value) =>
+                value ? `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : ""
+              }
+              parser={(value) => (value ? Number(value.replace(/,/g, "")) : 0)}
+            />
+          </Form.Item>
+
+          <Form.Item style={{ marginBottom: 0, marginTop: 24 }}>
+            <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+              <Button size="large" onClick={() => setEditModalKey(null)}>
+                Cancel
+              </Button>
+              <Button type="primary" htmlType="submit" size="large">
+                Save Changes
               </Button>
             </Space>
           </Form.Item>

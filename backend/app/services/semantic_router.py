@@ -54,6 +54,7 @@ class SemanticRouterService:
         self,
         db: AsyncSession,
         lmstack_api_url: str,
+        api_key: str | None = None,
     ) -> dict[str, Any]:
         """Generate semantic router config.yaml content.
 
@@ -61,7 +62,8 @@ class SemanticRouterService:
 
         Args:
             db: Database session
-            lmstack_api_url: LMStack API URL (e.g., http://host.docker.internal:52000)
+            lmstack_api_url: LMStack API URL (e.g., http://192.168.201.16:52000)
+            api_key: LMStack API key for authentication
 
         Returns:
             Config dictionary ready to be serialized to YAML
@@ -91,19 +93,21 @@ class SemanticRouterService:
             endpoint_name = f"lmstack-{model_name}"
             model_names.append(model_name)
 
-            models.append(
-                {
-                    "name": model_name,
-                    "endpoints": [
-                        {
-                            "name": endpoint_name,
-                            "weight": 1,
-                            "endpoint": f"{host}:{port}",
-                            "protocol": "http",
-                        }
-                    ],
-                }
-            )
+            model_config = {
+                "name": model_name,
+                "endpoints": [
+                    {
+                        "name": endpoint_name,
+                        "weight": 1,
+                        "endpoint": f"{host}:{port}",
+                        "protocol": "http",
+                    }
+                ],
+            }
+            # Add API key for authentication if provided
+            if api_key:
+                model_config["access_key"] = api_key
+            models.append(model_config)
 
         # If no deployments, add a placeholder model
         if not models:
@@ -136,11 +140,18 @@ class SemanticRouterService:
                     "timeout": "300s",
                 }
             ],
-            # Response API
+            # Observability (metrics endpoint)
+            "observability": {
+                "metrics": {
+                    "enabled": True,
+                    "port": 9190,
+                }
+            },
+            # Response API caching for faster repeated queries
             "response_api": {
                 "enabled": True,
                 "store_backend": "memory",
-                "ttl_seconds": 86400,
+                "ttl_seconds": 3600,
                 "max_responses": 1000,
             },
             # Note: The following features require ML models to be downloaded.

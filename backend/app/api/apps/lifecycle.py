@@ -70,6 +70,8 @@ async def stop_app(
 
         app.status = AppStatus.STOPPED.value
         await db.commit()
+        # Refresh the entire app object to ensure all attributes are loaded
+        await db.refresh(app)
         await db.refresh(app, ["worker"])
 
     except Exception as e:
@@ -125,6 +127,8 @@ async def start_app(
         app.status = AppStatus.RUNNING.value
         app.status_message = None
         await db.commit()
+        # Refresh the entire app object to ensure all attributes are loaded
+        await db.refresh(app)
         await db.refresh(app, ["worker"])
 
     except Exception as e:

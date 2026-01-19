@@ -210,6 +210,13 @@ async def deploy_app(
     if deploy_request.hf_token:
         app_config["hf_token"] = deploy_request.hf_token
 
+    # Store API key in config for apps that need it (e.g., Semantic Router config generation)
+    if full_key:
+        app_config["api_key"] = full_key
+
+    # Store LMStack host for apps that need to call back to API Gateway
+    app_config["lmstack_host"] = get_host_ip(request, worker)
+
     # Create app record
     app = App(
         app_type=app_type.value,
@@ -243,6 +250,9 @@ async def deploy_app(
     # Always use backend API port (52000)
     lmstack_port = "52000"
 
+    # Get correct LMStack host for apps that need to call back to API Gateway
+    lmstack_host = get_host_ip(request, worker)
+
     # Start background deployment
     background_tasks.add_task(
         deploy_app_background,
@@ -255,6 +265,7 @@ async def deploy_app(
         app_def=app_def,
         lmstack_port=lmstack_port,
         use_proxy=use_proxy,
+        lmstack_host=lmstack_host,
     )
 
     return app_to_response(app, request)
@@ -297,11 +308,31 @@ async def _create_api_key_if_needed(
 
 
 async def _find_available_port(db: AsyncSession, worker_id: int) -> int:
-    """Find an available port on the worker."""
+    """Find an available port on the worker.
+
+    Also considers additional ports used by apps (e.g., Semantic Router uses
+    main_port, main_port+1 for dashboard, main_port+2 for metrics).
+    """
+    from app.models.app import APP_DEFINITIONS, AppType
+
     result = await db.execute(
-        select(App.port).where(App.worker_id == worker_id, App.port.isnot(None))
+        select(App.port, App.app_type).where(App.worker_id == worker_id, App.port.isnot(None))
     )
-    used_ports = {row[0] for row in result.fetchall()}
+
+    used_ports = set()
+    for row in result.fetchall():
+        port, app_type = row
+        used_ports.add(port)
+
+        # Add additional ports for apps that use them
+        try:
+            app_type_enum = AppType(app_type)
+            app_def = APP_DEFINITIONS.get(app_type_enum, {})
+            additional_ports = app_def.get("additional_ports", [])
+            for i in range(len(additional_ports)):
+                used_ports.add(port + 1 + i)
+        except (ValueError, KeyError):
+            pass
 
     port = 9000  # Start from 9000 to avoid conflicts with dev servers
     while port in used_ports:

@@ -124,6 +124,8 @@ APP_DEFINITIONS = {
             "ENVOY_LISTEN_PORT": "8888",
             "DASHBOARD_PORT": "8700",
             "HF_TOKEN": "{hf_token}",  # Optional: for gated models
+            # LMStack API key for authentication (stored in config.yaml, not used as env var)
+            "LMSTACK_API_KEY": "{api_key}",
             # Redirect HuggingFace cache to the models volume for persistence
             "HF_HOME": "/app/models",
             "TRANSFORMERS_CACHE": "/app/models",
@@ -141,9 +143,22 @@ APP_DEFINITIONS = {
         ],
         # Override entrypoint to create symlink before starting supervisord
         # (supervisord.conf hardcodes /app/config.yaml path)
+        # Patch router-defaults.yaml to enable metrics BEFORE supervisord starts
+        # (patching router-config.yaml doesn't work because it gets regenerated on restart)
         "entrypoint": ["/bin/sh", "-c"],
         "command": [
-            "ln -sf /app/config/config.yaml /app/config.yaml && exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf"
+            # Patch the defaults file to enable metrics
+            'python3 -c "'
+            "import yaml; "
+            "f='/app/cli/templates/router-defaults.yaml'; "
+            "c=yaml.safe_load(open(f)); "
+            "c.setdefault('observability',{}).setdefault('metrics',{})['enabled']=True; "
+            "yaml.dump(c,open(f,'w'),default_flow_style=False); "
+            "print('Patched router-defaults.yaml to enable metrics')\" && "
+            # Create symlink for config
+            "ln -sf /app/config/config.yaml /app/config.yaml && "
+            # Start supervisord
+            "exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf"
         ],
         "requires_config": True,  # Indicates this app needs dynamic config generation
         "singleton": True,  # Only one instance should be deployed per cluster
@@ -167,6 +182,10 @@ MONITORING_DEFINITIONS = {
             # Allow embedding in iframes (for Semantic Router dashboard)
             "GF_SECURITY_ALLOW_EMBEDDING": "true",
             "GF_AUTH_ANONYMOUS_ORG_NAME": "Main Org.",
+            # Allow any origin for live websocket (needed when accessed via proxy)
+            "GF_LIVE_ALLOWED_ORIGINS": "*",
+            # Don't enforce strict origin checks
+            "GF_SECURITY_COOKIE_SAMESITE": "disabled",
             # Disable features we don't need
             "GF_ALERTING_ENABLED": "false",
             "GF_UNIFIED_ALERTING_ENABLED": "false",

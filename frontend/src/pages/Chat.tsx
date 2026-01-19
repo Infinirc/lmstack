@@ -17,6 +17,7 @@ import {
   MessageOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import {
   useTheme,
@@ -25,7 +26,12 @@ import {
   MessageContent,
   generateMessageId,
 } from "../components/chat";
-import { deploymentsApi, conversationsApi } from "../services/api";
+import {
+  deploymentsApi,
+  conversationsApi,
+  semanticRouterApi,
+} from "../services/api";
+import type { SemanticRouterStatus } from "../services/api";
 import type { Deployment, ChatMessage } from "../types";
 import type {
   Conversation as ApiConversation,
@@ -95,7 +101,12 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const isStreamingRef = useRef(false); // Sync ref for streaming state
+  const justFinishedStreamingRef = useRef(false);
   const [loading, setLoading] = useState(true);
+  const [semanticRouterStatus, setSemanticRouterStatus] =
+    useState<SemanticRouterStatus | null>(null);
+  const [isMoMSelected, setIsMoMSelected] = useState(false);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -121,12 +132,27 @@ export default function Chat() {
 
   // Load conversation messages when switching conversations
   useEffect(() => {
-    if (isStreaming) return; // Don't sync during streaming
+    // Use ref for sync check (state might not be updated yet after await)
+    if (isStreamingRef.current || isStreaming) return;
+
+    // Skip reload right after streaming ends to preserve model field
+    if (justFinishedStreamingRef.current) {
+      justFinishedStreamingRef.current = false;
+      return;
+    }
+
     if (currentConversationId) {
       const loadMessages = async () => {
+        // Double-check streaming state before loading
+        if (isStreamingRef.current) return;
+
         try {
           const conv = await conversationsApi.get(currentConversationId);
           const converted = convertApiConversation(conv);
+
+          // Check again before setting messages (streaming might have started)
+          if (isStreamingRef.current) return;
+
           setMessages(converted.messages);
           // Update the conversation in the list with full message data
           setConversations((prev) =>
@@ -134,7 +160,9 @@ export default function Chat() {
           );
         } catch (error) {
           console.error("Failed to load conversation:", error);
-          setMessages([]);
+          if (!isStreamingRef.current) {
+            setMessages([]);
+          }
         }
       };
       loadMessages();
@@ -215,6 +243,23 @@ export default function Chat() {
     return () => clearInterval(interval);
   }, [fetchDeployments]);
 
+  // Fetch semantic router status
+  const fetchSemanticRouterStatus = useCallback(async () => {
+    try {
+      const status = await semanticRouterApi.getStatus();
+      setSemanticRouterStatus(status);
+    } catch (error) {
+      console.error("Failed to fetch semantic router status:", error);
+      setSemanticRouterStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSemanticRouterStatus();
+    const interval = setInterval(fetchSemanticRouterStatus, 10000);
+    return () => clearInterval(interval);
+  }, [fetchSemanticRouterStatus]);
+
   // Handle scroll detection - check if user scrolled up
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -281,8 +326,15 @@ export default function Chat() {
   /**
    * Get endpoint URL for deployment (uses backend proxy to handle Docker networking)
    */
-  const getEndpointUrl = (deployment: Deployment): string | null => {
-    if (deployment.status !== "running") {
+  const getEndpointUrl = (
+    deployment: Deployment | null,
+    useMoM: boolean,
+  ): string | null => {
+    if (useMoM) {
+      // Use Semantic Router chat proxy endpoint (accepts JWT auth)
+      return `/api/semantic-router/chat`;
+    }
+    if (!deployment || deployment.status !== "running") {
       return null;
     }
     // Use backend proxy endpoint instead of direct model URL
@@ -296,9 +348,15 @@ export default function Chat() {
   const handleSend = useCallback(
     async (content?: string) => {
       const messageContent = content || inputValue.trim();
-      if (!messageContent || !selectedDeployment || isStreaming) return;
+      // Allow sending when MoM is selected (no deployment needed) or when a deployment is selected
+      if (
+        !messageContent ||
+        (!isMoMSelected && !selectedDeployment) ||
+        isStreaming
+      )
+        return;
 
-      const endpoint = getEndpointUrl(selectedDeployment);
+      const endpoint = getEndpointUrl(selectedDeployment, isMoMSelected);
       if (!endpoint) {
         message.error(
           "Deployment is not ready. Please wait for it to be running.",
@@ -306,7 +364,8 @@ export default function Chat() {
         return;
       }
 
-      // Set streaming first to prevent useEffect from clearing messages
+      // Set streaming ref FIRST (sync) to prevent useEffect from clearing messages
+      isStreamingRef.current = true;
       setIsStreaming(true);
       setInputValue("");
 
@@ -319,7 +378,8 @@ export default function Chat() {
             (messageContent.length > 30 ? "..." : "");
           const newConv = await conversationsApi.create({
             title,
-            deployment_id: selectedDeployment.id,
+            // Use deployment_id if available, otherwise null for MoM
+            deployment_id: selectedDeployment?.id,
           });
           const converted = convertApiConversation(newConv);
           setConversations((prev) => [converted, ...prev]);
@@ -328,6 +388,7 @@ export default function Chat() {
         } catch (error) {
           console.error("Failed to create conversation:", error);
           message.error("Failed to create conversation");
+          isStreamingRef.current = false;
           setIsStreaming(false);
           return;
         }
@@ -353,6 +414,10 @@ export default function Chat() {
         abortControllerRef.current = new AbortController();
 
         const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+        // Use "MoM" as model name for Semantic Router, otherwise use deployment model
+        const modelName = isMoMSelected
+          ? "MoM"
+          : selectedDeployment?.model?.model_id || "default";
         const response = await fetch(endpoint, {
           method: "POST",
           headers: {
@@ -360,7 +425,7 @@ export default function Chat() {
             ...(token && { Authorization: `Bearer ${token}` }),
           },
           body: JSON.stringify({
-            model: selectedDeployment.model?.model_id || "default",
+            model: modelName,
             messages: [
               ...messages.map((m) => ({ role: m.role, content: m.content })),
               { role: "user", content: messageContent },
@@ -384,19 +449,26 @@ export default function Chat() {
         if (!reader) throw new Error("No response body");
 
         let accumulatedContent = "";
+        let responseModel: string | undefined = undefined;
+        let buffer = ""; // Buffer for incomplete SSE lines
 
         // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value);
-          const lines = chunk
-            .split("\n")
-            .filter((line) => line.trim().startsWith("data:"));
+          // Use stream: true for proper multi-byte character handling
+          buffer += decoder.decode(value, { stream: true });
+
+          // Split by newlines but keep incomplete lines in buffer
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || ""; // Keep last incomplete line in buffer
 
           for (const line of lines) {
-            const data = line.replace("data: ", "").trim();
+            const trimmedLine = line.trim();
+            if (!trimmedLine.startsWith("data:")) continue;
+
+            const data = trimmedLine.slice(5).trim(); // Remove "data:" prefix
             if (data === "[DONE]") continue;
 
             try {
@@ -404,10 +476,19 @@ export default function Chat() {
               const deltaContent = parsed.choices?.[0]?.delta?.content || "";
               accumulatedContent += deltaContent;
 
+              // Extract model name from response (for MoM to show which model answered)
+              if (!responseModel && parsed.model) {
+                responseModel = parsed.model;
+              }
+
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantMessage.id
-                    ? { ...m, content: accumulatedContent }
+                    ? {
+                        ...m,
+                        content: accumulatedContent,
+                        model: responseModel,
+                      }
                     : m,
                 ),
               );
@@ -416,6 +497,35 @@ export default function Chat() {
             }
           }
         }
+
+        // Process any remaining data in buffer
+        if (buffer.trim()) {
+          const trimmedLine = buffer.trim();
+          if (trimmedLine.startsWith("data:")) {
+            const data = trimmedLine.slice(5).trim();
+            if (data !== "[DONE]") {
+              try {
+                const parsed = JSON.parse(data);
+                const deltaContent = parsed.choices?.[0]?.delta?.content || "";
+                accumulatedContent += deltaContent;
+                if (!responseModel && parsed.model) {
+                  responseModel = parsed.model;
+                }
+              } catch {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+
+        // Final update to ensure model is preserved after streaming ends
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessage.id
+              ? { ...m, content: accumulatedContent, model: responseModel }
+              : m,
+          ),
+        );
 
         // Save messages to database after streaming completes
         if (convId && accumulatedContent) {
@@ -457,6 +567,8 @@ export default function Chat() {
           );
         }
       } finally {
+        justFinishedStreamingRef.current = true;
+        isStreamingRef.current = false;
         setIsStreaming(false);
         abortControllerRef.current = null;
       }
@@ -467,6 +579,7 @@ export default function Chat() {
       isStreaming,
       messages,
       currentConversationId,
+      isMoMSelected,
     ],
   );
 
@@ -503,7 +616,7 @@ export default function Chat() {
   }
 
   // Model dropdown menu items
-  const modelMenuItems = deployments.map((d) => ({
+  const deploymentMenuItems = deployments.map((d) => ({
     key: d.id.toString(),
     label: (
       <div
@@ -524,8 +637,40 @@ export default function Chat() {
     onClick: () => {
       const deployment = deployments.find((dep) => dep.id === d.id);
       setSelectedDeployment(deployment || null);
+      setIsMoMSelected(false);
     },
   }));
+
+  // Add MoM option if Semantic Router is deployed
+  const modelMenuItems = semanticRouterStatus?.deployed
+    ? [
+        {
+          key: "mom",
+          label: (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 0",
+              }}
+            >
+              <ThunderboltOutlined style={{ color: "#faad14" }} />
+              <span>MoM (Semantic Router)</span>
+              <span style={{ color: colors.textMuted, fontSize: 12 }}>
+                Auto-select best model
+              </span>
+            </div>
+          ),
+          onClick: () => {
+            setSelectedDeployment(null);
+            setIsMoMSelected(true);
+          },
+        },
+        { type: "divider" as const },
+        ...deploymentMenuItems,
+      ]
+    : deploymentMenuItems;
 
   return (
     <div
@@ -568,7 +713,9 @@ export default function Chat() {
           modelMenuItems={modelMenuItems}
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           sidebarCollapsed={sidebarCollapsed}
+          isDark={isDark}
           colors={colors}
+          isMoMSelected={isMoMSelected}
         />
 
         {/* Messages Area */}
@@ -589,6 +736,7 @@ export default function Chat() {
               onSend={handleSend}
               colors={colors}
               isMobile={isMobile}
+              isMoMSelected={isMoMSelected}
             />
           ) : (
             <MessageList
@@ -636,7 +784,7 @@ export default function Chat() {
               onSend={() => handleSend()}
               onStop={handleStop}
               isStreaming={isStreaming}
-              disabled={!selectedDeployment}
+              disabled={!selectedDeployment && !isMoMSelected}
               isDark={isDark}
               colors={colors}
             />
@@ -655,14 +803,19 @@ export default function Chat() {
  */
 interface ChatHeaderProps {
   selectedDeployment: Deployment | null;
-  modelMenuItems: {
-    key: string;
-    label: React.ReactNode;
-    onClick: () => void;
-  }[];
+  modelMenuItems: (
+    | {
+        key: string;
+        label: React.ReactNode;
+        onClick: () => void;
+      }
+    | { type: "divider" }
+  )[];
   onToggleSidebar: () => void;
   sidebarCollapsed: boolean;
+  isDark: boolean;
   colors: ReturnType<typeof useTheme>["colors"];
+  isMoMSelected: boolean;
 }
 
 function ChatHeader({
@@ -670,7 +823,9 @@ function ChatHeader({
   modelMenuItems,
   onToggleSidebar,
   sidebarCollapsed,
+  isDark,
   colors,
+  isMoMSelected,
 }: ChatHeaderProps) {
   return (
     <div
@@ -702,7 +857,19 @@ function ChatHeader({
         </Tooltip>
 
         {/* Model Selector */}
-        <Dropdown menu={{ items: modelMenuItems }} trigger={["click"]}>
+        <Dropdown
+          menu={{
+            items: modelMenuItems,
+            style: {
+              background: isDark ? "#1f1f1f" : "#ffffff",
+              borderRadius: 12,
+              boxShadow: isDark
+                ? "0 6px 16px rgba(0, 0, 0, 0.4)"
+                : "0 6px 16px rgba(0, 0, 0, 0.12)",
+            },
+          }}
+          trigger={["click"]}
+        >
           <Button
             type="text"
             style={{
@@ -719,8 +886,16 @@ function ChatHeader({
               color: colors.text,
             }}
           >
-            <RobotOutlined style={{ fontSize: 16 }} />
-            <span>{selectedDeployment?.model?.name || "Select Model"}</span>
+            {isMoMSelected ? (
+              <ThunderboltOutlined style={{ fontSize: 16, color: "#faad14" }} />
+            ) : (
+              <RobotOutlined style={{ fontSize: 16 }} />
+            )}
+            <span>
+              {isMoMSelected
+                ? "MoM (Semantic Router)"
+                : selectedDeployment?.model?.name || "Select Model"}
+            </span>
             <DownOutlined style={{ fontSize: 10, color: colors.textMuted }} />
           </Button>
         </Dropdown>
@@ -737,6 +912,7 @@ interface EmptyStateProps {
   onSend: (content: string) => void;
   colors: ReturnType<typeof useTheme>["colors"];
   isMobile?: boolean;
+  isMoMSelected?: boolean;
 }
 
 function EmptyState({
@@ -744,7 +920,13 @@ function EmptyState({
   onSend,
   colors,
   isMobile,
+  isMoMSelected,
 }: EmptyStateProps) {
+  const hasModel = selectedDeployment || isMoMSelected;
+  const modelName = isMoMSelected
+    ? "MoM (Semantic Router)"
+    : selectedDeployment?.model?.name || "AI";
+
   return (
     <div
       style={{
@@ -768,9 +950,7 @@ function EmptyState({
           textAlign: "center",
         }}
       >
-        {selectedDeployment
-          ? `Chat with ${selectedDeployment.model?.name || "AI"}`
-          : "Select a model to start"}
+        {hasModel ? `Chat with ${modelName}` : "Select a model to start"}
       </h2>
       <p
         style={{
@@ -780,12 +960,14 @@ function EmptyState({
           textAlign: "center",
         }}
       >
-        {selectedDeployment
-          ? "Ask me anything"
+        {hasModel
+          ? isMoMSelected
+            ? "I'll automatically select the best model for your request"
+            : "Ask me anything"
           : "Choose a deployed model from the dropdown above"}
       </p>
 
-      {selectedDeployment && (
+      {hasModel && (
         <div
           style={{
             display: "grid",
@@ -933,12 +1115,27 @@ function MessageRow({
             {message.content}
           </div>
         ) : (
-          <MessageContent
-            content={message.content}
-            isStreaming={showStreaming}
-            isDark={isDark}
-            colors={colors}
-          />
+          <>
+            <MessageContent
+              content={message.content}
+              isStreaming={showStreaming}
+              isDark={isDark}
+              colors={colors}
+            />
+            {/* Show model name for MoM responses */}
+            {message.model && (
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  opacity: 0.7,
+                }}
+              >
+                via {message.model}
+              </div>
+            )}
+          </>
         )}
       </div>
 

@@ -26,7 +26,7 @@ from app.schemas.deployment import (
     ModelSummary,
     WorkerSummary,
 )
-from app.services.deployer import DeployerService
+from app.services.deployer import DeployerService, _update_semantic_router_config_background
 from app.services.gateway import gateway_service
 
 logger = logging.getLogger(__name__)
@@ -279,6 +279,9 @@ async def delete_deployment(
     await db.delete(deployment)
     await db.commit()
 
+    # Update semantic router config to remove this model
+    background_tasks.add_task(_update_semantic_router_config_background)
+
 
 @router.post("/{deployment_id}/stop", response_model=DeploymentResponse)
 async def stop_deployment(
@@ -313,6 +316,9 @@ async def stop_deployment(
     deployment.status_message = "Stopped by user"
     await db.commit()
     await db.refresh(deployment)
+
+    # Update semantic router config to remove this model
+    background_tasks.add_task(_update_semantic_router_config_background)
 
     return deployment_to_response(deployment)
 

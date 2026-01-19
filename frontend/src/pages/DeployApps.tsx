@@ -10,7 +10,6 @@ import {
   Modal,
   Tag,
   message,
-  Popconfirm,
   Row,
   Col,
   Typography,
@@ -22,6 +21,7 @@ import {
   Space,
   Input,
   Alert,
+  Popconfirm,
 } from "antd";
 import {
   RocketOutlined,
@@ -42,8 +42,6 @@ import {
   VerticalAlignBottomOutlined,
   BranchesOutlined,
   DashboardOutlined,
-  PlusOutlined,
-  MinusOutlined,
 } from "@ant-design/icons";
 import { appsApi, workersApi } from "../services/api";
 import type { Worker } from "../types";
@@ -142,9 +140,6 @@ export default function DeployApps() {
   const [monitoringStatus, setMonitoringStatus] = useState<
     Record<number, MonitoringStatus>
   >({});
-  const [monitoringLoading, setMonitoringLoading] = useState<
-    Record<number, boolean>
-  >({});
 
   const fetchData = useCallback(async () => {
     try {
@@ -169,21 +164,31 @@ export default function DeployApps() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Fetch monitoring status for apps that support it
+  // Fetch and poll monitoring status for apps that support it
   useEffect(() => {
     const appsWithMonitoring = deployedApps.filter(
       (app) => app.has_monitoring && app.status === "running",
     );
-    appsWithMonitoring.forEach((app) => {
-      if (!monitoringStatus[app.id]) {
-        appsApi
-          .getMonitoringStatus(app.id)
-          .then((status) => {
-            setMonitoringStatus((prev) => ({ ...prev, [app.id]: status }));
-          })
-          .catch(console.error);
+
+    if (appsWithMonitoring.length === 0) return;
+
+    // Fetch monitoring status
+    const fetchAllStatus = async () => {
+      for (const app of appsWithMonitoring) {
+        try {
+          const status = await appsApi.getMonitoringStatus(app.id);
+          setMonitoringStatus((prev) => ({ ...prev, [app.id]: status }));
+        } catch (error) {
+          console.error("Failed to fetch monitoring status:", error);
+        }
       }
-    });
+    };
+
+    fetchAllStatus();
+
+    // Poll every 5 seconds (reasonable interval)
+    const interval = setInterval(fetchAllStatus, 5000);
+    return () => clearInterval(interval);
   }, [deployedApps]);
 
   // Poll progress for deploying apps
@@ -368,66 +373,6 @@ export default function DeployApps() {
         }
       }
       return null;
-    }
-  };
-
-  // Monitoring handlers
-  const fetchMonitoringStatus = async (appId: number) => {
-    try {
-      const status = await appsApi.getMonitoringStatus(appId);
-      setMonitoringStatus((prev) => ({ ...prev, [appId]: status }));
-    } catch (error) {
-      console.error("Failed to fetch monitoring status:", error);
-    }
-  };
-
-  const handleDeployMonitoring = async (app: DeployedApp) => {
-    setMonitoringLoading((prev) => ({ ...prev, [app.id]: true }));
-    try {
-      const status = await appsApi.deployMonitoring(app.id);
-      setMonitoringStatus((prev) => ({ ...prev, [app.id]: status }));
-      message.success("Monitoring deployment started");
-      // Poll for status updates
-      const pollInterval = setInterval(async () => {
-        const newStatus = await appsApi.getMonitoringStatus(app.id);
-        setMonitoringStatus((prev) => ({ ...prev, [app.id]: newStatus }));
-        // Stop polling when all services are running or errored
-        const allDone = newStatus.services.every(
-          (s) =>
-            s.status === "running" ||
-            s.status === "error" ||
-            s.status === "stopped",
-        );
-        if (allDone) {
-          clearInterval(pollInterval);
-          setMonitoringLoading((prev) => ({ ...prev, [app.id]: false }));
-        }
-      }, 3000);
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } };
-      message.error(
-        err.response?.data?.detail || "Failed to deploy monitoring",
-      );
-      setMonitoringLoading((prev) => ({ ...prev, [app.id]: false }));
-    }
-  };
-
-  const handleRemoveMonitoring = async (app: DeployedApp) => {
-    setMonitoringLoading((prev) => ({ ...prev, [app.id]: true }));
-    try {
-      await appsApi.removeMonitoring(app.id);
-      setMonitoringStatus((prev) => ({
-        ...prev,
-        [app.id]: { enabled: false, services: [] },
-      }));
-      message.success("Monitoring removed");
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } };
-      message.error(
-        err.response?.data?.detail || "Failed to remove monitoring",
-      );
-    } finally {
-      setMonitoringLoading((prev) => ({ ...prev, [app.id]: false }));
     }
   };
 
@@ -817,6 +762,7 @@ export default function DeployApps() {
                       </div>
 
                       {/* Monitoring Section for apps that support it */}
+                      {/* Monitoring is auto-deployed with Semantic Router */}
                       {app.has_monitoring && app.status === "running" && (
                         <div
                           style={{
@@ -837,37 +783,6 @@ export default function DeployApps() {
                               <DashboardOutlined style={{ marginRight: 6 }} />
                               Monitoring
                             </Text>
-                            {!monitoringStatus[app.id]?.enabled ? (
-                              <Button
-                                type="primary"
-                                size="small"
-                                icon={<PlusOutlined />}
-                                loading={monitoringLoading[app.id]}
-                                onClick={() => {
-                                  fetchMonitoringStatus(app.id);
-                                  handleDeployMonitoring(app);
-                                }}
-                              >
-                                Deploy
-                              </Button>
-                            ) : (
-                              <Popconfirm
-                                title="Remove monitoring?"
-                                description="This will stop and remove all monitoring services."
-                                onConfirm={() => handleRemoveMonitoring(app)}
-                                okText="Remove"
-                                okButtonProps={{ danger: true }}
-                              >
-                                <Button
-                                  size="small"
-                                  icon={<MinusOutlined />}
-                                  loading={monitoringLoading[app.id]}
-                                  danger
-                                >
-                                  Remove
-                                </Button>
-                              </Popconfirm>
-                            )}
                           </div>
 
                           {monitoringStatus[app.id]?.services &&
@@ -879,6 +794,26 @@ export default function DeployApps() {
                                   gap: 6,
                                 }}
                               >
+                                {/* Show overall progress if any service is deploying */}
+                                {monitoringStatus[app.id].services.some(
+                                  (svc) =>
+                                    svc.status === "pending" ||
+                                    svc.status === "pulling" ||
+                                    svc.status === "starting",
+                                ) && (
+                                  <div style={{ marginBottom: 4 }}>
+                                    <Progress
+                                      percent={100}
+                                      size="small"
+                                      status="active"
+                                      showInfo={false}
+                                      strokeColor={{
+                                        from: "#108ee9",
+                                        to: "#87d068",
+                                      }}
+                                    />
+                                  </div>
+                                )}
                                 {monitoringStatus[app.id].services.map(
                                   (svc: MonitoringServiceStatus) => (
                                     <div
@@ -890,7 +825,34 @@ export default function DeployApps() {
                                         fontSize: 12,
                                       }}
                                     >
-                                      <span>
+                                      <span
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 4,
+                                        }}
+                                      >
+                                        {svc.status === "pulling" && (
+                                          <CloudDownloadOutlined
+                                            style={{ color: "#1890ff" }}
+                                          />
+                                        )}
+                                        {(svc.status === "pending" ||
+                                          svc.status === "starting") && (
+                                          <LoadingOutlined
+                                            style={{ color: "#1890ff" }}
+                                          />
+                                        )}
+                                        {svc.status === "running" && (
+                                          <CheckCircleOutlined
+                                            style={{ color: "#52c41a" }}
+                                          />
+                                        )}
+                                        {svc.status === "error" && (
+                                          <CloseCircleOutlined
+                                            style={{ color: "#ff4d4f" }}
+                                          />
+                                        )}
                                         {svc.name}
                                         <Tag
                                           color={
@@ -901,7 +863,7 @@ export default function DeployApps() {
                                                 : "processing"
                                           }
                                           style={{
-                                            marginLeft: 8,
+                                            marginLeft: 4,
                                             fontSize: 10,
                                           }}
                                         >
@@ -910,8 +872,10 @@ export default function DeployApps() {
                                             : svc.status === "error"
                                               ? "Error"
                                               : svc.status === "pulling"
-                                                ? "Pulling"
-                                                : "Starting"}
+                                                ? "Pulling..."
+                                                : svc.status === "pending"
+                                                  ? "Pending"
+                                                  : "Starting..."}
                                         </Tag>
                                       </span>
                                       {svc.status === "running" && svc.port && (
@@ -937,14 +901,10 @@ export default function DeployApps() {
                             )}
 
                           {!monitoringStatus[app.id] && (
-                            <Button
-                              type="link"
-                              size="small"
-                              onClick={() => fetchMonitoringStatus(app.id)}
-                              style={{ padding: 0, fontSize: 12 }}
-                            >
-                              Check status
-                            </Button>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              <LoadingOutlined style={{ marginRight: 4 }} />
+                              Loading monitoring status...
+                            </Text>
                           )}
                         </div>
                       )}

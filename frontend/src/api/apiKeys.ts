@@ -22,6 +22,22 @@ export interface ApiKeyStats {
   per_key_stats: Record<number, { requests: number; tokens: number }>;
 }
 
+export interface ModelUsageStats {
+  model_id: number | null;
+  model_name: string;
+  model_source: string;
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  is_running: boolean;
+}
+
+export interface ModelStatsResponse {
+  models: ModelUsageStats[];
+  mom_stats: ModelUsageStats | null;
+}
+
 export const apiKeysApi = {
   list: async (params?: ApiKeyListParams): Promise<ListResponse<ApiKey>> => {
     const response = await api.get<ListResponse<ApiKey>>("/api-keys", {
@@ -51,6 +67,13 @@ export const apiKeysApi = {
 
   getStats: async (): Promise<ApiKeyStats> => {
     const response = await api.get<ApiKeyStats>("/api-keys/stats/summary");
+    return response.data;
+  },
+
+  getModelStats: async (): Promise<ModelStatsResponse> => {
+    const response = await api.get<ModelStatsResponse>(
+      "/api-keys/stats/by-model",
+    );
     return response.data;
   },
 };

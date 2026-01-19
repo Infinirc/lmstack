@@ -478,16 +478,17 @@ async def deploy_monitoring_background(
             if use_proxy:
                 await _setup_monitoring_proxy(app_id, svc_type, worker_address, port)
 
-            # Update parent app's environment with monitoring URLs
-            await _update_parent_monitoring_urls(db, parent_app_id)
-
-            # Mark as running
+            # Mark as running FIRST (before checking if all monitoring services are ready)
             app.status = AppStatus.RUNNING.value
             app.status_message = None
             await db.commit()
 
             set_deployment_progress(app_id, "running", 100, f"{svc_def['name']} deployed")
             logger.info(f"Monitoring service {svc_type} deployed for app {parent_app_id}")
+
+            # Update parent app's environment with monitoring URLs
+            # This must be called AFTER marking current service as running
+            await _update_parent_monitoring_urls(db, parent_app_id)
 
         except Exception as e:
             logger.exception(f"Failed to deploy monitoring {svc_type}: {e}")
@@ -597,6 +598,12 @@ async def _create_monitoring_container(
         env_vars["GF_DATASOURCES_DEFAULT_ACCESS"] = "proxy"
         env_vars["GF_DATASOURCES_DEFAULT_ISDEFAULT"] = "true"
 
+        # CRITICAL: Set Grafana's root URL so redirects work correctly
+        # Without this, Grafana redirects to localhost:3000 which breaks iframe embedding
+        env_vars["GF_SERVER_ROOT_URL"] = f"http://{worker_host}:{port}"
+        # Also set serve_from_sub_path since we access via proxy
+        env_vars["GF_SERVER_SERVE_FROM_SUB_PATH"] = "false"
+
     payload = {
         "name": container_name,
         "image": svc_def["image"],
@@ -689,24 +696,24 @@ async def _update_parent_monitoring_urls(db: AsyncSession, parent_app_id: int) -
         monitoring_apps = list(result.scalars().all())
 
         # Build monitoring URLs
-        # These URLs are accessed from INSIDE the Semantic Router container
-        # So we use host.docker.internal to access services on the same host
+        # These URLs are used by the Semantic Router DASHBOARD (runs in user's browser)
+        # to render iframes for Grafana/Jaeger. Since the browser can't resolve
+        # host.docker.internal, we must use the worker's external IP.
         await fresh_db.refresh(parent_app, ["worker"])
 
-        # Use host.docker.internal for container-to-host communication
-        # This works regardless of the worker's external IP
-        internal_host = "host.docker.internal"
+        # Use the worker's external IP for browser-accessible URLs
+        worker_host = parent_app.worker.address.split(":")[0]
 
         monitoring_urls = {}
         all_running = True
         for mon_app in monitoring_apps:
             if mon_app.status == AppStatus.RUNNING.value and mon_app.port:
                 if mon_app.app_type == "grafana":
-                    monitoring_urls["grafana_url"] = f"http://{internal_host}:{mon_app.port}"
+                    monitoring_urls["grafana_url"] = f"http://{worker_host}:{mon_app.port}"
                 elif mon_app.app_type == "prometheus":
-                    monitoring_urls["prometheus_url"] = f"http://{internal_host}:{mon_app.port}"
+                    monitoring_urls["prometheus_url"] = f"http://{worker_host}:{mon_app.port}"
                 elif mon_app.app_type == "jaeger":
-                    monitoring_urls["jaeger_url"] = f"http://{internal_host}:{mon_app.port}"
+                    monitoring_urls["jaeger_url"] = f"http://{worker_host}:{mon_app.port}"
             elif mon_app.status not in (AppStatus.ERROR.value, AppStatus.STOPPED.value):
                 all_running = False
 
@@ -882,18 +889,14 @@ async def _create_prometheus_config(
 
     Uses a helper container to write the prometheus.yml config to the volume.
     """
-    worker_host = worker_address.split(":")[0]
-
     # Calculate metrics port: Semantic Router main port + 2 = metrics port (9190 internally mapped)
     # The router exposes :8888 (API), :8700 (Dashboard), and :9190 (metrics)
     # We map them as: port, port+1, port+2
     metrics_port = parent_app.port + 2 if parent_app.port else 9192
 
-    # Determine metrics target
-    if worker_host in ("localhost", "127.0.0.1"):
-        metrics_target = f"host.docker.internal:{metrics_port}"
-    else:
-        metrics_target = f"{worker_host}:{metrics_port}"
+    # Prometheus runs in a container, so it must use host.docker.internal
+    # to access services on the same host (regardless of worker's external IP)
+    metrics_target = f"host.docker.internal:{metrics_port}"
 
     # Prometheus configuration YAML - using cat with heredoc to avoid quote issues
     prometheus_config = f"""global:
@@ -972,14 +975,19 @@ async def _configure_grafana(
 
     Grafana needs a moment to start, so we retry a few times.
     """
+    import json
+    from pathlib import Path
+
     worker_host = worker_address.split(":")[0]
 
-    # Determine Prometheus URL from Grafana's perspective
+    # Grafana runs in a container, so it must use host.docker.internal
+    # to access Prometheus on the same host
+    prometheus_url = f"http://host.docker.internal:{prometheus_port}"
+
+    # For API calls from the backend, use the actual host
     if worker_host in ("localhost", "127.0.0.1"):
-        prometheus_url = f"http://host.docker.internal:{prometheus_port}"
         grafana_url = f"http://localhost:{grafana_port}"
     else:
-        prometheus_url = f"http://{worker_host}:{prometheus_port}"
         grafana_url = f"http://{worker_host}:{grafana_port}"
 
     # Grafana datasource payload
@@ -990,6 +998,8 @@ async def _configure_grafana(
         "access": "proxy",
         "isDefault": True,
     }
+
+    datasource_uid = None
 
     # Try to add datasource (Grafana needs time to start)
     max_retries = 5
@@ -1008,9 +1018,21 @@ async def _configure_grafana(
                     auth=("admin", "admin"),
                 )
 
-                if ds_resp.status_code in (200, 409):  # 409 = already exists
-                    logger.info(f"Grafana datasource configured: {ds_resp.status_code}")
-                    return
+                if ds_resp.status_code == 200:
+                    ds_data = ds_resp.json()
+                    datasource_uid = ds_data.get("datasource", {}).get("uid")
+                    logger.info(f"Grafana datasource created: uid={datasource_uid}")
+                    break
+                elif ds_resp.status_code == 409:  # Already exists
+                    # Get existing datasource UID
+                    get_ds_resp = await client.get(
+                        f"{grafana_url}/api/datasources/name/Prometheus",
+                        auth=("admin", "admin"),
+                    )
+                    if get_ds_resp.status_code == 200:
+                        datasource_uid = get_ds_resp.json().get("uid")
+                        logger.info(f"Grafana datasource exists: uid={datasource_uid}")
+                    break
                 else:
                     logger.warning(f"Failed to add Grafana datasource: {ds_resp.text}")
 
@@ -1018,4 +1040,56 @@ async def _configure_grafana(
             logger.debug(f"Grafana not ready yet (attempt {i+1}/{max_retries}): {e}")
             await asyncio.sleep(3)
 
-    logger.warning("Failed to configure Grafana datasource after retries")
+    if not datasource_uid:
+        logger.warning("Failed to configure Grafana datasource after retries")
+        return
+
+    # Import LLM Router dashboard
+    dashboard_path = Path(
+        "/home/rickychen/Desktop/llm/lmstack/semantic-router/deploy/docker-compose/addons/llm-router-dashboard.json"
+    )
+    if not dashboard_path.exists():
+        logger.warning(f"Dashboard file not found: {dashboard_path}")
+        return
+
+    try:
+        dashboard_json = json.loads(dashboard_path.read_text())
+
+        # Replace datasource variable with actual UID
+        dashboard_str = json.dumps(dashboard_json)
+        dashboard_str = dashboard_str.replace("${DS_PROMETHEUS}", datasource_uid)
+        dashboard_str = dashboard_str.replace('"uid": "prometheus"', f'"uid": "{datasource_uid}"')
+        dashboard_json = json.loads(dashboard_str)
+
+        # Remove id to create new dashboard
+        dashboard_json.pop("id", None)
+        dashboard_json["uid"] = "llm-router-metrics"
+
+        # Import dashboard
+        import_payload = {
+            "dashboard": dashboard_json,
+            "overwrite": True,
+            "inputs": [
+                {
+                    "name": "DS_PROMETHEUS",
+                    "type": "datasource",
+                    "pluginId": "prometheus",
+                    "value": datasource_uid,
+                }
+            ],
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            dash_resp = await client.post(
+                f"{grafana_url}/api/dashboards/import",
+                json=import_payload,
+                auth=("admin", "admin"),
+            )
+
+            if dash_resp.status_code == 200:
+                logger.info("LLM Router dashboard imported successfully")
+            else:
+                logger.warning(f"Failed to import dashboard: {dash_resp.text}")
+
+    except Exception as e:
+        logger.exception(f"Failed to import Grafana dashboard: {e}")
