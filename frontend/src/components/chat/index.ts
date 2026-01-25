@@ -6,7 +6,12 @@
  */
 
 // Types and utilities
-export type { ThemeColors, ChatMessage, ParsedContent } from "./types";
+export type {
+  ThemeColors,
+  ChatMessage,
+  ParsedContent,
+  ToolCall,
+} from "./types";
 export {
   getThemeColors,
   parseThinkingContent,

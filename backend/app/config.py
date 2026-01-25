@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # Data directory
     data_dir: Path = Path("./data")
 
+    # Auto-Tuning Agent LLM settings
+    openai_api_key: str = ""
+    openai_base_url: str = ""  # For OpenAI-compatible endpoints
+    openai_model: str = "gpt-4o"  # Model to use for agent reasoning
+
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         if self.cors_origins == "*":

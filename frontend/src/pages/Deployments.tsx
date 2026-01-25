@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Button,
   Card,
@@ -54,11 +55,22 @@ const { Text } = Typography;
 const REFRESH_INTERVAL = 5000;
 
 export default function Deployments() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [models, setModels] = useState<LLMModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Handle URL action parameters (e.g., ?action=new)
+  useEffect(() => {
+    const action = searchParams.get("action");
+    if (action === "new") {
+      setModalOpen(true);
+      // Clear the action param from URL
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [logsModal, setLogsModal] = useState<{
     id: number;
     name: string;

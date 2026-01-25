@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Button,
   Card,
@@ -99,6 +100,7 @@ function useResponsive() {
 }
 
 export default function Models() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { canEdit } = useAuth();
   const [models, setModels] = useState<LLMModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,6 +119,15 @@ export default function Models() {
   const { isDark } = useAppTheme();
 
   const SOURCE_CONFIG = getSourceConfig(isDark);
+
+  // Handle URL action parameters (e.g., ?action=new)
+  useEffect(() => {
+    const action = searchParams.get("action");
+    if (action === "new") {
+      setModalOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const fetchModels = async () => {
     setLoading(true);

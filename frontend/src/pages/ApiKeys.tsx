@@ -7,6 +7,7 @@
  * @module pages/ApiKeys
  */
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Button,
   Card,
@@ -298,6 +299,7 @@ function StatsCard({ title, value, icon, suffix, isDark }: StatsCardProps) {
 // ============================================================================
 
 export default function ApiKeys() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [models, setModels] = useState<LLMModel[]>([]);
   const [runningDeployments, setRunningDeployments] = useState<Deployment[]>(
@@ -318,6 +320,15 @@ export default function ApiKeys() {
   const { isMobile } = useResponsive();
   const { isDark } = useAppTheme();
   const { canEdit } = useAuth();
+
+  // Handle URL action parameters (e.g., ?action=new)
+  useEffect(() => {
+    const action = searchParams.get("action");
+    if (action === "new") {
+      setCreateModalOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Get base URL for API Gateway (always port 52000)
   const baseUrl = useMemo(() => {
