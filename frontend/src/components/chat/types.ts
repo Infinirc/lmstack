@@ -4,11 +4,27 @@
  * Shared types for chat-related components.
  */
 
+/** Tool call from LLM response */
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  /** Model name that generated this response (for MoM/Semantic Router) */
+  model?: string;
+  /** Extended thinking content */
+  thinking?: string;
+  /** Tool calls made by the assistant */
+  toolCalls?: ToolCall[];
 }
 
 export interface ParsedContent {

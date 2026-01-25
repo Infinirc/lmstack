@@ -133,5 +133,49 @@ function createMarkdownComponents(isDark: boolean, colors: ThemeColors) {
         </InlineCode>
       );
     },
+    // Custom link renderer for internal navigation
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    a({ href, children, ...props }: any) {
+      const isInternal = href?.startsWith("/");
+
+      if (isInternal) {
+        return (
+          <a
+            href={href}
+            onClick={(e) => {
+              e.preventDefault();
+              // Use window.location for navigation (works with React Router)
+              window.history.pushState({}, "", href);
+              window.dispatchEvent(new PopStateEvent("popstate"));
+            }}
+            style={{
+              color: isDark ? "#60a5fa" : "#2563eb",
+              textDecoration: "none",
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      }
+
+      // External links open in new tab
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: isDark ? "#60a5fa" : "#2563eb",
+            textDecoration: "none",
+          }}
+          {...props}
+        >
+          {children}
+        </a>
+      );
+    },
   };
 }

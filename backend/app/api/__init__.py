@@ -6,6 +6,8 @@ from app.api import (
     api_keys,
     apps,
     auth,
+    auto_tuning,
+    chat_proxy,
     containers,
     conversations,
     dashboard,
@@ -62,3 +64,9 @@ api_router.include_router(headscale.router, prefix="/headscale", tags=["headscal
 
 # Semantic Router
 api_router.include_router(semantic_router.router)
+
+# Chat Proxy for external endpoints
+api_router.include_router(chat_proxy.router, tags=["chat-proxy"])
+
+# Auto-Tuning Agent
+api_router.include_router(auto_tuning.router, prefix="/auto-tuning", tags=["auto-tuning"])

@@ -6,6 +6,13 @@ from app.models.conversation import Conversation, Message
 from app.models.deployment import Deployment
 from app.models.llm_model import LLMModel
 from app.models.registration_token import RegistrationToken
+from app.models.tuning import (
+    BenchmarkResult,
+    OptimizationTarget,
+    PerformanceKnowledge,
+    TuningJob,
+    TuningJobStatus,
+)
 from app.models.user import User, UserRole
 from app.models.worker import Worker
 
@@ -24,4 +31,9 @@ __all__ = [
     "AppStatus",
     "APP_DEFINITIONS",
     "RegistrationToken",
+    "TuningJob",
+    "TuningJobStatus",
+    "OptimizationTarget",
+    "BenchmarkResult",
+    "PerformanceKnowledge",
 ]
