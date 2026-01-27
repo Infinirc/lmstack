@@ -4,7 +4,7 @@
  * Bayesian optimization-based hyperparameter tuning for LLM deployments.
  * Uses Optuna TPE (Tree-structured Parzen Estimator) for efficient search.
  */
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Button,
   Card,
@@ -25,9 +25,7 @@ import {
   Alert,
   Popconfirm,
   Modal,
-  Timeline,
   Descriptions,
-  Spin,
 } from "antd";
 import {
   PlusOutlined,
@@ -60,7 +58,7 @@ import duration from "dayjs/plugin/duration";
 dayjs.extend(relativeTime);
 dayjs.extend(duration);
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 const REFRESH_INTERVAL = 3000;
 
@@ -336,7 +334,7 @@ function ProgressDisplay({ job }: { job: TuningJob }) {
 
 function JobDetailCard({
   job,
-  onClose,
+  onClose: _onClose,
 }: {
   job: TuningJob;
   onClose: () => void;
