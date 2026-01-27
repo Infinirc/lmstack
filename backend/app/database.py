@@ -61,6 +61,58 @@ async def _run_migrations(conn):
         )
         logger.info("'is_local' column added!")
 
+    # Migration: Add conversation_type to conversations (for Agent chat support)
+    if not await column_exists("conversations", "conversation_type"):
+        logger.info("Adding 'conversation_type' column to conversations table...")
+        await conn.execute(
+            text(
+                "ALTER TABLE conversations ADD COLUMN conversation_type VARCHAR(20) DEFAULT 'chat' NOT NULL"
+            )
+        )
+        logger.info("'conversation_type' column added!")
+
+    # Migration: Add agent_config to conversations (for Agent configuration)
+    if not await column_exists("conversations", "agent_config"):
+        logger.info("Adding 'agent_config' column to conversations table...")
+        await conn.execute(text("ALTER TABLE conversations ADD COLUMN agent_config JSON"))
+        logger.info("'agent_config' column added!")
+
+    # Migration: Add tool_calls to messages (for Agent tool calls)
+    if not await column_exists("messages", "tool_calls"):
+        logger.info("Adding 'tool_calls' column to messages table...")
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN tool_calls JSON"))
+        logger.info("'tool_calls' column added!")
+
+    # Migration: Add tool_call_id to messages (for Agent tool results)
+    if not await column_exists("messages", "tool_call_id"):
+        logger.info("Adding 'tool_call_id' column to messages table...")
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN tool_call_id VARCHAR(100)"))
+        logger.info("'tool_call_id' column added!")
+
+    # Migration: Add step_type to messages (for Agent execution steps)
+    if not await column_exists("messages", "step_type"):
+        logger.info("Adding 'step_type' column to messages table...")
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN step_type VARCHAR(50)"))
+        logger.info("'step_type' column added!")
+
+    # Migration: Add execution_time_ms to messages (for tool execution timing)
+    if not await column_exists("messages", "execution_time_ms"):
+        logger.info("Adding 'execution_time_ms' column to messages table...")
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN execution_time_ms FLOAT"))
+        logger.info("'execution_time_ms' column added!")
+
+    # Migration: Add tuning_config to tuning_jobs (for multi-framework testing)
+    if not await column_exists("tuning_jobs", "tuning_config"):
+        logger.info("Adding 'tuning_config' column to tuning_jobs table...")
+        await conn.execute(text("ALTER TABLE tuning_jobs ADD COLUMN tuning_config JSON"))
+        logger.info("'tuning_config' column added!")
+
+    # Migration: Add conversation_id to tuning_jobs (for Agent Chat integration)
+    if not await column_exists("tuning_jobs", "conversation_id"):
+        logger.info("Adding 'conversation_id' column to tuning_jobs table...")
+        await conn.execute(text("ALTER TABLE tuning_jobs ADD COLUMN conversation_id INTEGER"))
+        logger.info("'conversation_id' column added!")
+
 
 async def init_db():
     """Initialize database tables and run migrations"""

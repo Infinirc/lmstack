@@ -28,6 +28,13 @@ import {
   formatStorageVolumes,
   formatDiskUsage,
 } from "./formatters.js";
+import { webSearch, searchLLMConfig } from "./tools/webSearch.js";
+import {
+  runBenchmark,
+  startAutoTuning,
+  getTuningJobStatus,
+  waitForTuningJob,
+} from "./tools/benchmark.js";
 
 // Configuration from environment
 const LMSTACK_API_URL = process.env.LMSTACK_API_URL || "http://localhost:8000/api";
@@ -393,10 +400,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "number",
               description: "ID of the worker to deploy to",
             },
-            gpu_ids: {
+            name: {
+              type: "string",
+              description: "Name for the deployment (optional, auto-generated if not provided)",
+            },
+            gpu_indexes: {
               type: "array",
               items: { type: "number" },
-              description: "GPU indices to use (optional, defaults to auto-select)",
+              description: "GPU indices to use (optional, defaults to [0])",
+            },
+            backend: {
+              type: "string",
+              enum: ["vllm", "sglang", "ollama"],
+              description: "Inference backend (optional, defaults to vllm)",
             },
           },
           required: ["model_id", "worker_id"],
@@ -675,6 +691,209 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: [],
         },
       },
+
+      // ============== Web Search Tools ==============
+      {
+        name: "web_search",
+        description:
+          "Search the web for information about LLM deployment configurations, performance benchmarks, and optimization guides. Useful for finding optimal settings for specific GPU + model combinations.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description:
+                "Search query (e.g., 'Qwen2.5-7B RTX 4090 vLLM optimal settings')",
+            },
+            max_results: {
+              type: "number",
+              description: "Maximum number of results to return (default: 5)",
+            },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        name: "search_llm_config",
+        description:
+          "Search for optimal LLM deployment configurations for a specific GPU and model combination. Returns deployment guides and performance benchmarks.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            gpu_model: {
+              type: "string",
+              description: "GPU model name (e.g., 'RTX 4090', 'A100', 'H100')",
+            },
+            llm_model: {
+              type: "string",
+              description:
+                "LLM model name (e.g., 'Qwen2.5-7B', 'Llama-3.1-8B', 'Mistral-7B')",
+            },
+            backend: {
+              type: "string",
+              description: "Inference backend (default: 'vLLM')",
+              enum: ["vLLM", "SGLang", "Ollama", "TGI"],
+            },
+          },
+          required: ["gpu_model", "llm_model"],
+        },
+      },
+
+      // ============== Auto-Tuning & Benchmark Tools ==============
+      {
+        name: "run_benchmark",
+        description:
+          "Run a throughput benchmark on a deployment to measure performance (tokens/sec, latency).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deployment_id: {
+              type: "number",
+              description: "ID of the deployment to benchmark",
+            },
+            duration_seconds: {
+              type: "number",
+              description: "Test duration in seconds (default: 60)",
+            },
+            input_length: {
+              type: "number",
+              description: "Input token length (default: 512)",
+            },
+            output_length: {
+              type: "number",
+              description: "Output token length (default: 128)",
+            },
+            concurrency: {
+              type: "number",
+              description: "Number of concurrent requests (default: 1)",
+            },
+          },
+          required: ["deployment_id"],
+        },
+      },
+      {
+        name: "start_auto_tuning",
+        description:
+          "Start an Auto-Tuning job to find optimal deployment configuration for a model. Tests multiple frameworks and parameter combinations. IMPORTANT: After starting, use wait_for_tuning_job to wait for completion - do NOT repeatedly call get_tuning_job_status.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            model_id: {
+              type: "number",
+              description: "ID of the model to tune",
+            },
+            worker_id: {
+              type: "number",
+              description: "ID of the worker to use for testing",
+            },
+            engines: {
+              type: "array",
+              items: { type: "string" },
+              description: "Inference engines to test (default: ['vllm'])",
+            },
+            tensor_parallel_sizes: {
+              type: "array",
+              items: { type: "number" },
+              description: "Tensor parallel sizes to test (default: [1])",
+            },
+            gpu_memory_utilizations: {
+              type: "array",
+              items: { type: "number" },
+              description: "GPU memory utilization values to test (default: [0.85, 0.90])",
+            },
+            max_model_lengths: {
+              type: "array",
+              items: { type: "number" },
+              description: "Max model lengths to test (default: [4096])",
+            },
+            concurrency_levels: {
+              type: "array",
+              items: { type: "number" },
+              description: "Concurrency levels to test (default: [1, 4])",
+            },
+            llm_base_url: {
+              type: "string",
+              description: "OpenAI-compatible API base URL for the agent LLM (e.g., https://api.openai.com/v1)",
+            },
+            llm_api_key: {
+              type: "string",
+              description: "API key for the agent LLM",
+            },
+            llm_model: {
+              type: "string",
+              description: "Model name for the agent LLM (e.g., gpt-4o)",
+            },
+          },
+          required: ["model_id", "worker_id"],
+        },
+      },
+      {
+        name: "get_tuning_job_status",
+        description:
+          "Get the status of an Auto-Tuning job (one-time check only). WARNING: Do NOT use this to monitor progress - use wait_for_tuning_job instead which will block until completion.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            job_id: {
+              type: "number",
+              description: "ID of the tuning job",
+            },
+          },
+          required: ["job_id"],
+        },
+      },
+      {
+        name: "wait_for_tuning_job",
+        description:
+          "Wait for an Auto-Tuning job to complete. This blocks until the job finishes (completed/failed/cancelled) or times out. Use this instead of repeatedly calling get_tuning_job_status. Model loading takes time, so set an appropriate timeout.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            job_id: {
+              type: "number",
+              description: "ID of the tuning job to wait for",
+            },
+            timeout_seconds: {
+              type: "number",
+              description: "Maximum time to wait in seconds (default: 600 = 10 minutes)",
+            },
+          },
+          required: ["job_id"],
+        },
+      },
+      {
+        name: "list_tuning_jobs",
+        description:
+          "List all Auto-Tuning jobs with their status.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: "query_knowledge_base",
+        description:
+          "Query the performance knowledge base for historical benchmark results and recommended configurations.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            model_name: {
+              type: "string",
+              description: "Filter by model name pattern",
+            },
+            gpu_model: {
+              type: "string",
+              description: "Filter by GPU model pattern",
+            },
+            limit: {
+              type: "number",
+              description: "Maximum results to return (default: 10)",
+            },
+          },
+          required: [],
+        },
+      },
     ],
   };
 });
@@ -872,14 +1091,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await client.deployModel(
           Number(args.model_id),
           Number(args.worker_id),
-          args.gpu_ids as number[] | undefined
+          args.name as string | undefined,
+          args.gpu_indexes as number[] | undefined,
+          args.backend as string | undefined
         );
 
         return {
           content: [
             {
               type: "text",
-              text: `Successfully started deployment!\n\nDeployment ID: ${result.id}\nStatus: ${result.status}\n\nThe model is being deployed. Use list_deployments to check status.`,
+              text: `Successfully started deployment!\n\nDeployment ID: ${result.id}\nName: ${result.name}\nStatus: ${result.status}\n\nThe model is being deployed. Use list_deployments to check status.`,
             },
           ],
         };
@@ -1162,6 +1383,212 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: lines.join("\n"),
+            },
+          ],
+        };
+      }
+
+      // ============== Web Search Tools ==============
+      case "web_search": {
+        if (!args?.query) {
+          throw new Error("query is required");
+        }
+
+        const searchResults = await webSearch(
+          String(args.query),
+          args.max_results ? Number(args.max_results) : 5
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: searchResults,
+            },
+          ],
+        };
+      }
+
+      case "search_llm_config": {
+        if (!args?.gpu_model || !args?.llm_model) {
+          throw new Error("gpu_model and llm_model are required");
+        }
+
+        const configResults = await searchLLMConfig(
+          String(args.gpu_model),
+          String(args.llm_model),
+          args.backend ? String(args.backend) : "vLLM"
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: configResults,
+            },
+          ],
+        };
+      }
+
+      // ============== Auto-Tuning & Benchmark Tools ==============
+      case "run_benchmark": {
+        if (!args?.deployment_id) {
+          throw new Error("deployment_id is required");
+        }
+
+        const benchmarkResults = await runBenchmark(client, {
+          deploymentId: Number(args.deployment_id),
+          durationSeconds: args.duration_seconds ? Number(args.duration_seconds) : undefined,
+          inputLength: args.input_length ? Number(args.input_length) : undefined,
+          outputLength: args.output_length ? Number(args.output_length) : undefined,
+          concurrency: args.concurrency ? Number(args.concurrency) : undefined,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: benchmarkResults,
+            },
+          ],
+        };
+      }
+
+      case "start_auto_tuning": {
+        if (!args?.model_id || !args?.worker_id) {
+          throw new Error("model_id and worker_id are required");
+        }
+
+        const tuningResults = await startAutoTuning(
+          client,
+          Number(args.model_id),
+          Number(args.worker_id),
+          {
+            engines: args.engines as string[] | undefined,
+            tensorParallelSizes: args.tensor_parallel_sizes as number[] | undefined,
+            gpuMemoryUtilizations: args.gpu_memory_utilizations as number[] | undefined,
+            maxModelLengths: args.max_model_lengths as number[] | undefined,
+            concurrencyLevels: args.concurrency_levels as number[] | undefined,
+            llmBaseUrl: args.llm_base_url as string | undefined,
+            llmApiKey: args.llm_api_key as string | undefined,
+            llmModel: args.llm_model as string | undefined,
+          }
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: tuningResults,
+            },
+          ],
+        };
+      }
+
+      case "get_tuning_job_status": {
+        if (!args?.job_id) {
+          throw new Error("job_id is required");
+        }
+
+        const statusResults = await getTuningJobStatus(client, Number(args.job_id));
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: statusResults,
+            },
+          ],
+        };
+      }
+
+      case "wait_for_tuning_job": {
+        if (!args?.job_id) {
+          throw new Error("job_id is required");
+        }
+
+        const waitResults = await waitForTuningJob(
+          client,
+          Number(args.job_id),
+          args.timeout_seconds ? Number(args.timeout_seconds) : 600
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: waitResults,
+            },
+          ],
+        };
+      }
+
+      case "list_tuning_jobs": {
+        const jobs = await client.listTuningJobs();
+
+        if (jobs.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "## Auto-Tuning Jobs\n\nNo tuning jobs found.",
+              },
+            ],
+          };
+        }
+
+        let output = "## Auto-Tuning Jobs\n\n";
+        output += "| ID | Model | Status | Progress | Created |\n";
+        output += "|----|-------|--------|----------|--------|\n";
+
+        for (const job of jobs) {
+          const progress = job.progress
+            ? `${job.progress.configs_tested || 0}/${job.progress.configs_total || "?"}`
+            : "-";
+          output += `| ${job.id} | ${job.model_name || "Unknown"} | ${job.status} | ${progress} | ${new Date(job.created_at).toLocaleString()} |\n`;
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: output,
+            },
+          ],
+        };
+      }
+
+      case "query_knowledge_base": {
+        const results = await client.queryKnowledgeBase({
+          model_name: args?.model_name ? String(args.model_name) : undefined,
+          gpu_model: args?.gpu_model ? String(args.gpu_model) : undefined,
+          limit: args?.limit ? Number(args.limit) : 10,
+        });
+
+        if (results.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "## Knowledge Base\n\nNo matching records found.",
+              },
+            ],
+          };
+        }
+
+        let output = "## Knowledge Base Results\n\n";
+        output += "| Model | GPU | Engine | TPS | TTFT | TPOT |\n";
+        output += "|-------|-----|--------|-----|------|------|\n";
+
+        for (const r of results) {
+          output += `| ${r.model_name} | ${r.gpu_count}x ${r.gpu_model} | ${r.engine} | ${r.throughput_tps.toFixed(1)} | ${r.ttft_ms.toFixed(0)}ms | ${r.tpot_ms.toFixed(1)}ms |\n`;
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: output,
             },
           ],
         };

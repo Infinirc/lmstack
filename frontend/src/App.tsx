@@ -33,13 +33,13 @@ import {
 } from "@ant-design/icons";
 
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ChatPanelProvider } from "./contexts/ChatPanelContext";
 import { useAppTheme, useResponsive } from "./hooks";
 import { Header, Sidebar, MobileSidebar } from "./components/layout";
 import {
   ChatPanel,
   CHAT_PANEL_STORAGE_KEY,
   DEFAULT_PANEL_WIDTH,
-  TUNING_JOB_EVENT_KEY,
 } from "./components/chat-panel";
 import Loading from "./components/Loading";
 
@@ -287,45 +287,6 @@ function AppLayout() {
     }
   }, [chatPanelOpen]);
 
-  // Listen for tuning job events to auto-open chat panel
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === TUNING_JOB_EVENT_KEY && e.newValue) {
-        try {
-          const data = JSON.parse(e.newValue);
-          if (data.jobId) {
-            setChatPanelOpen(true);
-          }
-        } catch {
-          // Ignore
-        }
-      }
-    };
-
-    // Check on mount if there's a pending tuning job
-    const checkInitial = () => {
-      const stored = localStorage.getItem(TUNING_JOB_EVENT_KEY);
-      if (stored) {
-        try {
-          const data = JSON.parse(stored);
-          if (
-            data.jobId &&
-            data.timestamp &&
-            Date.now() - data.timestamp < 5000
-          ) {
-            setChatPanelOpen(true);
-          }
-        } catch {
-          // Ignore
-        }
-      }
-    };
-
-    checkInitial();
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
-
   useEffect(() => {
     document.body.setAttribute("data-theme", isDark ? "dark" : "light");
   }, [isDark]);
@@ -387,211 +348,216 @@ function AppLayout() {
   ];
 
   return (
-    <ConfigProvider
-      theme={{
-        algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: {
-          colorPrimary: colors.accent,
-          colorBgContainer: colors.cardBg,
-          colorBorder: colors.border,
-          colorText: colors.text,
-          colorTextSecondary: colors.textSecondary,
-          borderRadius: 8,
-        },
-        components: {
-          Menu: {
-            itemBg: "transparent",
-            itemSelectedBg: colors.menuItemSelected,
-            itemHoverBg: colors.menuItemHover,
-            itemSelectedColor: colors.text,
-            itemColor: colors.textSecondary,
-            iconSize: 16,
-            itemHeight: 40,
-            itemMarginInline: 8,
-            itemBorderRadius: 8,
-          },
-          Card: {
-            colorBgContainer: colors.cardBg,
-            colorBorder: colors.border,
-          },
-          Table: {
-            colorBgContainer: colors.cardBg,
-            headerBg: colors.cardBg,
-            rowHoverBg: colors.menuItemHover,
-          },
-          Button: {
+    <ChatPanelProvider isOpen={chatPanelOpen} onOpenChange={setChatPanelOpen}>
+      <ConfigProvider
+        theme={{
+          algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
+          token: {
             colorPrimary: colors.accent,
-            colorPrimaryHover: colors.textSecondary,
-            primaryColor: isDark ? "#09090b" : "#fafafa",
-          },
-          Input: {
-            colorBgContainer: isDark ? "#18181b" : "#ffffff",
+            colorBgContainer: colors.cardBg,
             colorBorder: colors.border,
+            colorText: colors.text,
+            colorTextSecondary: colors.textSecondary,
+            borderRadius: 8,
           },
-          Select: {
-            colorBgContainer: isDark ? "#18181b" : "#ffffff",
-            colorBorder: colors.border,
+          components: {
+            Menu: {
+              itemBg: "transparent",
+              itemSelectedBg: colors.menuItemSelected,
+              itemHoverBg: colors.menuItemHover,
+              itemSelectedColor: colors.text,
+              itemColor: colors.textSecondary,
+              iconSize: 16,
+              itemHeight: 40,
+              itemMarginInline: 8,
+              itemBorderRadius: 8,
+            },
+            Card: {
+              colorBgContainer: colors.cardBg,
+              colorBorder: colors.border,
+            },
+            Table: {
+              colorBgContainer: colors.cardBg,
+              headerBg: colors.cardBg,
+              rowHoverBg: colors.menuItemHover,
+            },
+            Button: {
+              colorPrimary: colors.accent,
+              colorPrimaryHover: colors.textSecondary,
+              primaryColor: isDark ? "#09090b" : "#fafafa",
+            },
+            Input: {
+              colorBgContainer: isDark ? "#18181b" : "#ffffff",
+              colorBorder: colors.border,
+            },
+            Select: {
+              colorBgContainer: isDark ? "#18181b" : "#ffffff",
+              colorBorder: colors.border,
+            },
+            Modal: {
+              contentBg: isDark ? "#1c1c1e" : colors.cardBg,
+              headerBg: isDark ? "#1c1c1e" : colors.cardBg,
+            },
+            Dropdown: {
+              colorBgElevated: colors.cardBg,
+            },
+            Statistic: {
+              colorTextDescription: colors.textSecondary,
+            },
+            Tag: {
+              defaultBg: colors.menuItemHover,
+              defaultColor: colors.textSecondary,
+            },
+            Progress: {
+              remainingColor: colors.border,
+            },
+            Drawer: {
+              colorBgElevated: colors.siderBg,
+            },
+            Popconfirm: {
+              colorBgElevated: isDark ? "#18181b" : "#ffffff",
+            },
+            Popover: {
+              colorBgElevated: isDark ? "#18181b" : "#ffffff",
+            },
+            Switch: {
+              colorPrimary: isDark ? "#3b82f6" : "#0f172a",
+              colorPrimaryHover: isDark ? "#60a5fa" : "#1e293b",
+            },
           },
-          Modal: {
-            contentBg: isDark ? "#1c1c1e" : colors.cardBg,
-            headerBg: isDark ? "#1c1c1e" : colors.cardBg,
-          },
-          Dropdown: {
-            colorBgElevated: colors.cardBg,
-          },
-          Statistic: {
-            colorTextDescription: colors.textSecondary,
-          },
-          Tag: {
-            defaultBg: colors.menuItemHover,
-            defaultColor: colors.textSecondary,
-          },
-          Progress: {
-            remainingColor: colors.border,
-          },
-          Drawer: {
-            colorBgElevated: colors.siderBg,
-          },
-          Popconfirm: {
-            colorBgElevated: isDark ? "#18181b" : "#ffffff",
-          },
-          Popover: {
-            colorBgElevated: isDark ? "#18181b" : "#ffffff",
-          },
-          Switch: {
-            colorPrimary: isDark ? "#3b82f6" : "#0f172a",
-            colorPrimaryHover: isDark ? "#60a5fa" : "#1e293b",
-          },
-        },
-      }}
-    >
-      <Layout style={{ minHeight: "100vh", background: colors.bg }}>
-        {isMobile && (
-          <MobileSidebar
-            open={mobileDrawerOpen}
-            onClose={() => setMobileDrawerOpen(false)}
-            menuItems={menuItems}
-            selectedKey={location.pathname}
-            openKeys={openKeys}
-            onNavigate={handleNavigate}
-            isDark={isDark}
-            colors={colors}
-          />
-        )}
+        }}
+      >
+        <Layout style={{ minHeight: "100vh", background: colors.bg }}>
+          {isMobile && (
+            <MobileSidebar
+              open={mobileDrawerOpen}
+              onClose={() => setMobileDrawerOpen(false)}
+              menuItems={menuItems}
+              selectedKey={location.pathname}
+              openKeys={openKeys}
+              onNavigate={handleNavigate}
+              isDark={isDark}
+              colors={colors}
+            />
+          )}
 
-        {!isMobile && (
-          <Sidebar
-            collapsed={sidebarCollapsed}
-            onCollapse={setSidebarCollapsed}
-            menuItems={menuItems}
-            selectedKey={location.pathname}
-            openKeys={openKeys}
-            onNavigate={handleNavigate}
-            isDark={isDark}
-            colors={colors}
-          />
-        )}
+          {!isMobile && (
+            <Sidebar
+              collapsed={sidebarCollapsed}
+              onCollapse={setSidebarCollapsed}
+              menuItems={menuItems}
+              selectedKey={location.pathname}
+              openKeys={openKeys}
+              onNavigate={handleNavigate}
+              isDark={isDark}
+              colors={colors}
+            />
+          )}
 
-        <Layout
-          style={{
-            marginLeft: isMobile ? 0 : sidebarWidth,
-            marginRight: chatPanelOpen && !isMobile ? chatPanelWidth : 0,
-            background: colors.bg,
-            transition: "margin-left 0.2s ease, margin-right 0.2s ease",
-          }}
-        >
-          <Header
-            title={currentPageTitle}
-            isDark={isDark}
-            colors={colors}
-            user={user}
-            userMenuItems={userMenuItems}
-            onToggleTheme={toggleTheme}
-            isMobile={isMobile}
-            onMenuClick={() => setMobileDrawerOpen(true)}
-          />
-          <Content
+          <Layout
             style={{
-              padding: isMobile ? "16px" : "24px 32px 32px",
+              marginLeft: isMobile ? 0 : sidebarWidth,
+              marginRight: chatPanelOpen && !isMobile ? chatPanelWidth : 0,
               background: colors.bg,
-              minHeight: "calc(100vh - 56px)",
+              transition: "margin-left 0.2s ease, margin-right 0.2s ease",
             }}
           >
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/chat" element={<Chat />} />
-              <Route path="/workers" element={<Workers />} />
-              <Route path="/images" element={<Images />} />
-              <Route path="/containers" element={<Containers />} />
-              <Route path="/storage" element={<Storage />} />
-              <Route path="/models" element={<Models />} />
-              <Route path="/deployments" element={<Deployments />} />
-              <Route path="/deploy-apps" element={<DeployApps />} />
-              <Route path="/auto-tuning" element={<AutoTuning />} />
-              <Route path="/api-keys" element={<ApiKeys />} />
-              <Route
-                path="/users"
-                element={
-                  <RequireAdmin>
-                    <Users />
-                  </RequireAdmin>
-                }
-              />
-              <Route
-                path="/headscale"
-                element={
-                  <RequireAdmin>
-                    <Headscale />
-                  </RequireAdmin>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <RequireAdmin>
-                    <Settings />
-                  </RequireAdmin>
-                }
-              />
-            </Routes>
-          </Content>
-        </Layout>
-
-        {/* Floating chat button */}
-        {!chatPanelOpen && (
-          <Tooltip title="Open AI Chat" placement="left">
-            <Button
-              type="primary"
-              shape="circle"
-              size="large"
-              icon={<CommentOutlined style={{ fontSize: 20 }} />}
-              onClick={() => setChatPanelOpen(true)}
-              style={{
-                position: "fixed",
-                bottom: 24,
-                right: 24,
-                width: 56,
-                height: 56,
-                zIndex: 998,
-                boxShadow: isDark
-                  ? "0 4px 16px rgba(0, 0, 0, 0.4)"
-                  : "0 4px 16px rgba(0, 0, 0, 0.15)",
-              }}
+            <Header
+              title={currentPageTitle}
+              isDark={isDark}
+              colors={colors}
+              user={user}
+              userMenuItems={userMenuItems}
+              onToggleTheme={toggleTheme}
+              isMobile={isMobile}
+              onMenuClick={() => setMobileDrawerOpen(true)}
             />
-          </Tooltip>
-        )}
+            <Content
+              style={{
+                padding: isMobile ? "16px" : "24px 32px 32px",
+                background: colors.bg,
+                minHeight: "calc(100vh - 56px)",
+              }}
+            >
+              <Routes>
+                <Route
+                  path="/"
+                  element={<Navigate to="/dashboard" replace />}
+                />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/chat" element={<Chat />} />
+                <Route path="/workers" element={<Workers />} />
+                <Route path="/images" element={<Images />} />
+                <Route path="/containers" element={<Containers />} />
+                <Route path="/storage" element={<Storage />} />
+                <Route path="/models" element={<Models />} />
+                <Route path="/deployments" element={<Deployments />} />
+                <Route path="/deploy-apps" element={<DeployApps />} />
+                <Route path="/auto-tuning" element={<AutoTuning />} />
+                <Route path="/api-keys" element={<ApiKeys />} />
+                <Route
+                  path="/users"
+                  element={
+                    <RequireAdmin>
+                      <Users />
+                    </RequireAdmin>
+                  }
+                />
+                <Route
+                  path="/headscale"
+                  element={
+                    <RequireAdmin>
+                      <Headscale />
+                    </RequireAdmin>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <RequireAdmin>
+                      <Settings />
+                    </RequireAdmin>
+                  }
+                />
+              </Routes>
+            </Content>
+          </Layout>
 
-        {/* Chat panel */}
-        <ChatPanel
-          isOpen={chatPanelOpen}
-          onClose={() => setChatPanelOpen(false)}
-          onWidthChange={setChatPanelWidth}
-          isDark={isDark}
-          colors={colors}
-        />
-      </Layout>
-    </ConfigProvider>
+          {/* Floating chat button */}
+          {!chatPanelOpen && (
+            <Tooltip title="Open AI Chat" placement="left">
+              <Button
+                type="primary"
+                shape="circle"
+                size="large"
+                icon={<CommentOutlined style={{ fontSize: 20 }} />}
+                onClick={() => setChatPanelOpen(true)}
+                style={{
+                  position: "fixed",
+                  bottom: 24,
+                  right: 24,
+                  width: 56,
+                  height: 56,
+                  zIndex: 998,
+                  boxShadow: isDark
+                    ? "0 4px 16px rgba(0, 0, 0, 0.4)"
+                    : "0 4px 16px rgba(0, 0, 0, 0.15)",
+                }}
+              />
+            </Tooltip>
+          )}
+
+          {/* Chat panel */}
+          <ChatPanel
+            isOpen={chatPanelOpen}
+            onClose={() => setChatPanelOpen(false)}
+            onWidthChange={setChatPanelWidth}
+            isDark={isDark}
+            colors={colors}
+          />
+        </Layout>
+      </ConfigProvider>
+    </ChatPanelProvider>
   );
 }
 

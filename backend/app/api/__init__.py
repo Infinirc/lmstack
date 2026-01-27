@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api import (
+    agent,
     api_keys,
     apps,
     auth,
@@ -68,5 +69,8 @@ api_router.include_router(semantic_router.router)
 # Chat Proxy for external endpoints
 api_router.include_router(chat_proxy.router, tags=["chat-proxy"])
 
-# Auto-Tuning Agent
+# Auto-Tuning (legacy job-based API)
 api_router.include_router(auto_tuning.router, prefix="/auto-tuning", tags=["auto-tuning"])
+
+# MCP-based AI Agent
+api_router.include_router(agent.router, prefix="/agent", tags=["agent"])

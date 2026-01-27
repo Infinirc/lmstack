@@ -29,8 +29,8 @@ export function formatWorkers(workers: any[]): string {
   const lines: string[] = [`# Workers (${workers.length} total)\n`];
 
   for (const worker of workers) {
-    const statusEmoji = worker.status === "online" ? "🟢" : "🔴";
-    lines.push(`## ${statusEmoji} ${worker.name}`);
+    const statusText = worker.status === "online" ? "[online]" : "[offline]";
+    lines.push(`## ${worker.name} ${statusText}`);
     lines.push(`- **Host:** ${worker.host}`);
     lines.push(`- **Status:** ${worker.status}`);
     lines.push(`- **ID:** ${worker.id}`);
@@ -84,9 +84,9 @@ export function formatContainers(containers: any[]): string {
   for (const [workerName, workerContainers] of Object.entries(byWorker)) {
     lines.push(`## ${workerName}`);
     for (const container of workerContainers) {
-      const statusEmoji = container.status?.toLowerCase().includes("running") ||
-                          container.status?.toLowerCase().includes("up") ? "🟢" : "⚪";
-      lines.push(`- ${statusEmoji} **${container.name}**`);
+      const statusText = container.status?.toLowerCase().includes("running") ||
+                          container.status?.toLowerCase().includes("up") ? "[running]" : "[stopped]";
+      lines.push(`- **${container.name}** ${statusText}`);
       lines.push(`  - Image: ${container.image}`);
       lines.push(`  - Status: ${container.status}`);
       lines.push(`  - ID: ${container.id?.substring(0, 12) || "N/A"}`);
@@ -112,12 +112,12 @@ export function formatDeployments(deployments: any[]): string {
   ];
 
   for (const dep of deployments) {
-    const statusEmoji =
-      dep.status === "running" ? "🟢" :
-      dep.status === "starting" ? "🟡" :
-      dep.status === "stopped" ? "⚪" : "🔴";
+    const statusText =
+      dep.status === "running" ? "[running]" :
+      dep.status === "starting" ? "[starting]" :
+      dep.status === "stopped" ? "[stopped]" : "[error]";
 
-    lines.push(`## ${statusEmoji} ${dep.model?.name || dep.name}`);
+    lines.push(`## ${dep.model?.name || dep.name} ${statusText}`);
     lines.push(`- **ID:** ${dep.id}`);
     lines.push(`- **Status:** ${dep.status}`);
     lines.push(`- **Worker:** ${dep.worker?.name || "Unknown"}`);
@@ -208,11 +208,11 @@ export function formatSystemStatus(
     `**Last Updated:** ${new Date().toLocaleString()}`,
     "",
     "## Summary",
-    `- 🖥️ **Workers:** ${onlineWorkers.length}/${workers.length} online`,
-    `- 📦 **Containers:** ${runningContainers.length}/${containers.length} running`,
-    `- 🚀 **Deployments:** ${runningDeployments.length}/${deployments.length} running`,
-    `- 🤖 **Models:** ${models.length} available`,
-    `- 🎮 **GPU Memory:** ${(usedGpuMemory / 1024).toFixed(1)}GB used / ${(freeGpuMemory / 1024).toFixed(1)}GB free / ${(totalGpuMemory / 1024).toFixed(1)}GB total`,
+    `- **Workers:** ${onlineWorkers.length}/${workers.length} online`,
+    `- **Containers:** ${runningContainers.length}/${containers.length} running`,
+    `- **Deployments:** ${runningDeployments.length}/${deployments.length} running`,
+    `- **Models:** ${models.length} available`,
+    `- **GPU Memory:** ${(usedGpuMemory / 1024).toFixed(1)}GB used / ${(freeGpuMemory / 1024).toFixed(1)}GB free / ${(totalGpuMemory / 1024).toFixed(1)}GB total`,
     "",
   ];
 

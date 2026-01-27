@@ -79,8 +79,14 @@ export function ChatInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={disabled ? "Select a model first" : "Send a Message"}
-        disabled={disabled || isStreaming}
+        placeholder={
+          disabled
+            ? "Select a model first"
+            : isStreaming
+              ? "Waiting for response..."
+              : "Send a Message"
+        }
+        disabled={disabled}
         rows={1}
         style={{
           flex: 1,

@@ -95,12 +95,16 @@ export class LMStackClient {
   async deployModel(
     modelId: number,
     workerId: number,
-    gpuIds?: number[]
+    name?: string,
+    gpuIndexes?: number[],
+    backend?: string
   ): Promise<any> {
     const response = await this.client.post("/deployments", {
       model_id: modelId,
       worker_id: workerId,
-      gpu_ids: gpuIds,
+      name: name || `deployment-${modelId}-${Date.now()}`,
+      gpu_indexes: gpuIndexes || [0],
+      backend: backend || "vllm",
     });
     return response.data;
   }
@@ -223,5 +227,85 @@ export class LMStackClient {
   async getDashboard(): Promise<any> {
     const response = await this.client.get("/dashboard");
     return response.data;
+  }
+
+  // ============================================================================
+  // Benchmark & Auto-Tuning
+  // ============================================================================
+
+  async runBenchmark(config: {
+    deployment_id: number;
+    test_type?: string;
+    duration_seconds?: number;
+    input_length?: number;
+    output_length?: number;
+    concurrency?: number;
+  }): Promise<any> {
+    try {
+      const response = await this.client.post("/auto-tuning/benchmark", config);
+      return response.data;
+    } catch (error: any) {
+      return { error: error.response?.data?.detail || error.message };
+    }
+  }
+
+  async createTuningJob(config: {
+    model_id: number;
+    worker_id: number;
+    optimization_target?: string;
+    tuning_config?: any;
+    llm_config?: {
+      deployment_id?: number;
+      base_url?: string;
+      api_key?: string;
+      model?: string;
+    };
+  }): Promise<any> {
+    try {
+      const response = await this.client.post("/auto-tuning/jobs", config);
+      return response.data;
+    } catch (error: any) {
+      return { error: error.response?.data?.detail || error.message };
+    }
+  }
+
+  async getTuningJob(jobId: number): Promise<any> {
+    try {
+      const response = await this.client.get(`/auto-tuning/jobs/${jobId}`);
+      return response.data;
+    } catch (error: any) {
+      return null;
+    }
+  }
+
+  async listTuningJobs(): Promise<any[]> {
+    try {
+      const response = await this.client.get("/auto-tuning/jobs");
+      return response.data.items || [];
+    } catch (error: any) {
+      return [];
+    }
+  }
+
+  async cancelTuningJob(jobId: number): Promise<boolean> {
+    try {
+      await this.client.post(`/auto-tuning/jobs/${jobId}/cancel`);
+      return true;
+    } catch (error: any) {
+      return false;
+    }
+  }
+
+  async queryKnowledgeBase(query: {
+    model_name?: string;
+    gpu_model?: string;
+    limit?: number;
+  }): Promise<any[]> {
+    try {
+      const response = await this.client.post("/auto-tuning/knowledge/query", query);
+      return response.data.items || [];
+    } catch (error: any) {
+      return [];
+    }
   }
 }
