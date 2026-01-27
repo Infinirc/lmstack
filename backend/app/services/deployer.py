@@ -740,9 +740,14 @@ class DeployerService:
         """Build SGLang container command and environment.
 
         SGLang uses similar command-line arguments to vLLM but with some
-        differences in parameter names.
+        differences in parameter names. Unlike vLLM, the sglang Docker image
+        does not have a proper ENTRYPOINT, so we need to explicitly specify
+        the launch command.
         """
         cmd = [
+            "python",
+            "-m",
+            "sglang.launch_server",
             "--model-path",
             model.model_id,
             "--host",

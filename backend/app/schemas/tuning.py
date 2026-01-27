@@ -25,17 +25,52 @@ class LLMConfig(BaseModel):
 # ============================================================================
 
 
+class TuningParameters(BaseModel):
+    """Parameters to test during tuning"""
+
+    tensor_parallel_size: list[int] = Field(
+        default=[1], description="Tensor parallel sizes to test"
+    )
+    gpu_memory_utilization: list[float] = Field(
+        default=[0.85, 0.90], description="GPU memory utilization values to test (0.0-1.0)"
+    )
+    max_model_len: list[int] = Field(default=[4096], description="Max model lengths to test")
+    max_num_seqs: list[int] | None = Field(
+        default=None, description="Max concurrent sequences to test"
+    )
+
+
+class BenchmarkSettings(BaseModel):
+    """Benchmark test settings"""
+
+    duration_seconds: int = Field(default=60, ge=10, le=300, description="Test duration per config")
+    input_length: int = Field(default=512, ge=64, le=8192, description="Input token length")
+    output_length: int = Field(default=128, ge=16, le=2048, description="Output token length")
+    concurrency: list[int] = Field(default=[1, 4], description="Concurrency levels to test")
+
+
+class TuningConfig(BaseModel):
+    """Full tuning configuration"""
+
+    engines: list[str] = Field(
+        default=["vllm"], description="Inference engines to test: vllm, sglang, ollama"
+    )
+    parameters: TuningParameters = Field(default_factory=TuningParameters)
+    benchmark: BenchmarkSettings = Field(default_factory=BenchmarkSettings)
+
+
 class TuningJobCreate(BaseModel):
     """Schema for creating a tuning job"""
 
     model_id: int = Field(..., description="ID of the model to tune")
     worker_id: int = Field(..., description="ID of the worker to use")
     optimization_target: OptimizationTarget = Field(
-        default=OptimizationTarget.BALANCED, description="What to optimize for"
+        default=OptimizationTarget.THROUGHPUT, description="What to optimize for"
     )
-    llm_config: LLMConfig | None = Field(
-        None, description="LLM configuration for the agent (uses chat panel's selected model)"
+    tuning_config: TuningConfig = Field(
+        default_factory=TuningConfig, description="Tuning configuration"
     )
+    llm_config: LLMConfig | None = Field(None, description="LLM configuration for the agent")
 
 
 class TuningJobProgress(BaseModel):
@@ -44,12 +79,18 @@ class TuningJobProgress(BaseModel):
     step: int
     total_steps: int
     step_name: str
-    step_description: str
+    step_description: str | None = None
     configs_tested: int = 0
     configs_total: int = 0
     current_config: dict | None = None
     best_config_so_far: dict | None = None
     best_score_so_far: float | None = None
+    # Bayesian optimization specific fields
+    completed_trials: int | None = None
+    successful_trials: int | None = None
+    deployment_status: str | None = None
+    deployment_message: str | None = None
+    elapsed_seconds: int | None = None
 
 
 class ConversationMessage(BaseModel):
@@ -63,6 +104,14 @@ class ConversationMessage(BaseModel):
     name: str | None = None  # Tool name for tool responses
 
 
+class TuningLogEntry(BaseModel):
+    """A single log entry"""
+
+    timestamp: str
+    level: str
+    message: str
+
+
 class TuningJobResponse(BaseModel):
     """Schema for tuning job response"""
 
@@ -70,6 +119,7 @@ class TuningJobResponse(BaseModel):
     model_id: int
     worker_id: int
     optimization_target: str
+    tuning_config: TuningConfig | None = None
     status: str
     status_message: str | None = None
     current_step: int
@@ -77,6 +127,8 @@ class TuningJobResponse(BaseModel):
     progress: TuningJobProgress | None = None
     best_config: dict | None = None
     all_results: list | None = None
+    logs: list[TuningLogEntry] | None = None
+    conversation_id: int | None = None
     conversation_log: list[ConversationMessage] | None = None
     created_at: datetime
     updated_at: datetime

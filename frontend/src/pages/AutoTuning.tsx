@@ -1,9 +1,14 @@
-import { useEffect, useState, useCallback } from "react";
+/**
+ * Auto-Tuning Page
+ *
+ * Bayesian optimization-based hyperparameter tuning for LLM deployments.
+ * Uses Optuna TPE (Tree-structured Parzen Estimator) for efficient search.
+ */
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   Button,
   Card,
   Form,
-  Modal,
   Select,
   Space,
   Table,
@@ -13,15 +18,16 @@ import {
   Typography,
   Empty,
   Tooltip,
-  Radio,
   Tabs,
   Statistic,
   Row,
   Col,
-  Input,
-  Divider,
   Alert,
   Popconfirm,
+  Modal,
+  Timeline,
+  Descriptions,
+  Spin,
 } from "antd";
 import {
   PlusOutlined,
@@ -35,82 +41,54 @@ import {
   RocketOutlined,
   BarChartOutlined,
   HistoryOutlined,
-  ApiOutlined,
   DeleteOutlined,
-  CommentOutlined,
+  PlayCircleOutlined,
+  ClockCircleOutlined,
+  AimOutlined,
+  SettingOutlined,
+  LineChartOutlined,
 } from "@ant-design/icons";
-import { useAppTheme } from "../hooks/useTheme";
 import { workersApi, modelsApi } from "../services/api";
-import { deploymentsApi } from "../api";
 import { api } from "../api/client";
-import type { Worker, LLMModel, Deployment } from "../types";
+import type { Worker, LLMModel } from "../types";
 import { useResponsive } from "../hooks";
 import { useAuth } from "../contexts/AuthContext";
-import {
-  CHAT_PANEL_STORAGE_KEY,
-  TUNING_JOB_EVENT_KEY,
-  type CustomEndpoint,
-  type ChatPanelState,
-} from "../components/chat-panel";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import duration from "dayjs/plugin/duration";
 
 dayjs.extend(relativeTime);
+dayjs.extend(duration);
 
-const { Text, Paragraph } = Typography;
-
-// Helper to load chat panel state (shared with Chat Panel)
-function loadChatPanelState(): Partial<ChatPanelState> {
-  try {
-    const saved = localStorage.getItem(CHAT_PANEL_STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch {
-    // Ignore load errors
-  }
-  return {};
-}
-
-// Helper to save chat panel state (shared with Chat Panel)
-function saveChatPanelState(state: Partial<ChatPanelState>) {
-  try {
-    const current = loadChatPanelState();
-    localStorage.setItem(
-      CHAT_PANEL_STORAGE_KEY,
-      JSON.stringify({ ...current, ...state }),
-    );
-  } catch {
-    // Ignore save errors
-  }
-}
+const { Text, Title } = Typography;
 
 const REFRESH_INTERVAL = 3000;
 
+// ============================================================================
 // Types
+// ============================================================================
+
 interface TuningJobProgress {
   step: number;
   total_steps: number;
   step_name: string;
-  step_description: string;
-  configs_tested: number;
-  configs_total: number;
+  step_description?: string;
   current_config?: Record<string, unknown>;
-  best_config_so_far?: Record<string, unknown>;
-  best_score_so_far?: number;
+  completed_trials?: number;
+  successful_trials?: number;
 }
 
-interface ConversationMessage {
-  role: "user" | "assistant" | "tool";
-  content: string;
-  timestamp?: string;
-  tool_calls?: Array<{
-    id: string;
-    name: string;
-    arguments: string;
-  }>;
-  tool_call_id?: string;
-  name?: string; // tool name
+interface TrialResult {
+  parameters?: Record<string, unknown>;
+  metrics?: Record<string, number>;
+  success?: boolean;
+  error?: string;
+}
+
+interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
 }
 
 interface TuningJob {
@@ -124,8 +102,8 @@ interface TuningJob {
   total_steps: number;
   progress?: TuningJobProgress;
   best_config?: Record<string, unknown>;
-  all_results?: Record<string, unknown>[];
-  conversation_log?: ConversationMessage[];
+  all_results?: TrialResult[];
+  logs?: LogEntry[];
   created_at: string;
   updated_at: string;
   completed_at?: string;
@@ -150,77 +128,416 @@ interface KnowledgeRecord {
   created_at: string;
 }
 
-// Helper functions
-function getStatusColor(status: string): string {
+// ============================================================================
+// Constants
+// ============================================================================
+
+const STATUS_CONFIG: Record<
+  string,
+  { color: string; icon: React.ReactNode; label: string }
+> = {
+  pending: {
+    color: "default",
+    icon: <ClockCircleOutlined />,
+    label: "Pending",
+  },
+  analyzing: {
+    color: "processing",
+    icon: <LoadingOutlined spin />,
+    label: "Analyzing",
+  },
+  querying_kb: {
+    color: "processing",
+    icon: <DatabaseOutlined />,
+    label: "Querying KB",
+  },
+  exploring: {
+    color: "processing",
+    icon: <ExperimentOutlined />,
+    label: "Exploring",
+  },
+  benchmarking: {
+    color: "processing",
+    icon: <LineChartOutlined />,
+    label: "Benchmarking",
+  },
+  completed: {
+    color: "success",
+    icon: <CheckCircleOutlined />,
+    label: "Completed",
+  },
+  failed: { color: "error", icon: <CloseCircleOutlined />, label: "Failed" },
+  cancelled: {
+    color: "warning",
+    icon: <CloseCircleOutlined />,
+    label: "Cancelled",
+  },
+};
+
+const OPTIMIZATION_TARGETS = [
+  {
+    value: "throughput",
+    label: "Throughput",
+    description: "Maximize tokens per second (TPS)",
+    icon: <ThunderboltOutlined />,
+  },
+  {
+    value: "latency",
+    label: "Latency",
+    description: "Minimize time-to-first-token and response time",
+    icon: <RocketOutlined />,
+  },
+  {
+    value: "balanced",
+    label: "Balanced",
+    description: "Optimize for both throughput and latency",
+    icon: <AimOutlined />,
+  },
+];
+
+// ============================================================================
+// Helper Components
+// ============================================================================
+
+function StatusTag({ status }: { status: string }) {
+  const config = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  return (
+    <Tag icon={config.icon} color={config.color}>
+      {config.label}
+    </Tag>
+  );
+}
+
+function TargetTag({ target }: { target: string }) {
+  const config = OPTIMIZATION_TARGETS.find((t) => t.value === target);
   const colors: Record<string, string> = {
-    pending: "default",
-    analyzing: "processing",
-    querying_kb: "processing",
-    exploring: "processing",
-    benchmarking: "processing",
-    completed: "success",
-    failed: "error",
-    cancelled: "warning",
+    throughput: "green",
+    latency: "blue",
+    balanced: "purple",
   };
-  return colors[status] || "default";
+  return (
+    <Tag color={colors[target] || "default"}>{config?.label || target}</Tag>
+  );
 }
 
-function getStatusIcon(status: string) {
-  const icons: Record<string, React.ReactNode> = {
-    pending: <LoadingOutlined />,
-    analyzing: <LoadingOutlined spin />,
-    querying_kb: <DatabaseOutlined />,
-    exploring: <ExperimentOutlined />,
-    benchmarking: <BarChartOutlined />,
-    completed: <CheckCircleOutlined />,
-    failed: <CloseCircleOutlined />,
-    cancelled: <CloseCircleOutlined />,
+function LogViewer({
+  logs,
+  maxHeight = 300,
+}: {
+  logs: LogEntry[];
+  maxHeight?: number;
+}) {
+  const logContainerRef = React.useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new logs arrive
+  React.useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const getLevelColor = (level: string) => {
+    switch (level.toUpperCase()) {
+      case "ERROR":
+        return "#ff4d4f";
+      case "WARNING":
+        return "#faad14";
+      case "INFO":
+      default:
+        return "#8c8c8c";
+    }
   };
-  return icons[status] || <LoadingOutlined />;
+
+  return (
+    <div
+      ref={logContainerRef}
+      style={{
+        background: "#1e1e1e",
+        borderRadius: 4,
+        padding: 12,
+        maxHeight,
+        overflow: "auto",
+        fontFamily: "'Fira Code', 'Consolas', monospace",
+        fontSize: 12,
+        lineHeight: 1.6,
+      }}
+    >
+      {logs.length === 0 ? (
+        <Text type="secondary" style={{ color: "#666" }}>
+          Waiting for logs...
+        </Text>
+      ) : (
+        logs.map((log, idx) => {
+          const time = dayjs(log.timestamp).format("HH:mm:ss");
+          return (
+            <div key={idx} style={{ color: "#d4d4d4" }}>
+              <span style={{ color: "#666" }}>[{time}]</span>{" "}
+              <span style={{ color: getLevelColor(log.level) }}>
+                {log.level.padEnd(7)}
+              </span>{" "}
+              <span>{log.message}</span>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
 }
 
-function getOptimizationTargetLabel(target: string): string {
-  const labels: Record<string, string> = {
-    throughput: "Throughput (TPS)",
-    latency: "Latency (TTFT/TPOT)",
-    cost: "Cost (Min Resources)",
-    balanced: "Balanced",
-  };
-  return labels[target] || target;
+function ProgressDisplay({ job }: { job: TuningJob }) {
+  const { progress, status } = job;
+
+  if (!progress) {
+    return <Text type="secondary">-</Text>;
+  }
+
+  const completed = progress.completed_trials ?? progress.step ?? 0;
+  const total = progress.total_steps || 10;
+  const percent = Math.round((completed / total) * 100);
+  const successful = progress.successful_trials ?? 0;
+
+  const isRunning = [
+    "analyzing",
+    "querying_kb",
+    "exploring",
+    "benchmarking",
+  ].includes(status);
+
+  return (
+    <Tooltip
+      title={
+        <div>
+          <div>
+            Trial {completed} / {total}
+          </div>
+          <div>Successful: {successful}</div>
+          {progress.step_name && <div>Current: {progress.step_name}</div>}
+        </div>
+      }
+    >
+      <Progress
+        percent={percent}
+        size="small"
+        status={
+          status === "failed"
+            ? "exception"
+            : status === "completed"
+              ? "success"
+              : isRunning
+                ? "active"
+                : "normal"
+        }
+        format={() => `${completed}/${total}`}
+        style={{ width: 100, minWidth: 80 }}
+      />
+    </Tooltip>
+  );
 }
+
+function JobDetailCard({
+  job,
+  onClose,
+}: {
+  job: TuningJob;
+  onClose: () => void;
+}) {
+  const bestMetrics = job.best_config?.metrics as
+    | Record<string, number>
+    | undefined;
+  const trials = job.all_results || [];
+  const successfulTrials = trials.filter((t) => t.success);
+  const logs = job.logs || [];
+
+  return (
+    <div>
+      {/* Best Configuration */}
+      {job.best_config && (
+        <Card
+          size="small"
+          title={
+            <Space>
+              <CheckCircleOutlined style={{ color: "#52c41a" }} />
+              <span>Best Configuration</span>
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          <Row gutter={[16, 16]}>
+            <Col span={6}>
+              <Statistic
+                title="Throughput"
+                value={bestMetrics?.throughput_tps ?? 0}
+                suffix="TPS"
+                precision={1}
+                valueStyle={{ color: "#52c41a" }}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="TTFT"
+                value={bestMetrics?.avg_ttft_ms ?? 0}
+                suffix="ms"
+                precision={0}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="Engine"
+                value={(job.best_config.engine as string) || "vllm"}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="GPU Memory"
+                value={(
+                  (job.best_config.gpu_memory_utilization as number) * 100 || 90
+                ).toFixed(0)}
+                suffix="%"
+              />
+            </Col>
+          </Row>
+
+          <Descriptions size="small" column={2} style={{ marginTop: 16 }}>
+            <Descriptions.Item label="Max Sequences">
+              {(job.best_config.max_num_seqs as number) || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Tensor Parallel">
+              {(job.best_config.tensor_parallel_size as number) || 1}
+            </Descriptions.Item>
+            <Descriptions.Item label="Objective Value">
+              {(job.best_config.objective_value as number)?.toFixed(2) || "-"}
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+      )}
+
+      {/* Logs */}
+      {logs.length > 0 && (
+        <Card
+          size="small"
+          title={
+            <Space>
+              <BarChartOutlined />
+              <span>Execution Logs</span>
+              <Tag>{logs.length} entries</Tag>
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          <LogViewer logs={logs} maxHeight={250} />
+        </Card>
+      )}
+
+      {/* Trial Results Table */}
+      {trials.length > 0 && (
+        <Card size="small" title="Trial History">
+          <Table
+            dataSource={trials.map((t, idx) => ({
+              ...t,
+              key: idx,
+              trial_num: idx + 1,
+            }))}
+            columns={[
+              {
+                title: "#",
+                dataIndex: "trial_num",
+                key: "trial_num",
+                width: 50,
+              },
+              {
+                title: "Engine",
+                key: "engine",
+                render: (_, record) => record.parameters?.engine || "-",
+              },
+              {
+                title: "GPU Mem",
+                key: "gpu_mem",
+                render: (_, record) => {
+                  const val = record.parameters
+                    ?.gpu_memory_utilization as number;
+                  return val ? `${(val * 100).toFixed(0)}%` : "-";
+                },
+              },
+              {
+                title: "TPS",
+                key: "tps",
+                render: (_, record) => {
+                  const val = record.metrics?.throughput_tps;
+                  return val ? (
+                    <Text type="success">{val.toFixed(1)}</Text>
+                  ) : (
+                    "-"
+                  );
+                },
+              },
+              {
+                title: "TTFT",
+                key: "ttft",
+                render: (_, record) => {
+                  const val = record.metrics?.avg_ttft_ms;
+                  return val ? `${val.toFixed(0)} ms` : "-";
+                },
+              },
+              {
+                title: "Status",
+                key: "success",
+                width: 80,
+                render: (_, record) =>
+                  record.success ? (
+                    <CheckCircleOutlined style={{ color: "#52c41a" }} />
+                  ) : (
+                    <Tooltip title={record.error}>
+                      <CloseCircleOutlined style={{ color: "#ff4d4f" }} />
+                    </Tooltip>
+                  ),
+              },
+            ]}
+            size="small"
+            pagination={false}
+            scroll={{ y: 200 }}
+          />
+        </Card>
+      )}
+
+      {/* Summary */}
+      <div style={{ marginTop: 16, textAlign: "center" }}>
+        <Space split={<span style={{ color: "#d9d9d9" }}>|</span>}>
+          <Text type="secondary">Total Trials: {trials.length}</Text>
+          <Text type="secondary">Successful: {successfulTrials.length}</Text>
+          {job.completed_at && (
+            <Text type="secondary">
+              Duration:{" "}
+              {dayjs(job.completed_at).diff(dayjs(job.created_at), "minute")}{" "}
+              min
+            </Text>
+          )}
+        </Space>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Main Component
+// ============================================================================
 
 export default function AutoTuning() {
   const [jobs, setJobs] = useState<TuningJob[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [models, setModels] = useState<LLMModel[]>([]);
-  const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [knowledge, setKnowledge] = useState<KnowledgeRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [detailModal, setDetailModal] = useState<TuningJob | null>(null);
+  const [logModal, setLogModal] = useState<TuningJob | null>(null);
   const [form] = Form.useForm();
-  const [addEndpointForm] = Form.useForm();
   const { isMobile } = useResponsive();
-  const { isDark } = useAppTheme();
   const { canEdit } = useAuth();
 
-  // Custom endpoints from shared localStorage (same as Chat Panel)
-  const [customEndpoints, setCustomEndpoints] = useState<CustomEndpoint[]>(
-    () => loadChatPanelState().customEndpoints || [],
-  );
+  // --------------------------------------------------------------------------
+  // Data Fetching
+  // --------------------------------------------------------------------------
 
-  // LLM source type for modal
-  const [llmSourceType, setLlmSourceType] = useState<"deployment" | "custom">(
-    "deployment",
-  );
-  const [showAddEndpoint, setShowAddEndpoint] = useState(false);
-
-  // Save custom endpoints to shared localStorage (same as Chat Panel)
-  useEffect(() => {
-    saveChatPanelState({ customEndpoints });
-  }, [customEndpoints]);
-
-  // Fetch tuning jobs
   const fetchJobs = useCallback(async () => {
     try {
       const response = await api.get("/auto-tuning/jobs");
@@ -230,7 +547,6 @@ export default function AutoTuning() {
     }
   }, []);
 
-  // Fetch knowledge base
   const fetchKnowledge = useCallback(async () => {
     try {
       const response = await api.post("/auto-tuning/knowledge/query", {
@@ -242,23 +558,19 @@ export default function AutoTuning() {
     }
   }, []);
 
-  // Fetch workers, models, and deployments
   const fetchResources = useCallback(async () => {
     try {
-      const [workersRes, modelsRes, deploymentsRes] = await Promise.all([
+      const [workersRes, modelsRes] = await Promise.all([
         workersApi.list(),
         modelsApi.list(),
-        deploymentsApi.list({ status: "running" }),
       ]);
       setWorkers(workersRes.items || []);
       setModels(modelsRes.items || []);
-      setDeployments(deploymentsRes.items || []);
     } catch (error) {
       console.error("Failed to fetch resources:", error);
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -279,103 +591,49 @@ export default function AutoTuning() {
         "benchmarking",
       ].includes(j.status),
     );
-
-    if (!hasRunningJobs) return;
-
+    if (!hasRunningJobs && !logModal) return;
     const interval = setInterval(fetchJobs, REFRESH_INTERVAL);
     return () => clearInterval(interval);
-  }, [jobs, fetchJobs]);
+  }, [jobs, fetchJobs, logModal]);
 
-  // Create new tuning job
+  // Update log modal when jobs refresh
+  useEffect(() => {
+    if (logModal) {
+      const updatedJob = jobs.find((j) => j.id === logModal.id);
+      if (updatedJob) {
+        setLogModal(updatedJob);
+      }
+    }
+  }, [jobs, logModal?.id]);
+
+  // --------------------------------------------------------------------------
+  // Actions
+  // --------------------------------------------------------------------------
+
   const handleCreate = async (values: {
     model_id: number;
     worker_id: number;
     optimization_target: string;
-    llm_deployment_id?: number;
-    llm_custom_endpoint?: string;
   }) => {
     try {
-      // Build LLM config based on selection
-      let llm_config: Record<string, unknown> | undefined;
-
-      if (llmSourceType === "deployment" && values.llm_deployment_id) {
-        llm_config = { deployment_id: values.llm_deployment_id };
-      } else if (llmSourceType === "custom" && values.llm_custom_endpoint) {
-        const endpoint = customEndpoints.find(
-          (e) => e.id === values.llm_custom_endpoint,
-        );
-        if (endpoint) {
-          llm_config = {
-            base_url: endpoint.endpoint,
-            api_key: endpoint.apiKey,
-            model: endpoint.modelId,
-          };
-        }
-      }
-
       const response = await api.post("/auto-tuning/jobs", {
         model_id: values.model_id,
         worker_id: values.worker_id,
         optimization_target: values.optimization_target,
-        llm_config,
       });
-      message.success("Auto-tuning job started");
-      setModalOpen(false);
-      form.resetFields();
-      setLlmSourceType("deployment");
-      fetchJobs();
 
-      // Trigger Chat Panel to open with tuning job view
-      const jobId = response.data.id;
-      if (jobId) {
-        localStorage.setItem(
-          TUNING_JOB_EVENT_KEY,
-          JSON.stringify({
-            jobId,
-            timestamp: Date.now(),
-          }),
-        );
-        // Dispatch storage event for same-window listeners
-        window.dispatchEvent(
-          new StorageEvent("storage", {
-            key: TUNING_JOB_EVENT_KEY,
-            newValue: JSON.stringify({ jobId, timestamp: Date.now() }),
-          }),
-        );
-      }
+      message.success(`Tuning job #${response.data.id} created successfully`);
+      setCreateModalOpen(false);
+      form.resetFields();
+      fetchJobs();
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail || "Failed to start tuning job");
+      message.error(
+        err.response?.data?.detail || "Failed to create tuning job",
+      );
     }
   };
 
-  // Add custom endpoint
-  const handleAddEndpoint = (values: {
-    name: string;
-    endpoint: string;
-    apiKey?: string;
-    modelId?: string;
-  }) => {
-    const newEndpoint: CustomEndpoint = {
-      id: `custom-${Date.now()}`,
-      name: values.name,
-      endpoint: values.endpoint,
-      apiKey: values.apiKey,
-      modelId: values.modelId,
-    };
-    setCustomEndpoints((prev) => [...prev, newEndpoint]);
-    addEndpointForm.resetFields();
-    setShowAddEndpoint(false);
-    message.success("Endpoint added");
-  };
-
-  // Delete custom endpoint
-  const handleDeleteEndpoint = (id: string) => {
-    setCustomEndpoints((prev) => prev.filter((e) => e.id !== id));
-    message.success("Endpoint removed");
-  };
-
-  // Cancel job
   const handleCancel = async (jobId: number) => {
     try {
       await api.post(`/auto-tuning/jobs/${jobId}/cancel`);
@@ -387,7 +645,6 @@ export default function AutoTuning() {
     }
   };
 
-  // Delete job
   const handleDelete = async (jobId: number) => {
     try {
       await api.delete(`/auto-tuning/jobs/${jobId}`);
@@ -399,46 +656,45 @@ export default function AutoTuning() {
     }
   };
 
-  // View job details (fetch with conversation log)
-  const [detailLoading, setDetailLoading] = useState(false);
-  const handleViewDetail = async (job: TuningJob) => {
-    setDetailModal(job); // Show modal immediately with basic info
-    setDetailLoading(true);
+  const handleDeployBestConfig = async (job: TuningJob) => {
+    if (!job.best_config) {
+      message.warning("No best configuration available");
+      return;
+    }
+
     try {
-      const response = await api.get(`/auto-tuning/jobs/${job.id}`);
-      setDetailModal(response.data);
-    } catch (error) {
-      console.error("Failed to fetch job details:", error);
-    } finally {
-      setDetailLoading(false);
+      const engine = (job.best_config.engine as string) || "vllm";
+      const gpuMemUtil = job.best_config.gpu_memory_utilization as number;
+      const maxNumSeqs = job.best_config.max_num_seqs as number;
+      const tpSize = (job.best_config.tensor_parallel_size as number) || 1;
+
+      const extraParams: Record<string, unknown> = {};
+      if (gpuMemUtil) extraParams["gpu-memory-utilization"] = gpuMemUtil;
+      if (maxNumSeqs) extraParams["max-num-seqs"] = maxNumSeqs;
+
+      await api.post("/deployments", {
+        model_id: job.model_id,
+        worker_id: job.worker_id,
+        name: `tuned-${job.model_name?.split("/").pop() || "model"}-${Date.now()}`,
+        backend: engine,
+        gpu_indexes: Array.from({ length: tpSize }, (_, i) => i),
+        extra_params: extraParams,
+      });
+
+      message.success("Deployment created with optimized configuration");
+      setDetailModal(null);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(
+        err.response?.data?.detail || "Failed to create deployment",
+      );
     }
   };
 
-  // Auto-refresh detail modal for running jobs
-  useEffect(() => {
-    if (!detailModal) return;
-    const isRunning = [
-      "pending",
-      "analyzing",
-      "querying_kb",
-      "exploring",
-      "benchmarking",
-    ].includes(detailModal.status);
-    if (!isRunning) return;
+  // --------------------------------------------------------------------------
+  // Computed Values
+  // --------------------------------------------------------------------------
 
-    const interval = setInterval(async () => {
-      try {
-        const response = await api.get(`/auto-tuning/jobs/${detailModal.id}`);
-        setDetailModal(response.data);
-      } catch (error) {
-        console.error("Failed to refresh job:", error);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [detailModal?.id, detailModal?.status]);
-
-  // Stats
   const completedJobs = jobs.filter((j) => j.status === "completed").length;
   const runningJobs = jobs.filter((j) =>
     [
@@ -449,42 +705,50 @@ export default function AutoTuning() {
       "benchmarking",
     ].includes(j.status),
   ).length;
+  const availableWorkers = workers.filter(
+    (w) => w.status === "online" && w.gpu_info && w.gpu_info.length > 0,
+  );
 
-  // Table columns for jobs
+  // --------------------------------------------------------------------------
+  // Table Columns
+  // --------------------------------------------------------------------------
+
   const jobColumns = [
     {
       title: "Model",
       dataIndex: "model_name",
       key: "model_name",
-      render: (name: string) => <Text strong>{name || "Unknown"}</Text>,
-    },
-    {
-      title: "Worker",
-      dataIndex: "worker_name",
-      key: "worker_name",
-      responsive: ["md" as const],
+      render: (name: string, record: TuningJob) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{name || "Unknown"}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Job #{record.id}
+          </Text>
+        </Space>
+      ),
     },
     {
       title: "Target",
       dataIndex: "optimization_target",
       key: "optimization_target",
-      responsive: ["sm" as const],
-      render: (target: string) => (
-        <Tag color="blue">{getOptimizationTargetLabel(target)}</Tag>
-      ),
+      width: 120,
+      render: (target: string) => <TargetTag target={target} />,
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
+      width: 140,
       render: (status: string, record: TuningJob) => (
-        <Space size={4} wrap>
-          <Tag icon={getStatusIcon(status)} color={getStatusColor(status)}>
-            {status.toUpperCase()}
-          </Tag>
-          {record.progress && ["benchmarking"].includes(status) && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {record.progress.configs_tested}/{record.progress.configs_total}
+        <Space direction="vertical" size={0}>
+          <StatusTag status={status} />
+          {record.status_message && (
+            <Text
+              type="secondary"
+              style={{ fontSize: 11 }}
+              ellipsis={{ tooltip: record.status_message }}
+            >
+              {record.status_message.slice(0, 30)}
             </Text>
           )}
         </Space>
@@ -493,42 +757,26 @@ export default function AutoTuning() {
     {
       title: "Progress",
       key: "progress",
-      width: 120,
-      render: (_: unknown, record: TuningJob) => {
-        if (!record.progress) return "-";
-        const percent = Math.round(
-          (record.progress.step / record.progress.total_steps) * 100,
-        );
-        return (
-          <Tooltip title={record.progress.step_description}>
-            <Progress
-              percent={percent}
-              size="small"
-              status={
-                record.status === "failed"
-                  ? "exception"
-                  : record.status === "completed"
-                    ? "success"
-                    : "active"
-              }
-              style={{ width: 100, minWidth: 80 }}
-            />
-          </Tooltip>
-        );
-      },
+      width: 130,
+      render: (_: unknown, record: TuningJob) => (
+        <ProgressDisplay job={record} />
+      ),
     },
     {
-      title: "Score",
-      key: "best_score",
-      responsive: ["lg" as const],
+      title: "Best TPS",
+      key: "best_tps",
+      width: 100,
       render: (_: unknown, record: TuningJob) => {
-        const score =
-          record.progress?.best_score_so_far ??
-          (record.best_config?.score as number | undefined);
-        return typeof score === "number" ? (
-          <Text type="success">{score.toFixed(2)}</Text>
+        const metrics = record.best_config?.metrics as
+          | Record<string, number>
+          | undefined;
+        const tps = metrics?.throughput_tps;
+        return tps ? (
+          <Text type="success" strong>
+            {tps.toFixed(1)}
+          </Text>
         ) : (
-          "-"
+          <Text type="secondary">-</Text>
         );
       },
     },
@@ -536,12 +784,18 @@ export default function AutoTuning() {
       title: "Created",
       dataIndex: "created_at",
       key: "created_at",
+      width: 120,
       responsive: ["md" as const],
-      render: (date: string) => dayjs(date).fromNow(),
+      render: (date: string) => (
+        <Tooltip title={dayjs(date).format("YYYY-MM-DD HH:mm:ss")}>
+          <Text type="secondary">{dayjs(date).fromNow()}</Text>
+        </Tooltip>
+      ),
     },
     {
       title: "Actions",
       key: "actions",
+      width: 220,
       render: (_: unknown, record: TuningJob) => {
         const isRunning = [
           "pending",
@@ -551,49 +805,44 @@ export default function AutoTuning() {
           "benchmarking",
         ].includes(record.status);
         return (
-          <Space size={4} wrap>
-            <Tooltip title="在 Chat Panel 中查看">
-              <Button
-                size="small"
-                icon={<CommentOutlined />}
-                onClick={() => {
-                  // Trigger Chat Panel to open with tuning job view
-                  localStorage.setItem(
-                    TUNING_JOB_EVENT_KEY,
-                    JSON.stringify({
-                      jobId: record.id,
-                      timestamp: Date.now(),
-                    }),
-                  );
-                  window.dispatchEvent(
-                    new StorageEvent("storage", {
-                      key: TUNING_JOB_EVENT_KEY,
-                      newValue: JSON.stringify({
-                        jobId: record.id,
-                        timestamp: Date.now(),
-                      }),
-                    }),
-                  );
-                }}
-              >
-                {isMobile ? "" : "Chat"}
+          <Space size={4}>
+            {isRunning && (
+              <Button size="small" onClick={() => setLogModal(record)}>
+                Logs
               </Button>
-            </Tooltip>
-            <Button size="small" onClick={() => handleViewDetail(record)}>
-              {isMobile ? "Log" : "Log"}
-            </Button>
+            )}
+            {record.status === "completed" && (
+              <>
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<RocketOutlined />}
+                  onClick={() => handleDeployBestConfig(record)}
+                >
+                  Deploy
+                </Button>
+                <Button size="small" onClick={() => setDetailModal(record)}>
+                  Details
+                </Button>
+              </>
+            )}
+            {record.status === "failed" && (
+              <Button size="small" onClick={() => setDetailModal(record)}>
+                Details
+              </Button>
+            )}
             {isRunning && canEdit && (
               <Button
                 size="small"
                 danger
                 onClick={() => handleCancel(record.id)}
               >
-                {isMobile ? "X" : "Cancel"}
+                Cancel
               </Button>
             )}
             {!isRunning && canEdit && (
               <Popconfirm
-                title="Delete this job?"
+                title="Delete this tuning job?"
                 description="This action cannot be undone."
                 onConfirm={() => handleDelete(record.id)}
                 okText="Delete"
@@ -609,67 +858,35 @@ export default function AutoTuning() {
     },
   ];
 
-  // Table columns for knowledge base
   const knowledgeColumns = [
     {
       title: "Model",
       dataIndex: "model_name",
       key: "model_name",
-      render: (name: string, record: KnowledgeRecord) => (
-        <div>
-          <Text strong>{name}</Text>
-          {!isMobile && (
-            <>
-              <br />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {record.model_family}
-              </Text>
-            </>
-          )}
-        </div>
-      ),
+      render: (name: string) => <Text strong>{name}</Text>,
     },
     {
       title: "GPU",
       key: "gpu",
       responsive: ["md" as const],
       render: (_: unknown, record: KnowledgeRecord) => (
-        <div>
-          <Text>
-            {record.gpu_count}x {record.gpu_model}
-          </Text>
-          <br />
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {record.total_vram_gb.toFixed(1)} GB
-          </Text>
-        </div>
+        <Text>
+          {record.gpu_count}x {record.gpu_model}
+        </Text>
       ),
     },
     {
       title: "Engine",
       dataIndex: "engine",
       key: "engine",
-      render: (engine: string, record: KnowledgeRecord) => (
-        <Space direction="vertical" size={0}>
-          <Tag color="blue">{engine}</Tag>
-          {record.quantization && (
-            <Tag color="green" style={{ marginTop: 2 }}>
-              {record.quantization}
-            </Tag>
-          )}
-        </Space>
-      ),
-    },
-    {
-      title: "TP",
-      dataIndex: "tensor_parallel",
-      key: "tensor_parallel",
-      responsive: ["lg" as const],
+      width: 100,
+      render: (engine: string) => <Tag color="blue">{engine}</Tag>,
     },
     {
       title: "TPS",
       dataIndex: "throughput_tps",
       key: "throughput_tps",
+      width: 80,
       render: (v: number) => <Text type="success">{v.toFixed(1)}</Text>,
       sorter: (a: KnowledgeRecord, b: KnowledgeRecord) =>
         a.throughput_tps - b.throughput_tps,
@@ -678,39 +895,28 @@ export default function AutoTuning() {
       title: "TTFT",
       dataIndex: "ttft_ms",
       key: "ttft_ms",
+      width: 80,
       responsive: ["sm" as const],
       render: (v: number) => `${v.toFixed(0)} ms`,
-      sorter: (a: KnowledgeRecord, b: KnowledgeRecord) => a.ttft_ms - b.ttft_ms,
     },
     {
       title: "TPOT",
       dataIndex: "tpot_ms",
       key: "tpot_ms",
+      width: 80,
       responsive: ["md" as const],
       render: (v: number) => `${v.toFixed(1)} ms`,
-      sorter: (a: KnowledgeRecord, b: KnowledgeRecord) => a.tpot_ms - b.tpot_ms,
-    },
-    {
-      title: "Score",
-      dataIndex: "score",
-      key: "score",
-      responsive: ["lg" as const],
-      render: (v: number | undefined) =>
-        v ? <Text type="success">{v.toFixed(2)}</Text> : "-",
-      sorter: (a: KnowledgeRecord, b: KnowledgeRecord) =>
-        (a.score || 0) - (b.score || 0),
     },
   ];
 
-  // Online workers with GPUs
-  const availableWorkers = workers.filter(
-    (w) => w.status === "online" && w.gpu_info && w.gpu_info.length > 0,
-  );
+  // --------------------------------------------------------------------------
+  // Render
+  // --------------------------------------------------------------------------
 
   return (
     <div style={{ padding: isMobile ? 16 : 24 }}>
-      {/* Stats Cards */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
+      {/* Statistics Cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
@@ -726,9 +932,11 @@ export default function AutoTuning() {
               title="Running Jobs"
               value={runningJobs}
               prefix={
-                <RocketOutlined
-                  style={{ color: runningJobs > 0 ? "#1890ff" : "#d9d9d9" }}
-                />
+                runningJobs > 0 ? (
+                  <LoadingOutlined spin style={{ color: "#1890ff" }} />
+                ) : (
+                  <ExperimentOutlined style={{ color: "#d9d9d9" }} />
+                )
               }
             />
           </Card>
@@ -749,7 +957,8 @@ export default function AutoTuning() {
         title={
           <Space>
             <ThunderboltOutlined />
-            <span>Auto-Tuning Agent</span>
+            <span>Auto-Tuning</span>
+            <Tag color="blue">Bayesian Optimization</Tag>
           </Space>
         }
         extra={
@@ -767,19 +976,22 @@ export default function AutoTuning() {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={() => setModalOpen(true)}
+                onClick={() => setCreateModalOpen(true)}
               >
-                New Tuning Job
+                New Job
               </Button>
             )}
           </Space>
         }
       >
-        <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          Auto-Tuning Agent automatically finds the best deployment
-          configuration. Use the <strong>Chat Panel</strong> on the right to
-          interact with the agent, or start a job directly below.
-        </Paragraph>
+        <Alert
+          message="Bayesian Optimization for LLM Deployment"
+          description="Automatically searches for optimal deployment parameters using TPE (Tree-structured Parzen Estimator). The system will test different configurations and find the best settings for your target metric."
+          type="info"
+          showIcon
+          icon={<ExperimentOutlined />}
+          style={{ marginBottom: 16 }}
+        />
 
         <Tabs
           defaultActiveKey="jobs"
@@ -788,7 +1000,7 @@ export default function AutoTuning() {
               key: "jobs",
               label: (
                 <span>
-                  <HistoryOutlined /> Job History
+                  <HistoryOutlined /> Tuning Jobs
                 </span>
               ),
               children: (
@@ -797,9 +1009,8 @@ export default function AutoTuning() {
                   columns={jobColumns}
                   rowKey="id"
                   loading={loading}
-                  pagination={{ pageSize: 10 }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
                   scroll={{ x: "max-content" }}
-                  style={{ overflowX: "auto" }}
                   locale={{
                     emptyText: (
                       <Empty
@@ -810,9 +1021,9 @@ export default function AutoTuning() {
                           <Button
                             type="primary"
                             icon={<RocketOutlined />}
-                            onClick={() => setModalOpen(true)}
+                            onClick={() => setCreateModalOpen(true)}
                           >
-                            Start Auto-Tuning
+                            Create First Job
                           </Button>
                         )}
                       </Empty>
@@ -829,65 +1040,60 @@ export default function AutoTuning() {
                 </span>
               ),
               children: (
-                <div>
-                  <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                    Historical benchmark results used for configuration
-                    recommendations. The agent uses this data to suggest optimal
-                    configs for similar setups.
-                  </Paragraph>
-                  <Table
-                    dataSource={knowledge}
-                    columns={knowledgeColumns}
-                    rowKey="id"
-                    loading={loading}
-                    pagination={{ pageSize: 10 }}
-                    scroll={{ x: "max-content" }}
-                    style={{ overflowX: "auto" }}
-                    locale={{
-                      emptyText: (
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="No knowledge records yet. Run benchmarks to populate the knowledge base."
-                        />
-                      ),
-                    }}
-                  />
-                </div>
+                <Table
+                  dataSource={knowledge}
+                  columns={knowledgeColumns}
+                  rowKey="id"
+                  loading={loading}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
+                  scroll={{ x: "max-content" }}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No performance records. Complete tuning jobs to populate the knowledge base."
+                      />
+                    ),
+                  }}
+                />
               ),
             },
           ]}
         />
       </Card>
 
-      {/* Create Modal */}
+      {/* Create Job Modal */}
       <Modal
         title={
           <Space>
             <ThunderboltOutlined />
-            <span>Start Auto-Tuning</span>
+            <span>New Auto-Tuning Job</span>
           </Space>
         }
-        open={modalOpen}
+        open={createModalOpen}
         onCancel={() => {
-          setModalOpen(false);
+          setCreateModalOpen(false);
           form.resetFields();
-          setLlmSourceType("deployment");
-          setShowAddEndpoint(false);
         }}
         footer={null}
-        width={600}
+        width={520}
       >
-        <Form form={form} layout="vertical" onFinish={handleCreate}>
-          {/* Model to tune */}
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleCreate}
+          initialValues={{ optimization_target: "throughput" }}
+        >
           <Form.Item
             name="model_id"
-            label="Model to Tune"
+            label="Model"
             rules={[{ required: true, message: "Please select a model" }]}
           >
             <Select
-              placeholder="Select model to tune"
+              placeholder="Select a model to tune"
               showSearch
               optionFilterProp="children"
+              size="large"
             >
               {models.map((model) => (
                 <Select.Option key={model.id} value={model.id}>
@@ -897,408 +1103,166 @@ export default function AutoTuning() {
             </Select>
           </Form.Item>
 
-          {/* Worker */}
           <Form.Item
             name="worker_id"
             label="Worker"
             rules={[{ required: true, message: "Please select a worker" }]}
           >
-            <Select placeholder="Select worker">
-              {availableWorkers.map((worker) => (
-                <Select.Option key={worker.id} value={worker.id}>
-                  {worker.name} ({worker.gpu_info?.length || 0} GPUs)
+            <Select placeholder="Select a worker with GPU" size="large">
+              {availableWorkers.length === 0 ? (
+                <Select.Option disabled value="">
+                  No workers with GPU available
+                </Select.Option>
+              ) : (
+                availableWorkers.map((worker) => (
+                  <Select.Option key={worker.id} value={worker.id}>
+                    <Space>
+                      <span>{worker.name}</span>
+                      <Tag color="green">
+                        {worker.gpu_info?.length || 0} GPU
+                      </Tag>
+                    </Space>
+                  </Select.Option>
+                ))
+              )}
+            </Select>
+          </Form.Item>
+
+          <Form.Item name="optimization_target" label="Optimization Target">
+            <Select size="large">
+              {OPTIMIZATION_TARGETS.map((target) => (
+                <Select.Option key={target.value} value={target.value}>
+                  <Space>
+                    {target.icon}
+                    <span>{target.label}</span>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      - {target.description}
+                    </Text>
+                  </Space>
                 </Select.Option>
               ))}
             </Select>
           </Form.Item>
 
-          {/* Optimization Target */}
-          <Form.Item
-            name="optimization_target"
-            label="Optimization Target"
-            initialValue="balanced"
-          >
-            <Radio.Group>
-              <Radio.Button value="throughput">Throughput</Radio.Button>
-              <Radio.Button value="latency">Latency</Radio.Button>
-              <Radio.Button value="balanced">Balanced</Radio.Button>
-              <Radio.Button value="cost">Cost</Radio.Button>
-            </Radio.Group>
-          </Form.Item>
-
-          <Divider>
-            <Space>
-              <ApiOutlined />
-              <span>Agent LLM</span>
-            </Space>
-          </Divider>
-
-          {/* Agent LLM Selection */}
           <Alert
-            message="Select which LLM the agent will use for reasoning and decision-making"
             type="info"
             showIcon
-            style={{ marginBottom: 16 }}
+            icon={<SettingOutlined />}
+            message="Parameters searched automatically"
+            description={
+              <ul style={{ margin: "8px 0 0 0", paddingLeft: 16 }}>
+                <li>Inference engine (vLLM, SGLang)</li>
+                <li>GPU memory utilization</li>
+                <li>Maximum concurrent sequences</li>
+                <li>Tensor parallelism (if multiple GPUs)</li>
+              </ul>
+            }
+            style={{ marginBottom: 24 }}
           />
 
-          <Form.Item label="LLM Source">
-            <Radio.Group
-              value={llmSourceType}
-              onChange={(e) => setLlmSourceType(e.target.value)}
-            >
-              <Radio.Button value="deployment">Local Deployment</Radio.Button>
-              <Radio.Button value="custom">Custom Endpoint</Radio.Button>
-            </Radio.Group>
-          </Form.Item>
-
-          {llmSourceType === "deployment" && (
-            <Form.Item
-              name="llm_deployment_id"
-              label="Select Deployment"
-              rules={[
-                { required: true, message: "Please select a deployment" },
-              ]}
-            >
-              <Select placeholder="Select a running deployment">
-                {deployments.length === 0 ? (
-                  <Select.Option value="" disabled>
-                    No running deployments available
-                  </Select.Option>
-                ) : (
-                  deployments.map((d) => (
-                    <Select.Option key={d.id} value={d.id}>
-                      {d.name} ({d.model?.name || "Unknown model"})
-                    </Select.Option>
-                  ))
-                )}
-              </Select>
-            </Form.Item>
-          )}
-
-          {llmSourceType === "custom" && (
-            <>
-              <Form.Item
-                name="llm_custom_endpoint"
-                label="Select Endpoint"
-                rules={[
-                  {
-                    required: customEndpoints.length > 0,
-                    message: "Please select an endpoint",
-                  },
-                ]}
-              >
-                <Select
-                  placeholder={
-                    customEndpoints.length === 0
-                      ? "No endpoints - add one below"
-                      : "Select an endpoint"
-                  }
-                  disabled={customEndpoints.length === 0}
-                  dropdownRender={(menu) => (
-                    <>
-                      {menu}
-                      <Divider style={{ margin: "8px 0" }} />
-                      <Button
-                        type="link"
-                        icon={<PlusOutlined />}
-                        onClick={() => setShowAddEndpoint(true)}
-                        style={{ width: "100%", textAlign: "left" }}
-                      >
-                        Add New Endpoint
-                      </Button>
-                    </>
-                  )}
-                >
-                  {customEndpoints.map((ep) => (
-                    <Select.Option key={ep.id} value={ep.id}>
-                      <Space
-                        style={{
-                          width: "100%",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <span>{ep.name}</span>
-                        <Button
-                          type="text"
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteEndpoint(ep.id);
-                          }}
-                        />
-                      </Space>
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-
-              {customEndpoints.length === 0 && !showAddEndpoint && (
-                <Button
-                  type="dashed"
-                  icon={<PlusOutlined />}
-                  onClick={() => setShowAddEndpoint(true)}
-                  block
-                  style={{ marginBottom: 16 }}
-                >
-                  Add Custom Endpoint
-                </Button>
-              )}
-
-              {showAddEndpoint && (
-                <Card
-                  size="small"
-                  title="Add New Endpoint"
-                  extra={
-                    <Button
-                      type="text"
-                      size="small"
-                      onClick={() => setShowAddEndpoint(false)}
-                    >
-                      Cancel
-                    </Button>
-                  }
-                  style={{ marginBottom: 16 }}
-                >
-                  <Form
-                    form={addEndpointForm}
-                    layout="vertical"
-                    size="small"
-                    onFinish={handleAddEndpoint}
-                  >
-                    <Form.Item
-                      name="name"
-                      label="Name"
-                      rules={[{ required: true, message: "Required" }]}
-                    >
-                      <Input placeholder="e.g., OpenAI GPT-4" />
-                    </Form.Item>
-                    <Form.Item
-                      name="endpoint"
-                      label="Endpoint URL"
-                      rules={[{ required: true, message: "Required" }]}
-                    >
-                      <Input placeholder="https://api.openai.com/v1" />
-                    </Form.Item>
-                    <Form.Item name="apiKey" label="API Key">
-                      <Input.Password placeholder="sk-..." />
-                    </Form.Item>
-                    <Form.Item name="modelId" label="Model ID">
-                      <Input placeholder="gpt-4o" />
-                    </Form.Item>
-                    <Button type="primary" htmlType="submit" size="small">
-                      Add Endpoint
-                    </Button>
-                  </Form>
-                </Card>
-              )}
-            </>
-          )}
-
-          <Form.Item style={{ marginTop: 24 }}>
-            <Space>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+              <Button onClick={() => setCreateModalOpen(false)}>Cancel</Button>
               <Button
                 type="primary"
                 htmlType="submit"
-                icon={<RocketOutlined />}
+                icon={<PlayCircleOutlined />}
               >
                 Start Tuning
               </Button>
-              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
             </Space>
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* Detail Modal - Docker-style Log View */}
+      {/* Job Detail Modal */}
       <Modal
         title={
           <Space>
-            <ExperimentOutlined />
-            <span>Tuning Log - {detailModal?.model_name}</span>
-            <Tag
-              icon={detailModal ? getStatusIcon(detailModal.status) : null}
-              color={
-                detailModal ? getStatusColor(detailModal.status) : "default"
-              }
-            >
-              {detailModal?.status.toUpperCase()}
-            </Tag>
-            {detailLoading && <LoadingOutlined spin />}
+            <BarChartOutlined />
+            <span>Tuning Results</span>
+            {detailModal && <Tag>Job #{detailModal.id}</Tag>}
           </Space>
         }
         open={!!detailModal}
         onCancel={() => setDetailModal(null)}
-        footer={null}
-        width={900}
-        styles={{ body: { padding: 0 } }}
+        footer={
+          <Space>
+            {detailModal?.best_config && (
+              <Button
+                type="primary"
+                icon={<RocketOutlined />}
+                onClick={() =>
+                  detailModal && handleDeployBestConfig(detailModal)
+                }
+              >
+                Deploy Best Configuration
+              </Button>
+            )}
+            <Button onClick={() => setDetailModal(null)}>Close</Button>
+          </Space>
+        }
+        width={800}
       >
         {detailModal && (
-          <div>
-            {/* Docker-style Log Container */}
-            <div
-              style={{
-                background: "#1e1e1e",
-                color: "#d4d4d4",
-                fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
-                fontSize: 13,
-                lineHeight: 1.5,
-                padding: 16,
-                maxHeight: "60vh",
-                overflowY: "auto",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              {detailModal.conversation_log &&
-              detailModal.conversation_log.length > 0 ? (
-                detailModal.conversation_log.map((msg, idx) => {
-                  const timestamp = msg.timestamp
-                    ? dayjs(msg.timestamp).format("HH:mm:ss")
-                    : "";
+          <JobDetailCard
+            job={detailModal}
+            onClose={() => setDetailModal(null)}
+          />
+        )}
+      </Modal>
 
-                  if (msg.role === "user") {
-                    return (
-                      <div key={idx} style={{ marginBottom: 12 }}>
-                        <span style={{ color: "#569cd6" }}>[{timestamp}]</span>
-                        <span style={{ color: "#4ec9b0" }}> [USER] </span>
-                        <span style={{ color: "#ce9178" }}>{msg.content}</span>
-                      </div>
-                    );
-                  }
-
-                  if (msg.role === "assistant") {
-                    return (
-                      <div key={idx} style={{ marginBottom: 12 }}>
-                        <span style={{ color: "#569cd6" }}>[{timestamp}]</span>
-                        <span style={{ color: "#dcdcaa" }}> [AGENT] </span>
-                        {msg.content && (
-                          <span style={{ color: "#d4d4d4" }}>
-                            {msg.content}
-                          </span>
-                        )}
-                        {msg.tool_calls && msg.tool_calls.length > 0 && (
-                          <div style={{ marginLeft: 20, marginTop: 4 }}>
-                            {msg.tool_calls.map((tc, tcIdx) => (
-                              <div key={tcIdx} style={{ color: "#9cdcfe" }}>
-                                -&gt; Calling: {tc.name}(
-                                {(() => {
-                                  try {
-                                    const args = JSON.parse(tc.arguments);
-                                    return Object.entries(args)
-                                      .map(
-                                        ([k, v]) => `${k}=${JSON.stringify(v)}`,
-                                      )
-                                      .join(", ");
-                                  } catch {
-                                    return tc.arguments;
-                                  }
-                                })()}
-                                )
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-
-                  if (msg.role === "tool") {
-                    let content = msg.content;
-                    try {
-                      const parsed = JSON.parse(msg.content);
-                      content = JSON.stringify(parsed, null, 2);
-                    } catch {
-                      // Keep original
-                    }
-                    return (
-                      <div key={idx} style={{ marginBottom: 12 }}>
-                        <span style={{ color: "#569cd6" }}>[{timestamp}]</span>
-                        <span style={{ color: "#6a9955" }}>
-                          {" "}
-                          [TOOL:{msg.name}]{" "}
-                        </span>
-                        <div
-                          style={{
-                            marginLeft: 20,
-                            marginTop: 4,
-                            padding: 8,
-                            background: "rgba(255,255,255,0.05)",
-                            borderRadius: 4,
-                            maxHeight: 200,
-                            overflow: "auto",
-                            color: "#b5cea8",
-                          }}
-                        >
-                          {content}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  return null;
-                })
-              ) : (
-                <div style={{ color: "#808080" }}>
-                  {detailLoading
-                    ? "Loading logs..."
-                    : detailModal.status === "pending"
-                      ? "Waiting for agent to start..."
-                      : "No logs available"}
-                </div>
-              )}
-
-              {/* Running indicator */}
-              {[
-                "pending",
-                "analyzing",
-                "querying_kb",
-                "exploring",
-                "benchmarking",
-              ].includes(detailModal.status) && (
-                <div style={{ marginTop: 8 }}>
-                  <span style={{ color: "#569cd6" }}>
-                    [{dayjs().format("HH:mm:ss")}]
-                  </span>
-                  <span style={{ color: "#c586c0" }}> [STATUS] </span>
-                  <span style={{ color: "#808080" }}>
-                    {detailModal.status_message || "Processing..."}
-                    <span
-                      className="blink"
-                      style={{ animation: "blink 1s infinite" }}
-                    >
-                      {" "}
-                      _
-                    </span>
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Best Config Section */}
-            {detailModal.best_config && (
-              <div
-                style={{
-                  padding: 16,
-                  borderTop: `1px solid ${isDark ? "#303030" : "#e8e8e8"}`,
-                }}
-              >
-                <Text strong>Best Configuration:</Text>
-                <pre
-                  style={{
-                    background: isDark ? "#1f1f1f" : "#f5f5f5",
-                    padding: 12,
-                    borderRadius: 6,
-                    overflow: "auto",
-                    margin: "8px 0 0 0",
-                    fontSize: 12,
-                  }}
-                >
-                  {JSON.stringify(detailModal.best_config, null, 2)}
-                </pre>
-              </div>
+      {/* Live Log Modal */}
+      <Modal
+        title={
+          <Space>
+            <LoadingOutlined spin />
+            <span>Live Logs</span>
+            {logModal && (
+              <>
+                <Tag>Job #{logModal.id}</Tag>
+                <StatusTag status={logModal.status} />
+              </>
             )}
+          </Space>
+        }
+        open={!!logModal}
+        onCancel={() => setLogModal(null)}
+        footer={
+          <Space>
+            <Button onClick={() => fetchJobs()}>
+              <ReloadOutlined /> Refresh
+            </Button>
+            <Button onClick={() => setLogModal(null)}>Close</Button>
+          </Space>
+        }
+        width={800}
+      >
+        {logModal && (
+          <div>
+            {/* Progress */}
+            <Card size="small" style={{ marginBottom: 16 }}>
+              <Row gutter={16} align="middle">
+                <Col span={12}>
+                  <Space direction="vertical" size={0}>
+                    <Text strong>{logModal.model_name}</Text>
+                    <Text type="secondary">{logModal.status_message}</Text>
+                  </Space>
+                </Col>
+                <Col span={12}>
+                  <ProgressDisplay job={logModal} />
+                </Col>
+              </Row>
+            </Card>
+
+            {/* Logs */}
+            <LogViewer logs={logModal.logs || []} maxHeight={400} />
+
+            <div style={{ marginTop: 12, textAlign: "center" }}>
+              <Text type="secondary">
+                Logs auto-refresh every {REFRESH_INTERVAL / 1000} seconds
+              </Text>
+            </div>
           </div>
         )}
       </Modal>
