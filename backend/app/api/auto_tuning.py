@@ -67,6 +67,13 @@ def tuning_job_to_response(job: TuningJob, include_conversation: bool = True) ->
 
         conversation_log = [ConversationMessage(**msg) for msg in job.conversation_log]
 
+    # Parse logs
+    logs = None
+    if job.logs:
+        from app.schemas.tuning import TuningLogEntry
+
+        logs = [TuningLogEntry(**log) for log in job.logs]
+
     return TuningJobResponse(
         id=job.id,
         model_id=job.model_id,
@@ -79,6 +86,7 @@ def tuning_job_to_response(job: TuningJob, include_conversation: bool = True) ->
         progress=progress,
         best_config=job.best_config,
         all_results=job.all_results,
+        logs=logs,
         conversation_log=conversation_log,
         created_at=job.created_at,
         updated_at=job.updated_at,
@@ -677,15 +685,24 @@ async def agent_chat(
 
 
 # ============================================================================
-# Auto-Tuning Agent Runner
+# Auto-Tuning Runner
 # ============================================================================
 
 
 async def run_auto_tuning(job_id: int, llm_config: dict | None = None):
-    """Run the LLM-driven Auto-Tuning Agent"""
-    from app.services.tuning_agent import run_tuning_agent
+    """Run the Auto-Tuning process using Bayesian optimization.
 
-    await run_tuning_agent(job_id, llm_config)
+    Uses Optuna's TPE (Tree-structured Parzen Estimator) for efficient
+    hyperparameter search instead of LLM Agent.
+
+    Args:
+        job_id: The tuning job ID
+        llm_config: Legacy parameter (ignored, kept for API compatibility)
+    """
+    from app.services.bayesian_tuner import run_bayesian_tuning
+
+    # Default to 10 trials for good optimization coverage
+    await run_bayesian_tuning(job_id, n_trials=10)
 
 
 async def _run_benchmark_test(deployment: Deployment, request: BenchmarkRequest) -> dict:

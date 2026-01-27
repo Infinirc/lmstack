@@ -2,10 +2,13 @@
  * Chat Panel Component
  *
  * A slide-out chat panel that can be used from any page.
- * Similar to Cursor's AI chat panel on the right side.
+ * Supports two modes:
+ * - Traditional: Tool calling via LLM API
+ * - Agent: MCP-based agent with Claude Code-style interaction
  */
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Button, Tooltip, Collapse } from "antd";
+import { useNavigate } from "react-router-dom";
+import { Button, Tooltip, Segmented, Collapse } from "antd";
 import {
   CloseOutlined,
   ClearOutlined,
@@ -16,6 +19,8 @@ import {
   CheckCircleFilled,
   ToolOutlined,
   LoadingOutlined,
+  ThunderboltOutlined,
+  MessageOutlined,
 } from "@ant-design/icons";
 import {
   ChatInput,
@@ -26,8 +31,9 @@ import {
 import type { ThemeColors, ChatMessage } from "../chat";
 import { ModelSelector } from "./ModelSelector";
 import { useChat } from "./useChat";
+import { useAgentChat } from "./useAgentChat";
 import { ToolConfirmModal } from "./ToolConfirmModal";
-import { TuningJobView } from "./TuningJobView";
+import { AgentChatView } from "./AgentChatView";
 import type { ChatModelConfig, CustomEndpoint, ChatPanelState } from "./types";
 import {
   DEFAULT_PANEL_WIDTH,
@@ -36,9 +42,15 @@ import {
   CHAT_PANEL_STORAGE_KEY,
 } from "./types";
 import type { AppColors } from "../../hooks/useTheme";
+import { useChatPanel } from "../../contexts/ChatPanelContext";
 
-// Event key for tuning job notifications
-export const TUNING_JOB_EVENT_KEY = "lmstack-active-tuning-job";
+/**
+ * Chat mode type
+ */
+type ChatMode = "chat" | "agent";
+
+// Storage key for chat mode
+const CHAT_MODE_STORAGE_KEY = "lmstack-chat-mode";
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -79,6 +91,32 @@ function savePanelState(state: Partial<ChatPanelState>) {
 }
 
 /**
+ * Load chat mode from localStorage
+ */
+function loadChatMode(): ChatMode {
+  try {
+    const saved = localStorage.getItem(CHAT_MODE_STORAGE_KEY);
+    if (saved === "chat" || saved === "agent") {
+      return saved;
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return "agent"; // Default to agent mode
+}
+
+/**
+ * Save chat mode to localStorage
+ */
+function saveChatMode(mode: ChatMode) {
+  try {
+    localStorage.setItem(CHAT_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Ignore save errors
+  }
+}
+
+/**
  * Global chat panel component
  */
 export function ChatPanel({
@@ -89,6 +127,7 @@ export function ChatPanel({
   colors,
 }: ChatPanelProps) {
   const chatColors = getThemeColors(isDark);
+  const navigate = useNavigate();
 
   // Panel state
   const [width, setWidth] = useState(
@@ -101,69 +140,101 @@ export function ChatPanel({
     () => loadPanelState().customEndpoints || [],
   );
 
-  // Chat state
+  // Chat mode state
+  const [chatMode, setChatMode] = useState<ChatMode>(() => loadChatMode());
+
+  // Traditional chat state
   const [inputValue, setInputValue] = useState("");
   const {
-    messages,
-    isStreaming,
+    messages: chatMessages,
+    isStreaming: chatIsStreaming,
     isExecutingTool,
     currentToolName,
     pendingTools,
     showConfirmModal,
     systemContext,
     refreshContext,
-    sendMessage,
-    stopStreaming,
-    clearMessages,
+    sendMessage: chatSendMessage,
+    stopStreaming: chatStopStreaming,
+    clearMessages: chatClearMessages,
     confirmToolExecution,
     cancelToolExecution,
   } = useChat();
 
-  // Active tuning job (shows TuningJobView instead of chat)
-  const [activeTuningJobId, setActiveTuningJobId] = useState<number | null>(
-    null,
-  );
+  // Agent chat state
+  const {
+    messages: agentMessages,
+    currentSteps,
+    isStreaming: agentIsStreaming,
+    isThinking,
+    currentTool,
+    sendMessage: agentSendMessage,
+    stopStreaming: agentStopStreaming,
+    clearMessages: agentClearMessages,
+    toggleStepExpanded,
+  } = useAgentChat();
 
-  // Listen for tuning job events
+  // Chat panel context - for external access
+  const { _registerSendFunction } = useChatPanel();
+
+  // Register send function with context so other pages can send messages
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === TUNING_JOB_EVENT_KEY && e.newValue) {
-        try {
-          const data = JSON.parse(e.newValue);
-          if (data.jobId) {
-            setActiveTuningJobId(data.jobId);
-          }
-        } catch {
-          // Ignore
-        }
-      }
+    _registerSendFunction(agentSendMessage, selectedModel);
+    return () => {
+      _registerSendFunction(null, null);
     };
+  }, [_registerSendFunction, agentSendMessage, selectedModel]);
 
-    // Also check on mount
-    const checkInitial = () => {
-      const stored = localStorage.getItem(TUNING_JOB_EVENT_KEY);
-      if (stored) {
-        try {
-          const data = JSON.parse(stored);
-          if (
-            data.jobId &&
-            data.timestamp &&
-            Date.now() - data.timestamp < 5000
-          ) {
-            setActiveTuningJobId(data.jobId);
-            // Clear it after reading
-            localStorage.removeItem(TUNING_JOB_EVENT_KEY);
-          }
-        } catch {
-          // Ignore
-        }
-      }
-    };
+  // Derived state based on mode
+  const isStreaming = chatMode === "agent" ? agentIsStreaming : chatIsStreaming;
+  const hasMessages =
+    chatMode === "agent" ? agentMessages.length > 0 : chatMessages.length > 0;
 
-    checkInitial();
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+  // Handle mode change
+  const handleModeChange = useCallback((value: string | number) => {
+    const newMode = value as ChatMode;
+    setChatMode(newMode);
+    saveChatMode(newMode);
   }, []);
+
+  // Handle send message based on mode
+  const handleSendMessage = useCallback(() => {
+    if (!inputValue.trim() || !selectedModel) return;
+
+    if (chatMode === "agent") {
+      agentSendMessage(inputValue, selectedModel);
+    } else {
+      chatSendMessage(inputValue, selectedModel);
+    }
+    setInputValue("");
+  }, [inputValue, selectedModel, chatMode, agentSendMessage, chatSendMessage]);
+
+  // Handle stop streaming based on mode
+  const handleStopStreaming = useCallback(() => {
+    if (chatMode === "agent") {
+      agentStopStreaming();
+    } else {
+      chatStopStreaming();
+    }
+  }, [chatMode, agentStopStreaming, chatStopStreaming]);
+
+  // Handle clear messages based on mode
+  const handleClearMessages = useCallback(() => {
+    if (chatMode === "agent") {
+      agentClearMessages();
+    } else {
+      chatClearMessages();
+    }
+  }, [chatMode, agentClearMessages, chatClearMessages]);
+
+  // Handle sending message from action suggestions (agent mode)
+  const handleAgentSendSuggestion = useCallback(
+    (message: string) => {
+      if (!selectedModel || agentIsStreaming) return;
+      agentSendMessage(message, selectedModel);
+    },
+    [selectedModel, agentIsStreaming, agentSendMessage],
+  );
 
   // Refs
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -209,7 +280,7 @@ export function ChatPanel({
     };
   }, [isResizing]);
 
-  // Scroll handling
+  // Scroll handling - track user scroll intent
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -218,12 +289,14 @@ export function ChatPanel({
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
 
     setShowScrollButton(!isNearBottom);
-    if (isNearBottom) {
-      userScrolledUpRef.current = false;
-    } else if (isStreaming) {
+
+    // If user scrolls up during streaming, mark it
+    if (!isNearBottom) {
       userScrolledUpRef.current = true;
+    } else {
+      userScrolledUpRef.current = false;
     }
-  }, [isStreaming]);
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -234,44 +307,47 @@ export function ChatPanel({
     setShowScrollButton(false);
   }, []);
 
-  // Auto-scroll during streaming
+  // Auto-scroll during streaming - only scroll if user hasn't scrolled up
   useEffect(() => {
     if (!isStreaming) return;
 
+    // Only auto-scroll if user hasn't manually scrolled up
     if (!userScrolledUpRef.current) {
       scrollToBottom();
     }
 
+    // Use a longer interval and check user intent
     const interval = setInterval(() => {
       if (!userScrolledUpRef.current) {
         const container = messagesContainerRef.current;
         if (container) {
-          container.scrollTop = container.scrollHeight;
+          const { scrollTop, scrollHeight, clientHeight } = container;
+          const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+          // Only scroll if already near bottom
+          if (isNearBottom) {
+            container.scrollTop = container.scrollHeight;
+          }
         }
       }
-    }, 50);
+    }, 200); // Slower interval for less aggressive scrolling
 
     return () => clearInterval(interval);
   }, [isStreaming, scrollToBottom]);
 
   // Scroll on new messages
   useEffect(() => {
-    if (!isStreaming && messages.length > 0) {
+    const messageCount =
+      chatMode === "agent" ? agentMessages.length : chatMessages.length;
+    if (!isStreaming && messageCount > 0) {
       scrollToBottom();
     }
-  }, [messages.length, isStreaming, scrollToBottom]);
-
-  // Send message handler
-  const handleSend = useCallback(() => {
-    if (!inputValue.trim() || !selectedModel) return;
-    sendMessage(inputValue, selectedModel);
-    setInputValue("");
-  }, [inputValue, selectedModel, sendMessage]);
-
-  // Handle clear
-  const handleClear = useCallback(() => {
-    clearMessages();
-  }, [clearMessages]);
+  }, [
+    chatMode,
+    agentMessages.length,
+    chatMessages.length,
+    isStreaming,
+    scrollToBottom,
+  ]);
 
   if (!isOpen) return null;
 
@@ -336,242 +412,247 @@ export function ChatPanel({
           }}
         />
 
-        {/* Header - different for tuning view vs chat */}
-        {activeTuningJobId ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "12px 16px",
-              borderBottom: `1px solid ${colors.border}`,
-              flexShrink: 0,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontWeight: 500, color: chatColors.text }}>
-                Auto-Tuning Agent
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <Tooltip title="Back to Chat">
-                <Button
-                  type="text"
-                  size="small"
-                  onClick={() => setActiveTuningJobId(null)}
-                  style={{ color: colors.textMuted, fontSize: 12 }}
-                >
-                  Back to Chat
-                </Button>
-              </Tooltip>
-              <Tooltip title="Close">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<CloseOutlined />}
-                  onClick={onClose}
-                  style={{ color: colors.textMuted }}
-                />
-              </Tooltip>
-            </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "12px 16px",
-              borderBottom: `1px solid ${colors.border}`,
-              flexShrink: 0,
-            }}
-          >
-            <ModelSelector
-              value={selectedModel}
-              onChange={setSelectedModel}
-              customEndpoints={customEndpoints}
-              onCustomEndpointsChange={setCustomEndpoints}
-              isDark={isDark}
-              colors={colors}
-              compact
+        {/* Header with mode toggle */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 16px",
+            borderBottom: `1px solid ${colors.border}`,
+            flexShrink: 0,
+          }}
+        >
+          {/* Left side: Model selector */}
+          <ModelSelector
+            value={selectedModel}
+            onChange={setSelectedModel}
+            customEndpoints={customEndpoints}
+            onCustomEndpointsChange={setCustomEndpoints}
+            isDark={isDark}
+            colors={colors}
+            compact
+          />
+
+          {/* Right side: Mode toggle and actions */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Mode toggle */}
+            <Segmented
+              size="small"
+              value={chatMode}
+              onChange={handleModeChange}
+              options={[
+                {
+                  value: "agent",
+                  icon: <ThunderboltOutlined />,
+                  label: "Agent",
+                },
+                {
+                  value: "chat",
+                  icon: <MessageOutlined />,
+                  label: "Chat",
+                },
+              ]}
+              style={{
+                background: isDark ? "#27272a" : "#f4f4f5",
+              }}
             />
 
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              {/* System status indicator */}
-              {systemContext && (
-                <Tooltip
-                  title={
-                    <div style={{ fontSize: 12 }}>
-                      <div>Workers: {systemContext.workers.length}</div>
-                      <div>
-                        Deployments:{" "}
-                        {
-                          systemContext.deployments.filter(
-                            (d) => d.status === "running",
-                          ).length
-                        }
-                      </div>
-                      <div>Models: {systemContext.models.length}</div>
-                      <div style={{ marginTop: 4, color: "#8c8c8c" }}>
-                        Click to refresh
-                      </div>
-                    </div>
-                  }
-                >
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={
-                      <CheckCircleFilled
-                        style={{ color: "#52c41a", fontSize: 12 }}
-                      />
-                    }
-                    onClick={refreshContext}
-                    style={{ color: colors.textMuted, padding: "0 4px" }}
-                  >
-                    <span style={{ fontSize: 11, marginLeft: 4 }}>
-                      {systemContext.workers.length}W /{" "}
+            {/* System status indicator (only in chat mode) */}
+            {chatMode === "chat" && systemContext && (
+              <Tooltip
+                title={
+                  <div style={{ fontSize: 12 }}>
+                    <div>Workers: {systemContext.workers.length}</div>
+                    <div>
+                      Deployments:{" "}
                       {
                         systemContext.deployments.filter(
                           (d) => d.status === "running",
                         ).length
                       }
-                      D
-                    </span>
-                  </Button>
-                </Tooltip>
-              )}
-              {messages.length > 0 && (
-                <Tooltip title="Clear chat">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<ClearOutlined />}
-                    onClick={handleClear}
-                    style={{ color: colors.textMuted }}
-                  />
-                </Tooltip>
-              )}
-              <Tooltip title="Close">
+                    </div>
+                    <div>Models: {systemContext.models.length}</div>
+                    <div style={{ marginTop: 4, color: "#8c8c8c" }}>
+                      Click to refresh
+                    </div>
+                  </div>
+                }
+              >
                 <Button
                   type="text"
                   size="small"
-                  icon={<CloseOutlined />}
-                  onClick={onClose}
+                  icon={
+                    <CheckCircleFilled
+                      style={{ color: "#52c41a", fontSize: 12 }}
+                    />
+                  }
+                  onClick={refreshContext}
+                  style={{ color: colors.textMuted, padding: "0 4px" }}
+                >
+                  <span style={{ fontSize: 11, marginLeft: 4 }}>
+                    {systemContext.workers.length}W /{" "}
+                    {
+                      systemContext.deployments.filter(
+                        (d) => d.status === "running",
+                      ).length
+                    }
+                    D
+                  </span>
+                </Button>
+              </Tooltip>
+            )}
+
+            {/* Clear button */}
+            {hasMessages && (
+              <Tooltip title="Clear chat">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<ClearOutlined />}
+                  onClick={handleClearMessages}
                   style={{ color: colors.textMuted }}
                 />
               </Tooltip>
-            </div>
-          </div>
-        )}
-
-        {/* Content - either TuningJobView or normal chat */}
-        {activeTuningJobId ? (
-          <TuningJobView jobId={activeTuningJobId} isDark={isDark} />
-        ) : (
-          <>
-            {/* Messages */}
-            <div
-              ref={messagesContainerRef}
-              onScroll={handleScroll}
-              style={{
-                flex: 1,
-                overflow: "auto",
-                padding: "16px",
-              }}
-            >
-              {messages.length === 0 ? (
-                <EmptyState
-                  selectedModel={selectedModel}
-                  systemContext={systemContext}
-                  colors={chatColors}
-                />
-              ) : (
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 20 }}
-                >
-                  {messages.map((msg, index) => {
-                    const isLast = index === messages.length - 1;
-                    const showStreaming =
-                      isLast && isStreaming && msg.role === "assistant";
-                    const showToolExecution =
-                      isLast && isExecutingTool && msg.role === "assistant";
-
-                    return (
-                      <MessageBubble
-                        key={msg.id}
-                        message={msg}
-                        isStreaming={showStreaming}
-                        isExecutingTool={showToolExecution}
-                        currentToolName={
-                          showToolExecution ? currentToolName : null
-                        }
-                        isDark={isDark}
-                        colors={chatColors}
-                      />
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
-            </div>
-
-            {/* Scroll to bottom button */}
-            {showScrollButton && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 100,
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  zIndex: 10,
-                }}
-              >
-                <Button
-                  type="default"
-                  shape="circle"
-                  size="small"
-                  icon={<DownOutlined />}
-                  onClick={scrollToBottom}
-                  style={{
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                    background: isDark ? "#27272a" : "#ffffff",
-                    borderColor: isDark ? "#3f3f46" : "#e4e4e7",
-                  }}
-                />
-              </div>
             )}
 
-            {/* Input */}
-            <div
-              style={{
-                padding: "12px 16px",
-                borderTop: `1px solid ${colors.border}`,
-              }}
-            >
-              <ChatInput
-                value={inputValue}
-                onChange={setInputValue}
-                onSend={handleSend}
-                onStop={stopStreaming}
-                isStreaming={isStreaming}
-                disabled={!selectedModel}
+            {/* Close button */}
+            <Tooltip title="Close">
+              <Button
+                type="text"
+                size="small"
+                icon={<CloseOutlined />}
+                onClick={onClose}
+                style={{ color: colors.textMuted }}
+              />
+            </Tooltip>
+          </div>
+        </div>
+
+        {/* Content - Agent mode or Chat mode */}
+        <>
+          {/* Messages area */}
+          <div
+            ref={messagesContainerRef}
+            onScroll={handleScroll}
+            style={{
+              flex: 1,
+              overflow: "auto",
+              overflowY: "scroll",
+              padding: "16px",
+              WebkitOverflowScrolling: "touch",
+              position: "relative",
+            }}
+          >
+            {chatMode === "agent" ? (
+              /* Agent Mode - Claude Code style */
+              <AgentChatView
+                messages={agentMessages}
+                currentSteps={currentSteps}
+                isStreaming={agentIsStreaming}
+                isThinking={isThinking}
+                currentTool={currentTool}
+                onToggleStep={toggleStepExpanded}
+                onNavigate={navigate}
+                onSendMessage={handleAgentSendSuggestion}
                 isDark={isDark}
+                colors={colors}
+                userScrolledUp={showScrollButton}
+              />
+            ) : /* Chat Mode - Traditional tool calling */
+            chatMessages.length === 0 ? (
+              <EmptyState
+                selectedModel={selectedModel}
+                systemContext={systemContext}
                 colors={chatColors}
               />
+            ) : (
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 20 }}
+              >
+                {chatMessages.map((msg, index) => {
+                  const isLast = index === chatMessages.length - 1;
+                  const showStreaming =
+                    isLast && chatIsStreaming && msg.role === "assistant";
+                  const showToolExecution =
+                    isLast && isExecutingTool && msg.role === "assistant";
+
+                  return (
+                    <MessageBubble
+                      key={msg.id}
+                      message={msg}
+                      isStreaming={showStreaming}
+                      isExecutingTool={showToolExecution}
+                      currentToolName={
+                        showToolExecution ? currentToolName : null
+                      }
+                      isDark={isDark}
+                      colors={chatColors}
+                    />
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+
+          {/* Scroll to bottom button */}
+          {showScrollButton && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: 100,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 10,
+              }}
+            >
+              <Button
+                type="default"
+                shape="circle"
+                size="small"
+                icon={<DownOutlined />}
+                onClick={scrollToBottom}
+                style={{
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  background: isDark ? "#27272a" : "#ffffff",
+                  borderColor: isDark ? "#3f3f46" : "#e4e4e7",
+                }}
+              />
             </div>
-          </>
-        )}
+          )}
+
+          {/* Input */}
+          <div
+            style={{
+              padding: "12px 16px",
+              borderTop: `1px solid ${colors.border}`,
+            }}
+          >
+            <ChatInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSend={handleSendMessage}
+              onStop={handleStopStreaming}
+              isStreaming={isStreaming}
+              disabled={!selectedModel}
+              isDark={isDark}
+              colors={chatColors}
+            />
+          </div>
+        </>
       </div>
 
-      {/* Tool Confirmation Modal */}
-      <ToolConfirmModal
-        visible={showConfirmModal}
-        pendingTools={pendingTools}
-        onConfirm={confirmToolExecution}
-        onCancel={cancelToolExecution}
-        isDark={isDark}
-      />
+      {/* Tool Confirmation Modal (only for chat mode) */}
+      {chatMode === "chat" && (
+        <ToolConfirmModal
+          visible={showConfirmModal}
+          pendingTools={pendingTools}
+          onConfirm={confirmToolExecution}
+          onCancel={cancelToolExecution}
+          isDark={isDark}
+        />
+      )}
     </>
   );
 }

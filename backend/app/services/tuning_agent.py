@@ -93,22 +93,22 @@ IMPORTANT COMMUNICATION RULES:
 
 === DIAGNOSING DEPLOYMENT ISSUES ===
 When wait_for_deployment times out:
-1. FIRST call test_deployment_endpoint to check if API is actually ready
-   - If ready=true: Great! Proceed to run_benchmark
-   - If ready=false: Continue to step 2
-2. Call get_deployment_logs to check container logs (use tail=100 or more)
-3. Look for common patterns in logs:
-   - "Loading checkpoint shards" or "Loading model weights" - model is loading, keep waiting
-   - "INFO: Started server process" or "Uvicorn running" - vLLM is ready!
-   - "CUDA out of memory" - try quantization or fewer GPUs
-   - "Error" or "Exception" - check the error message
-4. Based on logs, decide:
-   - If model loading: call test_deployment_endpoint every 30s until ready
-   - If OOM error: stop_deployment and try with quantization
-   - If other error: stop_deployment and try different engine/config
+1. Call test_deployment_endpoint ONCE to check if API is ready
+   - If ready=true: Proceed to run_benchmark immediately
+   - If ready=false: Call get_deployment_logs ONCE
+2. Based on logs, make a QUICK decision:
+   - If "Loading model" in logs: Wait ONE more time with wait_for_deployment(timeout_seconds=120)
+   - If any error: Call stop_deployment and try next config
+   - If unclear: Call stop_deployment and try next config
 
-DO NOT just give up on timeout - always test endpoint and check logs first!
-A 0.6B model should load in 1-2 minutes, larger models (7B+) may take 5-10 minutes.
+STRICT RULES TO AVOID LOOPS:
+- Maximum 2 calls to wait_for_deployment per config
+- Maximum 2 calls to test_deployment_endpoint per config
+- If deployment not ready after 2 waits, STOP it and move to next config
+- Do NOT repeatedly check status - make a decision and move on!
+- Small models (< 1B) should load in 60s, if not working after 2 attempts, skip it
+
+A 0.6B model should load in under 60 seconds. If it takes longer, something is wrong.
 
 === HANDLING LOW GPU MEMORY ===
 If deploy_model fails with "GPU memory is low":
@@ -416,6 +416,8 @@ class AgentToolExecutor:
         self.db = db
         self.job = job
         self.created_deployments: list[int] = []
+        self.benchmark_results: list[dict] = []  # Track completed benchmarks
+        self.hardware_checked: bool = False  # Track if hardware was checked
 
     async def execute(self, tool_name: str, args: dict) -> str:
         """Execute a tool and return result as string"""
@@ -431,6 +433,7 @@ class AgentToolExecutor:
 
     async def _tool_get_hardware_info(self, worker_id: int) -> dict:
         """Get hardware info for a worker"""
+        self.hardware_checked = True  # Mark hardware as checked
         result = await self.db.execute(select(Worker).where(Worker.id == worker_id))
         worker = result.scalar_one_or_none()
 
@@ -707,6 +710,30 @@ class AgentToolExecutor:
                     "error": "Deployment not found. It may have been deleted.",
                 }
 
+            # Update job status to show deployment progress
+            elapsed = int(time.time() - start_time)
+            status_map = {
+                "pending": "Preparing deployment...",
+                "starting": "Loading model into GPU memory...",
+                "running": "Model ready!",
+                "error": "Deployment failed",
+                "stopped": "Deployment stopped",
+            }
+            status_desc = status_map.get(deployment.status, deployment.status)
+            self.job.status_message = f"Waiting for model: {status_desc} ({elapsed}s)"
+            self.job.progress = {
+                "step": self.job.progress.get("step", 0) if self.job.progress else 0,
+                "total_steps": (
+                    self.job.progress.get("total_steps", 15) if self.job.progress else 15
+                ),
+                "step_name": "wait_for_deployment",
+                "step_description": f"Deployment #{deployment_id}: {status_desc}",
+                "deployment_status": deployment.status,
+                "deployment_message": deployment.status_message or "",
+                "elapsed_seconds": elapsed,
+            }
+            await self.db.commit()
+
             if deployment.status == DeploymentStatus.RUNNING.value:
                 return {
                     "success": True,
@@ -735,9 +762,9 @@ class AgentToolExecutor:
             "deployment_id": deployment_id,
             "error": f"Timeout after {timeout_seconds}s",
             "action_required": (
-                f"1. Call get_deployment_logs({deployment_id}) to check what's happening\n"
-                f"2. If model is still loading, wait more with wait_for_deployment(timeout_seconds=300)\n"
-                f"3. If there's an error, call stop_deployment({deployment_id}) and try a different config"
+                f"1. Call test_deployment_endpoint({deployment_id}) to check if it's actually ready\n"
+                f"2. If not ready, call stop_deployment({deployment_id}) and try next config\n"
+                f"DO NOT wait again - move on to the next configuration!"
             ),
         }
 
@@ -784,6 +811,18 @@ class AgentToolExecutor:
             output_tokens=output_tokens,
         )
 
+        # Save successful benchmark results for tracking
+        if metrics.get("success"):
+            self.benchmark_results.append(
+                {
+                    "deployment_id": deployment_id,
+                    "engine": deployment.backend,
+                    "gpu_indexes": deployment.gpu_indexes or [0],
+                    "extra_params": deployment.extra_params or {},
+                    "metrics": metrics.get("metrics", {}),
+                }
+            )
+
         return metrics
 
     async def _tool_stop_deployment(self, deployment_id: int) -> dict:
@@ -800,12 +839,24 @@ class AgentToolExecutor:
 
             # Stop container if running
             if deployment.container_id:
-                deployer = DeployerService()
-                await deployer.stop(deployment_id)
+                try:
+                    deployer = DeployerService()
+                    await deployer.stop(deployment_id)
+                except Exception as e:
+                    logger.warning(f"Failed to stop container for deployment {deployment_id}: {e}")
 
-            # Delete deployment record
-            await self.db.delete(deployment)
+            # Always update status to stopped first (in case delete fails)
+            deployment.status = DeploymentStatus.STOPPED.value
+            deployment.status_message = "Stopped by tuning agent"
             await self.db.commit()
+
+            # Then try to delete
+            try:
+                await self.db.delete(deployment)
+                await self.db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to delete deployment {deployment_id}: {e}")
+                # Status is already stopped, so it's ok
 
             if deployment_id in self.created_deployments:
                 self.created_deployments.remove(deployment_id)
@@ -813,6 +864,17 @@ class AgentToolExecutor:
             return {"success": True, "message": f"Deployment {deployment_id} stopped and removed"}
         except Exception as e:
             logger.exception(f"Failed to stop deployment: {e}")
+            # Try to at least mark it stopped
+            try:
+                result = await self.db.execute(
+                    select(Deployment).where(Deployment.id == deployment_id)
+                )
+                deployment = result.scalar_one_or_none()
+                if deployment:
+                    deployment.status = DeploymentStatus.STOPPED.value
+                    await self.db.commit()
+            except Exception:
+                pass
             return {"success": False, "error": str(e)}
 
     async def _tool_check_deployment_status(self, deployment_id: int) -> dict:
@@ -959,6 +1021,25 @@ class AgentToolExecutor:
         self, best_config: dict, reasoning: str, all_results: list | None = None
     ) -> dict:
         """Mark tuning as complete and save to knowledge base"""
+        # Validate that proper steps were completed
+        if not self.hardware_checked:
+            return {
+                "success": False,
+                "error": "Cannot finish tuning: You must call get_hardware_info first to check the GPU environment.",
+                "required_action": "Call get_hardware_info(worker_id=...) before finishing.",
+            }
+
+        if not self.benchmark_results and not all_results:
+            return {
+                "success": False,
+                "error": "Cannot finish tuning: No benchmark results found. You must run at least one benchmark.",
+                "required_action": "Deploy a model, run run_benchmark(), then call finish_tuning with the results.",
+            }
+
+        # Use tracked benchmark results if all_results not provided
+        if not all_results:
+            all_results = self.benchmark_results
+
         # Update job status
         self.job.status = TuningJobStatus.COMPLETED.value
         self.job.status_message = "Auto-tuning completed successfully"
@@ -1340,10 +1421,20 @@ async def run_tuning_agent(job_id: int, llm_config: dict | None = None):
             # Initialize OpenAI client (supports OpenAI-compatible endpoints)
             client = AsyncOpenAI(api_key=api_key, base_url=base_url or "https://api.openai.com/v1")
 
-            # Build initial user message
-            user_message = f"""Help me find the best deployment configuration for {job.model.name} on {job.worker.name}. I want to optimize for {job.optimization_target}.
+            # Build initial user message with explicit steps
+            user_message = f"""Find the optimal deployment configuration for {job.model.name} on {job.worker.name}.
+Optimization target: {job.optimization_target}
+Model ID: {job.model_id}, Worker ID: {job.worker_id}
 
-Model ID: {job.model_id}, Worker ID: {job.worker_id}"""
+REQUIRED STEPS (you must complete all of these):
+1. Call get_hardware_info(worker_id={job.worker_id}) to check GPU specs
+2. Call query_knowledge_base() to check historical data
+3. Deploy the model with deploy_model() and wait for it
+4. Run run_benchmark() to test performance
+5. Stop the deployment and optionally test other configurations
+6. Call finish_tuning() with best_config and all benchmark results
+
+Start with Step 1: get_hardware_info"""
 
             messages = [
                 {"role": "system", "content": AGENT_SYSTEM_PROMPT},
@@ -1370,8 +1461,8 @@ Model ID: {job.model_id}, Worker ID: {job.worker_id}"""
             job.conversation_log = conversation_log
             await db.commit()
 
-            # Agent loop
-            max_iterations = 20
+            # Agent loop - limit iterations to prevent infinite loops
+            max_iterations = 15
             iteration = 0
 
             while iteration < max_iterations:
@@ -1387,11 +1478,20 @@ Model ID: {job.model_id}, Worker ID: {job.worker_id}"""
                 # Call LLM
                 logger.info(f"Agent iteration {iteration}, calling LLM with model: {model_name}...")
 
+                # Force tool calls if essential steps not completed
+                # Use "required" to ensure tool is called when needed
+                if not executor.hardware_checked or (
+                    not executor.benchmark_results and iteration < 10
+                ):
+                    tool_choice = "required"
+                else:
+                    tool_choice = "auto"
+
                 response = await client.chat.completions.create(
                     model=model_name,
                     messages=messages,
                     tools=get_agent_tools(),
-                    tool_choice="auto",
+                    tool_choice=tool_choice,
                     max_tokens=4096,
                 )
 
@@ -1419,19 +1519,23 @@ Model ID: {job.model_id}, Worker ID: {job.worker_id}"""
                 # Check if no tool calls - prompt the agent to take action
                 if not assistant_message.tool_calls:
                     logger.warning(f"Agent responded without tool calls at iteration {iteration}")
-                    # Add a user message to prompt the agent to take action
-                    prompt_message = (
-                        "You need to call a tool to proceed. Available actions:\n"
-                        "1. list_deployments - Find existing deployments on the worker\n"
-                        "2. stop_deployment - Stop a deployment to free GPU memory\n"
-                        "3. deploy_model - Deploy a model with specific config\n"
-                        "4. test_deployment_endpoint - Check if deployment is ready\n"
-                        "5. get_deployment_logs - Check container logs\n"
-                        "6. run_benchmark - Run performance benchmark\n"
-                        "7. finish_tuning - Complete with recommendation\n"
-                        "8. abort_tuning - Abort if cannot proceed\n"
-                        "Do not respond with just text - you must call a tool."
-                    )
+                    # Build a context-aware prompt based on current state
+                    if not executor.hardware_checked:
+                        prompt_message = (
+                            f"You must call get_hardware_info(worker_id={job.worker_id}) first "
+                            "to check the GPU environment before proceeding."
+                        )
+                    elif not executor.benchmark_results:
+                        prompt_message = (
+                            "You must run at least one benchmark before finishing. "
+                            f"Call deploy_model(model_id={job.model_id}, worker_id={job.worker_id}, engine='vllm') "
+                            "to deploy the model, then run run_benchmark() after it's ready."
+                        )
+                    else:
+                        prompt_message = (
+                            "You have benchmark results. Call finish_tuning() with the best configuration "
+                            "to complete the tuning process."
+                        )
                     messages.append({"role": "user", "content": prompt_message})
                     conversation_log.append(
                         {

@@ -29,6 +29,34 @@ interface ConversationMessage {
   name?: string;
 }
 
+interface BenchmarkMetrics {
+  throughput_tps?: number;
+  avg_ttft_ms?: number;
+  avg_tpot_ms?: number;
+  p50_ttft_ms?: number;
+  p99_ttft_ms?: number;
+}
+
+interface BenchmarkResult {
+  deployment_id?: number;
+  engine?: string;
+  gpu_indexes?: number[];
+  extra_params?: Record<string, unknown>;
+  metrics?: BenchmarkMetrics;
+}
+
+interface TuningProgress {
+  step?: number;
+  total_steps?: number;
+  step_name?: string;
+  step_description?: string;
+  deployment_status?: string;
+  deployment_message?: string;
+  elapsed_seconds?: number;
+  configs_tested?: number;
+  configs_total?: number;
+}
+
 interface TuningJob {
   id: number;
   model_name?: string;
@@ -36,8 +64,10 @@ interface TuningJob {
   optimization_target: string;
   status: string;
   status_message?: string;
+  progress?: TuningProgress;
   conversation_log?: ConversationMessage[];
   best_config?: Record<string, unknown>;
+  all_results?: BenchmarkResult[];
 }
 
 interface TuningJobViewProps {
@@ -231,6 +261,8 @@ export function TuningJobView({ jobId, isDark }: TuningJobViewProps) {
   const [job, setJob] = useState<TuningJob | null>(null);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
 
   // Theme colors
   const colors = {
@@ -282,9 +314,20 @@ export function TuningJobView({ jobId, isDark }: TuningJobViewProps) {
     return () => clearInterval(interval);
   }, [job?.status, fetchJob]);
 
-  // Auto-scroll to bottom
+  // Handle scroll - track if user scrolled up
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+
+    userScrolledUpRef.current = !isNearBottom;
+  }, []);
+
+  // Auto-scroll to bottom - only if user hasn't scrolled up
   useEffect(() => {
-    if (messagesEndRef.current) {
+    if (messagesEndRef.current && !userScrolledUpRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [job?.conversation_log?.length]);
@@ -300,360 +343,618 @@ export function TuningJobView({ jobId, isDark }: TuningJobViewProps) {
     ].includes(job.status);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        flex: 1,
-        background: colors.bg,
-        overflow: "hidden",
-      }}
-    >
-      {/* Status Bar */}
+    <>
+      {/* CSS Animation for pulse effect */}
+      <style>
+        {`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+          }
+        `}
+      </style>
       <div
         style={{
-          padding: "10px 16px",
-          borderBottom: `1px solid ${colors.border}`,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: colors.cardBg,
+          flexDirection: "column",
+          flex: 1,
+          background: colors.bg,
+          overflow: "hidden",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Status Bar */}
+        <div
+          style={{
+            padding: "10px 16px",
+            borderBottom: `1px solid ${colors.border}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: colors.cardBg,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {job && (
+              <>
+                <Tag
+                  color={getStatusColor(job.status)}
+                  icon={getStatusIcon(job.status)}
+                  style={{ margin: 0, fontWeight: 500 }}
+                >
+                  {job.status.toUpperCase()}
+                </Tag>
+                <span style={{ fontSize: 13, color: colors.textSecondary }}>
+                  {job.model_name}
+                </span>
+              </>
+            )}
+          </div>
           {job && (
-            <>
-              <Tag
-                color={getStatusColor(job.status)}
-                icon={getStatusIcon(job.status)}
-                style={{ margin: 0, fontWeight: 500 }}
-              >
-                {job.status.toUpperCase()}
-              </Tag>
-              <span style={{ fontSize: 13, color: colors.textSecondary }}>
-                {job.model_name}
-              </span>
-            </>
+            <span style={{ fontSize: 12, color: colors.textMuted }}>
+              {job.worker_name} · {job.optimization_target}
+            </span>
           )}
         </div>
-        {job && (
-          <span style={{ fontSize: 12, color: colors.textMuted }}>
-            {job.worker_name} · {job.optimization_target}
-          </span>
-        )}
-      </div>
 
-      {/* Messages */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: 16,
-          background: colors.bg,
-        }}
-      >
-        {loading ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "100%",
-              gap: 12,
-            }}
-          >
-            <Spin size="large" />
-            <span style={{ color: colors.textMuted, fontSize: 14 }}>
-              Loading tuning job...
-            </span>
-          </div>
-        ) : job?.conversation_log && job.conversation_log.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {job.conversation_log.map((msg, idx) => (
-              <div key={idx}>
-                {/* Agent Message */}
-                {msg.role === "assistant" && (
-                  <div style={{ display: "flex", gap: 10 }}>
-                    {/* Avatar */}
-                    <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 8,
-                        background: `linear-gradient(135deg, ${colors.accent}, #8b5cf6)`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <RobotOutlined style={{ color: "#fff", fontSize: 16 }} />
-                    </div>
-                    {/* Content */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Messages */}
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: 16,
+            background: colors.bg,
+          }}
+        >
+          {loading ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                gap: 12,
+              }}
+            >
+              <Spin size="large" />
+              <span style={{ color: colors.textMuted, fontSize: 14 }}>
+                Loading tuning job...
+              </span>
+            </div>
+          ) : job?.conversation_log && job.conversation_log.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {job.conversation_log.map((msg, idx) => (
+                <div key={idx}>
+                  {/* Agent Message */}
+                  {msg.role === "assistant" && (
+                    <div style={{ display: "flex", gap: 10 }}>
+                      {/* Avatar */}
                       <div
                         style={{
-                          fontSize: 12,
-                          color: colors.textMuted,
-                          marginBottom: 4,
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          background: `linear-gradient(135deg, ${colors.accent}, #8b5cf6)`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <RobotOutlined
+                          style={{ color: "#fff", fontSize: 16 }}
+                        />
+                      </div>
+                      {/* Content */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: colors.textMuted,
+                            marginBottom: 4,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 500,
+                              color: colors.textSecondary,
+                            }}
+                          >
+                            Agent
+                          </span>
+                          {msg.timestamp && (
+                            <span>
+                              {dayjs(msg.timestamp).format("HH:mm:ss")}
+                            </span>
+                          )}
+                        </div>
+                        {/* Agent text content */}
+                        {msg.content && (
+                          <div
+                            style={{
+                              padding: "12px 14px",
+                              borderRadius: 12,
+                              background: colors.agentBg,
+                              border: `1px solid ${colors.agentBorder}`,
+                              color: colors.text,
+                              fontSize: 14,
+                              lineHeight: 1.6,
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            {msg.content}
+                          </div>
+                        )}
+                        {/* Tool Calls - show what actions the agent is taking */}
+                        {msg.tool_calls && msg.tool_calls.length > 0 && (
+                          <div
+                            style={{
+                              marginTop: msg.content ? 8 : 0,
+                              padding: "10px 12px",
+                              borderRadius: 8,
+                              background: isDark ? "#1c1c1e" : "#f0f0f0",
+                              border: `1px solid ${colors.border}`,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: colors.textMuted,
+                                marginBottom: 6,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.5px",
+                              }}
+                            >
+                              Executing Actions
+                            </div>
+                            {msg.tool_calls.map((tc, tcIdx) => {
+                              let argsPreview = "";
+                              try {
+                                const args = JSON.parse(tc.arguments);
+                                argsPreview = Object.entries(args)
+                                  .map(
+                                    ([k, v]) =>
+                                      `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`,
+                                  )
+                                  .join(", ");
+                              } catch {
+                                argsPreview = tc.arguments;
+                              }
+                              return (
+                                <div
+                                  key={tcIdx}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "flex-start",
+                                    gap: 8,
+                                    padding: "6px 0",
+                                    borderTop:
+                                      tcIdx > 0
+                                        ? `1px solid ${colors.border}`
+                                        : "none",
+                                  }}
+                                >
+                                  <ToolOutlined
+                                    style={{
+                                      color: colors.accent,
+                                      marginTop: 2,
+                                    }}
+                                  />
+                                  <div>
+                                    <div
+                                      style={{
+                                        fontWeight: 500,
+                                        color: colors.text,
+                                        fontSize: 13,
+                                      }}
+                                    >
+                                      {tc.name
+                                        .replace(/_/g, " ")
+                                        .replace(/\b\w/g, (c) =>
+                                          c.toUpperCase(),
+                                        )}
+                                    </div>
+                                    {argsPreview && (
+                                      <div
+                                        style={{
+                                          fontSize: 11,
+                                          color: colors.textMuted,
+                                          marginTop: 2,
+                                          fontFamily: "monospace",
+                                        }}
+                                      >
+                                        {argsPreview.length > 80
+                                          ? argsPreview.slice(0, 80) + "..."
+                                          : argsPreview}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tool Response */}
+                  {msg.role === "tool" && (
+                    <div style={{ marginLeft: 42, marginTop: 4 }}>
+                      <ToolResultDisplay
+                        name={msg.name || "unknown"}
+                        content={msg.content}
+                        timestamp={msg.timestamp}
+                        isDark={isDark}
+                        colors={colors}
+                      />
+                    </div>
+                  )}
+
+                  {/* User Message (system prompt) */}
+                  {msg.role === "user" && (
+                    <div
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: isDark ? "#1e1e1e" : "#fafafa",
+                        border: `1px dashed ${colors.border}`,
+                        fontSize: 12,
+                        color: colors.textMuted,
+                      }}
+                    >
+                      <span style={{ fontWeight: 500 }}>System: </span>
+                      {msg.content.length > 100
+                        ? msg.content.slice(0, 100) + "..."
+                        : msg.content}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Running indicator with deployment status */}
+              {isRunning && (
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    background: colors.agentBg,
+                    border: `1px solid ${colors.agentBorder}`,
+                    marginLeft: 42,
+                  }}
+                >
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 10 }}
+                  >
+                    <LoadingOutlined
+                      spin
+                      style={{ color: colors.accent, fontSize: 16 }}
+                    />
+                    <span style={{ color: colors.textSecondary, fontSize: 14 }}>
+                      {job.status_message || "Processing..."}
+                    </span>
+                  </div>
+
+                  {/* Show deployment loading progress when waiting */}
+                  {job.progress?.step_name === "wait_for_deployment" && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        borderRadius: 8,
+                        background: isDark ? "#1e1e1e" : "#f0f0f0",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <span style={{ fontSize: 12, color: colors.textMuted }}>
+                          Model Loading Status
+                        </span>
+                        {job.progress.elapsed_seconds != null && (
+                          <span
+                            style={{ fontSize: 11, color: colors.textMuted }}
+                          >
+                            {job.progress.elapsed_seconds}s
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        style={{
                           display: "flex",
                           alignItems: "center",
                           gap: 8,
                         }}
                       >
+                        <div
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background:
+                              job.progress.deployment_status === "running"
+                                ? "#22c55e"
+                                : job.progress.deployment_status === "starting"
+                                  ? "#f59e0b"
+                                  : job.progress.deployment_status === "error"
+                                    ? "#ef4444"
+                                    : "#6b7280",
+                            animation:
+                              job.progress.deployment_status === "starting"
+                                ? "pulse 1.5s infinite"
+                                : "none",
+                          }}
+                        />
                         <span
                           style={{
+                            fontSize: 13,
+                            color: colors.text,
                             fontWeight: 500,
-                            color: colors.textSecondary,
                           }}
                         >
-                          Agent
+                          {job.progress.deployment_status === "pending" &&
+                            "Preparing deployment..."}
+                          {job.progress.deployment_status === "starting" &&
+                            "Loading model into GPU memory..."}
+                          {job.progress.deployment_status === "running" &&
+                            "Model ready!"}
+                          {job.progress.deployment_status === "error" &&
+                            "Deployment failed"}
+                          {!job.progress.deployment_status && "Waiting..."}
                         </span>
-                        {msg.timestamp && (
-                          <span>{dayjs(msg.timestamp).format("HH:mm:ss")}</span>
-                        )}
                       </div>
-                      {/* Agent text content */}
-                      {msg.content && (
+                      {job.progress.deployment_message && (
                         <div
                           style={{
-                            padding: "12px 14px",
-                            borderRadius: 12,
-                            background: colors.agentBg,
-                            border: `1px solid ${colors.agentBorder}`,
-                            color: colors.text,
-                            fontSize: 14,
-                            lineHeight: 1.6,
-                            whiteSpace: "pre-wrap",
+                            marginTop: 6,
+                            fontSize: 11,
+                            color: colors.textMuted,
+                            fontFamily: "monospace",
                           }}
                         >
-                          {msg.content}
+                          {job.progress.deployment_message}
                         </div>
                       )}
-                      {/* Tool Calls - show what actions the agent is taking */}
-                      {msg.tool_calls && msg.tool_calls.length > 0 && (
+                    </div>
+                  )}
+
+                  {/* Show step progress */}
+                  {job.progress &&
+                    job.progress.step != null &&
+                    job.progress.total_steps != null && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
                         <div
                           style={{
-                            marginTop: msg.content ? 8 : 0,
-                            padding: "10px 12px",
-                            borderRadius: 8,
-                            background: isDark ? "#1c1c1e" : "#f0f0f0",
-                            border: `1px solid ${colors.border}`,
+                            flex: 1,
+                            height: 4,
+                            borderRadius: 2,
+                            background: isDark ? "#333" : "#e0e0e0",
+                            overflow: "hidden",
                           }}
                         >
                           <div
                             style={{
-                              fontSize: 11,
-                              color: colors.textMuted,
-                              marginBottom: 6,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.5px",
+                              width: `${Math.min((job.progress.step / job.progress.total_steps) * 100, 100)}%`,
+                              height: "100%",
+                              background: colors.accent,
+                              transition: "width 0.3s ease",
                             }}
-                          >
-                            Executing Actions
-                          </div>
-                          {msg.tool_calls.map((tc, tcIdx) => {
-                            let argsPreview = "";
-                            try {
-                              const args = JSON.parse(tc.arguments);
-                              argsPreview = Object.entries(args)
-                                .map(
-                                  ([k, v]) =>
-                                    `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`,
-                                )
-                                .join(", ");
-                            } catch {
-                              argsPreview = tc.arguments;
-                            }
-                            return (
-                              <div
-                                key={tcIdx}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "flex-start",
-                                  gap: 8,
-                                  padding: "6px 0",
-                                  borderTop:
-                                    tcIdx > 0
-                                      ? `1px solid ${colors.border}`
-                                      : "none",
-                                }}
-                              >
-                                <ToolOutlined
-                                  style={{ color: colors.accent, marginTop: 2 }}
-                                />
-                                <div>
-                                  <div
-                                    style={{
-                                      fontWeight: 500,
-                                      color: colors.text,
-                                      fontSize: 13,
-                                    }}
-                                  >
-                                    {tc.name
-                                      .replace(/_/g, " ")
-                                      .replace(/\b\w/g, (c) => c.toUpperCase())}
-                                  </div>
-                                  {argsPreview && (
-                                    <div
-                                      style={{
-                                        fontSize: 11,
-                                        color: colors.textMuted,
-                                        marginTop: 2,
-                                        fontFamily: "monospace",
-                                      }}
-                                    >
-                                      {argsPreview.length > 80
-                                        ? argsPreview.slice(0, 80) + "..."
-                                        : argsPreview}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+                          />
                         </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                        <span style={{ fontSize: 11, color: colors.textMuted }}>
+                          {job.progress.step}/{job.progress.total_steps}
+                        </span>
+                      </div>
+                    )}
+                </div>
+              )}
 
-                {/* Tool Response */}
-                {msg.role === "tool" && (
-                  <div style={{ marginLeft: 42, marginTop: 4 }}>
-                    <ToolResultDisplay
-                      name={msg.name || "unknown"}
-                      content={msg.content}
-                      timestamp={msg.timestamp}
-                      isDark={isDark}
-                      colors={colors}
-                    />
-                  </div>
-                )}
-
-                {/* User Message (system prompt) */}
-                {msg.role === "user" && (
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      background: isDark ? "#1e1e1e" : "#fafafa",
-                      border: `1px dashed ${colors.border}`,
-                      fontSize: 12,
-                      color: colors.textMuted,
-                    }}
-                  >
-                    <span style={{ fontWeight: 500 }}>System: </span>
-                    {msg.content.length > 100
-                      ? msg.content.slice(0, 100) + "..."
-                      : msg.content}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Running indicator */}
-            {isRunning && (
+              <div ref={messagesEndRef} />
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                gap: 12,
+              }}
+            >
               <div
                 style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 12,
+                  background: `linear-gradient(135deg, ${colors.accent}, #8b5cf6)`,
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  background: colors.agentBg,
-                  border: `1px solid ${colors.agentBorder}`,
-                  marginLeft: 42,
+                  justifyContent: "center",
                 }}
               >
-                <LoadingOutlined
-                  spin
-                  style={{ color: colors.accent, fontSize: 16 }}
-                />
-                <span style={{ color: colors.textSecondary, fontSize: 14 }}>
-                  {job.status_message || "Processing..."}
-                </span>
+                <RobotOutlined style={{ color: "#fff", fontSize: 24 }} />
               </div>
-            )}
+              <span style={{ color: colors.textMuted, fontSize: 14 }}>
+                {job?.status === "pending"
+                  ? "Waiting for agent to start..."
+                  : "No conversation yet"}
+              </span>
+            </div>
+          )}
+        </div>
 
-            <div ref={messagesEndRef} />
-          </div>
-        ) : (
+        {/* Test Report - Show all benchmark results */}
+        {job?.all_results && job.all_results.length > 0 && (
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "100%",
-              gap: 12,
+              padding: 16,
+              borderTop: `1px solid ${colors.border}`,
+              background: isDark ? "#1a1a1a" : "#fafafa",
             }}
           >
             <div
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                background: `linear-gradient(135deg, ${colors.accent}, #8b5cf6)`,
+                fontSize: 13,
+                fontWeight: 600,
+                color: colors.text,
+                marginBottom: 12,
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
+                gap: 6,
               }}
             >
-              <RobotOutlined style={{ color: "#fff", fontSize: 24 }} />
+              <ToolOutlined style={{ color: colors.accent }} />
+              Benchmark Results ({job.all_results.length} configurations tested)
             </div>
-            <span style={{ color: colors.textMuted, fontSize: 14 }}>
-              {job?.status === "pending"
-                ? "Waiting for agent to start..."
-                : "No conversation yet"}
-            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {job.all_results.map((result, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: 12,
+                    background: colors.bg,
+                    borderRadius: 8,
+                    border: `1px solid ${colors.border}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      <Tag color="blue" style={{ margin: 0 }}>
+                        {result.engine?.toUpperCase() || "Unknown"}
+                      </Tag>
+                      <span style={{ fontSize: 12, color: colors.textMuted }}>
+                        GPU: [{(result.gpu_indexes || [0]).join(", ")}]
+                      </span>
+                    </div>
+                  </div>
+                  {result.metrics && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, 1fr)",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ textAlign: "center" }}>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 600,
+                            color: "#3b82f6",
+                          }}
+                        >
+                          {result.metrics.throughput_tps?.toFixed(1) || "-"}
+                        </div>
+                        <div style={{ fontSize: 11, color: colors.textMuted }}>
+                          TPS
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 600,
+                            color: "#22c55e",
+                          }}
+                        >
+                          {result.metrics.avg_ttft_ms?.toFixed(0) || "-"}
+                        </div>
+                        <div style={{ fontSize: 11, color: colors.textMuted }}>
+                          TTFT (ms)
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 600,
+                            color: "#f59e0b",
+                          }}
+                        >
+                          {result.metrics.avg_tpot_ms?.toFixed(1) || "-"}
+                        </div>
+                        <div style={{ fontSize: 11, color: colors.textMuted }}>
+                          TPOT (ms)
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Best Config */}
+        {job?.best_config && (
+          <div
+            style={{
+              padding: 16,
+              borderTop: `1px solid ${colors.border}`,
+              background: colors.successBg,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: isDark ? "#4ade80" : "#16a34a",
+                marginBottom: 8,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <CheckCircleOutlined />
+              Best Configuration Found
+            </div>
+            <pre
+              style={{
+                margin: 0,
+                padding: 12,
+                background: colors.bg,
+                borderRadius: 8,
+                border: `1px solid ${colors.successBorder}`,
+                fontSize: 12,
+                fontFamily:
+                  "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace",
+                maxHeight: 120,
+                overflow: "auto",
+                color: colors.text,
+              }}
+            >
+              {JSON.stringify(job.best_config, null, 2)}
+            </pre>
           </div>
         )}
       </div>
-
-      {/* Best Config */}
-      {job?.best_config && (
-        <div
-          style={{
-            padding: 16,
-            borderTop: `1px solid ${colors.border}`,
-            background: colors.successBg,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: isDark ? "#4ade80" : "#16a34a",
-              marginBottom: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <CheckCircleOutlined />
-            Best Configuration Found
-          </div>
-          <pre
-            style={{
-              margin: 0,
-              padding: 12,
-              background: colors.bg,
-              borderRadius: 8,
-              border: `1px solid ${colors.successBorder}`,
-              fontSize: 12,
-              fontFamily:
-                "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace",
-              maxHeight: 120,
-              overflow: "auto",
-              color: colors.text,
-            }}
-          >
-            {JSON.stringify(job.best_config, null, 2)}
-          </pre>
-        </div>
-      )}
-    </div>
+    </>
   );
 }

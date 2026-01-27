@@ -42,8 +42,25 @@ class TuningJob(Base):
     model_id: Mapped[int] = mapped_column(Integer, ForeignKey("llm_models.id"), nullable=False)
     worker_id: Mapped[int] = mapped_column(Integer, ForeignKey("workers.id"), nullable=False)
     optimization_target: Mapped[str] = mapped_column(
-        String(50), default=OptimizationTarget.BALANCED.value
+        String(50), default=OptimizationTarget.THROUGHPUT.value
     )
+
+    # Tuning configuration - which frameworks and parameters to test
+    # Format: {
+    #   "engines": ["vllm", "sglang"],
+    #   "parameters": {
+    #     "tensor_parallel_size": [1, 2],
+    #     "gpu_memory_utilization": [0.85, 0.90],
+    #     "max_model_len": [4096, 8192]
+    #   },
+    #   "benchmark": {
+    #     "duration_seconds": 60,
+    #     "input_length": 512,
+    #     "output_length": 128,
+    #     "concurrency": [1, 4, 8]
+    #   }
+    # }
+    tuning_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Job status
     status: Mapped[str] = mapped_column(String(50), default=TuningJobStatus.PENDING.value)
@@ -52,15 +69,32 @@ class TuningJob(Base):
     total_steps: Mapped[int] = mapped_column(Integer, default=5)
 
     # Progress details (JSON for flexibility)
+    # Format: {
+    #   "step": 3,
+    #   "total_steps": 5,
+    #   "step_name": "benchmarking",
+    #   "configs_tested": 5,
+    #   "configs_total": 12,
+    #   "current_config": {"engine": "vllm", "tensor_parallel_size": 2, ...},
+    #   "results": [{"config": {...}, "throughput_tps": 1234.5, ...}, ...]
+    # }
     progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    # Results
+    # Results - final sorted results
+    # Format: [{"rank": 1, "engine": "vllm", "config": {...}, "throughput_tps": 1500, ...}, ...]
     best_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     all_results: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
-    # Agent conversation log (for UI display)
-    # Format: [{"role": "user"|"assistant"|"tool", "content": "...", "tool_calls": [...], "timestamp": "..."}]
+    # Agent conversation ID (links to conversations table for Agent Chat display)
+    conversation_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("conversations.id"), nullable=True
+    )
+
+    # Legacy: Agent conversation log (for backward compatibility)
     conversation_log: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    # Tuning logs for frontend display
+    logs: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
