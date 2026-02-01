@@ -802,21 +802,44 @@ async def _refresh_worker_resources(worker_id: int):
                 continue
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
-                    response = await client.get(
-                        f"http://{worker.address}/containers/{deployment.container_id}"
-                    )
-                    if response.status_code == 200:
-                        container_info = response.json()
-                        state = container_info.get("state", "").lower()
-                        if state == "running":
-                            deployment.status = DeploymentStatus.RUNNING.value
-                            deployment.status_message = "Model ready"
-                        elif state in ("exited", "dead"):
-                            deployment.status = DeploymentStatus.STOPPED.value
-                            deployment.status_message = f"Container {state}"
-                    elif response.status_code == 404:
-                        deployment.status = DeploymentStatus.ERROR.value
-                        deployment.status_message = "Container not found"
+                    # Check if this is a native deployment
+                    if deployment.container_id.startswith("native-"):
+                        # For native deployments, check via /native/processes
+                        response = await client.get(f"http://{worker.address}/native/processes")
+                        if response.status_code == 200:
+                            processes = response.json().get("processes", [])
+                            found = False
+                            for p in processes:
+                                if p.get("process_id") == deployment.container_id:
+                                    found = True
+                                    if p.get("running"):
+                                        deployment.status = DeploymentStatus.RUNNING.value
+                                        deployment.status_message = "Model ready"
+                                    else:
+                                        deployment.status = DeploymentStatus.STOPPED.value
+                                        deployment.status_message = "Process stopped"
+                                    break
+                            if not found:
+                                # Process not in manager, but might still be running via Ollama
+                                # Don't mark as error, just skip
+                                pass
+                    else:
+                        # Docker container check
+                        response = await client.get(
+                            f"http://{worker.address}/containers/{deployment.container_id}"
+                        )
+                        if response.status_code == 200:
+                            container_info = response.json()
+                            state = container_info.get("state", "").lower()
+                            if state == "running":
+                                deployment.status = DeploymentStatus.RUNNING.value
+                                deployment.status_message = "Model ready"
+                            elif state in ("exited", "dead"):
+                                deployment.status = DeploymentStatus.STOPPED.value
+                                deployment.status_message = f"Container {state}"
+                        elif response.status_code == 404:
+                            deployment.status = DeploymentStatus.ERROR.value
+                            deployment.status_message = "Container not found"
             except Exception as e:
                 logger.warning(f"Failed to check deployment {deployment.id}: {e}")
 

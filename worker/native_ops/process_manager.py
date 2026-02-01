@@ -60,7 +60,13 @@ class NativeProcessManager:
             NativeProcess instance
         """
         if process_id in self._processes:
-            raise ValueError(f"Process {process_id} already exists")
+            # Return existing process if it's still valid
+            existing = self._processes[process_id]
+            if existing.model_id == model_id and existing.backend == backend:
+                logger.info(f"Reusing existing process {process_id}")
+                return existing
+            # Remove old process if model/backend changed
+            await self.stop_process(process_id)
 
         if backend == "ollama":
             process = await self._start_ollama(process_id, model_id, port, **kwargs)
