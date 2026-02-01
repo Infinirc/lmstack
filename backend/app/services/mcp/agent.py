@@ -210,6 +210,7 @@ class AgentService:
         mcp_api_url: str | None = None,
         mcp_api_token: str | None = None,
         max_iterations: int = 20,
+        supports_tool_calling: bool = True,
     ):
         """
         Initialize the Agent Service.
@@ -222,12 +223,14 @@ class AgentService:
             mcp_api_url: LMStack API URL for MCP server.
             mcp_api_token: LMStack API token for MCP server.
             max_iterations: Maximum tool call iterations.
+            supports_tool_calling: Whether the LLM supports tool/function calling.
         """
         self.llm_client = llm_client
         self.llm_model = llm_model
         self.llm_base_url = llm_base_url
         self.llm_api_key = llm_api_key
         self.max_iterations = max_iterations
+        self.supports_tool_calling = supports_tool_calling
 
         # MCP configuration
         self.mcp_api_url = mcp_api_url
@@ -537,6 +540,15 @@ class AgentService:
         self.conversation.append(user_msg)
 
         try:
+            # Warn if tool calling is not supported
+            if not self.supports_tool_calling:
+                yield AgentEvent(
+                    type=EventType.MESSAGE,
+                    content="**Note:** This deployment does not have tool calling enabled. "
+                    "The agent will respond as a regular chat model without executing tools. "
+                    "To enable Agent features, redeploy the model with 'Enable Tool Calling' option in Advanced Settings.\n\n",
+                )
+
             # Initial thinking event
             yield AgentEvent(type=EventType.THINKING, content="Analyzing your request...")
 
@@ -555,15 +567,18 @@ class AgentService:
                     # For continuation, don't add the user message again
                     messages = messages[:-1]
 
-                tools_schema = self._build_tools_schema()
+                # Only include tools if tool calling is supported
+                tools_schema = self._build_tools_schema() if self.supports_tool_calling else None
 
                 try:
                     # Use streaming for better UX
+                    # Note: Don't pass tool_choice="auto" as it requires vLLM to have
+                    # --enable-auto-tool-choice and --tool-call-parser flags enabled.
+                    # Without tool_choice, the API uses default behavior.
                     stream = await self.llm_client.chat.completions.create(
                         model=self.llm_model,
                         messages=messages,
                         tools=tools_schema if tools_schema else None,
-                        tool_choice="auto" if tools_schema else None,
                         stream=True,
                     )
 

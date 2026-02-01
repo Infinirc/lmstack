@@ -71,6 +71,62 @@ export function HuggingFaceLogo({
   );
 }
 
+/**
+ * MLX Logo - Apple's ML framework for Apple Silicon
+ */
+export function MLXLogo({ height = 16, style }: Omit<LogoProps, "isDark">) {
+  // Use Apple-style gradient colors
+  const gradientId = `mlx-gradient-${Math.random().toString(36).substr(2, 9)}`;
+  return (
+    <svg width={height * 1.5} height={height} viewBox="0 0 36 24" style={style}>
+      <defs>
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FF6B6B" />
+          <stop offset="50%" stopColor="#9B59B6" />
+          <stop offset="100%" stopColor="#3498DB" />
+        </linearGradient>
+      </defs>
+      <text
+        x="18"
+        y="17"
+        fontSize="14"
+        fontWeight="700"
+        fontFamily="SF Pro Display, -apple-system, BlinkMacSystemFont, sans-serif"
+        textAnchor="middle"
+        fill={`url(#${gradientId})`}
+      >
+        MLX
+      </text>
+    </svg>
+  );
+}
+
+/**
+ * Llama.cpp Logo
+ */
+export function LlamaCppLogo({
+  height = 16,
+  isDark = false,
+  style,
+}: LogoProps) {
+  const textColor = isDark ? "#ffffff" : "#333333";
+  return (
+    <svg width={height * 3} height={height} viewBox="0 0 72 24" style={style}>
+      <text
+        x="36"
+        y="17"
+        fontSize="12"
+        fontWeight="600"
+        fontFamily="Menlo, Monaco, monospace"
+        textAnchor="middle"
+        fill={textColor}
+      >
+        llama.cpp
+      </text>
+    </svg>
+  );
+}
+
 // =============================================================================
 // Icons
 // =============================================================================
@@ -128,6 +184,16 @@ export function getBackendConfig(
       label: "Ollama",
       color: tagColor,
       icon: <OllamaLogo height={16} isDark={isDark} />,
+    },
+    mlx: {
+      label: "MLX",
+      color: tagColor,
+      icon: <MLXLogo height={16} />,
+    },
+    llama_cpp: {
+      label: "llama.cpp",
+      color: tagColor,
+      icon: <LlamaCppLogo height={16} isDark={isDark} />,
     },
   };
 }

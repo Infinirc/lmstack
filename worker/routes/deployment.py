@@ -59,6 +59,13 @@ async def deploy(request: DeployRequest):
     """Deploy a model container."""
     agent = get_agent()
 
+    # Check if Docker is available
+    if agent.docker is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Docker not available on this worker. Use native deployment for macOS.",
+        )
+
     port_info = f" on port {request.port}" if request.port else ""
     logger.info(f"Deploying {request.deployment_name} with image {request.image}{port_info}")
 
@@ -92,6 +99,14 @@ async def deploy(request: DeployRequest):
 async def stop(request: StopRequest):
     """Stop a container."""
     agent = get_agent()
+
+    # Check if Docker is available
+    if agent.docker is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Docker not available on this worker.",
+        )
+
     logger.info(f"Stopping container {request.container_id[:12]}")
 
     try:

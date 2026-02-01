@@ -32,13 +32,28 @@ export interface DiskInfo {
   percent: number;
 }
 
+export interface CapabilitiesInfo {
+  os_type: string;
+  gpu_type: string;
+  docker: boolean;
+  ollama: boolean;
+  ollama_running: boolean;
+  mlx?: boolean;
+  llama_cpp?: boolean;
+}
+
 export interface SystemInfo {
   cpu?: CPUInfo;
   memory?: MemoryInfo;
   disk?: DiskInfo;
+  os_type?: string;
+  gpu_type?: string;
+  capabilities?: CapabilitiesInfo;
 }
 
 export type ConnectionType = "direct" | "tailscale";
+export type OSType = "linux" | "darwin" | "windows";
+export type GPUType = "nvidia" | "apple_silicon" | "amd" | "none";
 
 export interface Worker {
   id: number;
@@ -53,6 +68,10 @@ export interface Worker {
   labels?: Record<string, string>;
   gpu_info?: GPUInfo[];
   system_info?: SystemInfo;
+  os_type: OSType;
+  gpu_type: GPUType;
+  capabilities?: CapabilitiesInfo;
+  available_backends?: string[];
   created_at: string;
   updated_at: string;
   last_heartbeat?: string;

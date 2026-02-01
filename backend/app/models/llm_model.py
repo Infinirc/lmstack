@@ -12,9 +12,14 @@ from app.database import Base
 class BackendType(str, Enum):
     """Inference backend type"""
 
+    # Docker-based backends (Linux with NVIDIA GPU)
     VLLM = "vllm"
     SGLANG = "sglang"
     OLLAMA = "ollama"
+
+    # Native backends (macOS with Apple Silicon)
+    MLX = "mlx"  # MLX-LM for Apple Silicon
+    LLAMA_CPP = "llama_cpp"  # llama.cpp with Metal
 
 
 class ModelSource(str, Enum):

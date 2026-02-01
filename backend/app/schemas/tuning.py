@@ -270,3 +270,116 @@ class KnowledgeSaveRequest(BaseModel):
     benchmark_result_id: int = Field(..., description="ID of the benchmark result to save")
     model_family: str = Field(..., description="Model family for categorization")
     model_params_b: float | None = Field(default=None, description="Model parameters in billions")
+
+
+# ============================================================================
+# Comprehensive Benchmark Schemas
+# ============================================================================
+
+
+class LatencyPercentiles(BaseModel):
+    """Latency metrics with percentiles"""
+
+    mean: float = 0.0
+    median: float = 0.0
+    min: float = 0.0
+    max: float = 0.0
+    std: float = 0.0
+    p50: float = 0.0
+    p90: float = 0.0
+    p95: float = 0.0
+    p99: float = 0.0
+
+
+class ComprehensiveBenchmarkMetrics(BaseModel):
+    """Comprehensive benchmark metrics with percentiles"""
+
+    # Latency metrics with percentiles
+    ttft: LatencyPercentiles = Field(default_factory=LatencyPercentiles)
+    itl: LatencyPercentiles = Field(default_factory=LatencyPercentiles)
+    tpot: LatencyPercentiles = Field(default_factory=LatencyPercentiles)
+    e2e_latency: LatencyPercentiles = Field(default_factory=LatencyPercentiles)
+
+    # Throughput metrics
+    throughput_tps: float = Field(0.0, description="Total tokens per second")
+    throughput_rps: float = Field(0.0, description="Requests per second")
+    output_tps: float = Field(0.0, description="Output tokens per second")
+
+    # Request statistics
+    total_requests: int = 0
+    successful_requests: int = 0
+    failed_requests: int = 0
+    success_rate: float = 0.0
+
+    # Token statistics
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    avg_prompt_tokens: float = 0.0
+    avg_completion_tokens: float = 0.0
+
+    # Timing
+    total_duration_seconds: float = 0.0
+    concurrency: int = 0
+
+
+class ComprehensiveBenchmarkRequest(BaseModel):
+    """Request for running a comprehensive benchmark"""
+
+    deployment_id: int = Field(..., description="ID of the deployment to benchmark")
+    concurrency: int = Field(default=10, ge=1, le=128, description="Concurrent requests")
+    num_requests: int = Field(default=50, ge=10, le=1000, description="Total requests")
+    warmup_requests: int = Field(default=5, ge=0, le=20, description="Warmup requests")
+    prompt_tokens: int = Field(default=256, ge=32, le=8192, description="Approximate input tokens")
+    output_tokens: int = Field(default=128, ge=16, le=2048, description="Max output tokens")
+    custom_prompt: str | None = Field(default=None, description="Custom prompt to use")
+
+
+class ComprehensiveBenchmarkResponse(BaseModel):
+    """Response for comprehensive benchmark"""
+
+    metrics: ComprehensiveBenchmarkMetrics
+    config: dict
+    error: str | None = None
+    started_at: float
+    completed_at: float
+    duration_seconds: float
+
+
+class SaturationDetectionRequest(BaseModel):
+    """Request for saturation detection"""
+
+    deployment_id: int = Field(..., description="ID of the deployment to test")
+    start_concurrency: int = Field(default=1, ge=1, description="Starting concurrency")
+    max_concurrency: int = Field(
+        default=64, ge=1, le=256, description="Maximum concurrency to test"
+    )
+    requests_per_level: int = Field(default=20, ge=10, le=100, description="Requests per level")
+    use_exponential: bool = Field(default=True, description="Use exponential stepping")
+    step_size: int = Field(default=2, ge=1, description="Linear step size")
+    step_multiplier: float = Field(
+        default=1.5, ge=1.1, le=3.0, description="Exponential multiplier"
+    )
+
+
+class ConcurrencyLevelResult(BaseModel):
+    """Result for a single concurrency level"""
+
+    concurrency: int
+    throughput_tps: float
+    avg_latency_ms: float
+    p95_latency_ms: float
+    success_rate: float
+
+
+class SaturationDetectionResponse(BaseModel):
+    """Response for saturation detection"""
+
+    optimal_concurrency: int = Field(description="Recommended concurrency level")
+    max_throughput_tps: float = Field(description="Maximum throughput achieved")
+    latency_at_optimal_ms: float = Field(description="Latency at optimal concurrency")
+    saturation_concurrency: int = Field(description="Concurrency where saturation started")
+    saturation_detected: bool = Field(description="Whether saturation was detected")
+    stop_reason: str = Field(description="Reason for stopping")
+    concurrency_results: list[ConcurrencyLevelResult] = Field(
+        default_factory=list, description="Results for each concurrency level"
+    )

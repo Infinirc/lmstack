@@ -2,19 +2,15 @@
  * Chat Panel Components
  *
  * Global chat panel for AI conversations accessible from any page.
- * Supports two modes:
- * - Agent Mode: MCP-based agent with Claude Code-style interaction
- * - Chat Mode: Traditional tool calling via LLM API
+ * Uses MCP-based agent with Claude Code-style interaction.
  */
 
 // Components
 export { ChatPanel } from "./ChatPanel";
 export { ModelSelector } from "./ModelSelector";
-export { ToolConfirmModal } from "./ToolConfirmModal";
 export { AgentChatView } from "./AgentChatView";
 
 // Hooks
-export { useChat } from "./useChat";
 export { useAgentChat } from "./useAgentChat";
 
 // Types
@@ -24,14 +20,6 @@ export type {
   ChatPanelState,
   ModelSourceType,
 } from "./types";
-
-export type {
-  ToolDefinition,
-  ToolCall,
-  ToolResult,
-  ToolMeta,
-  PendingToolExecution,
-} from "./tools";
 
 export type {
   AgentEventType,
@@ -47,11 +35,3 @@ export {
   MAX_PANEL_WIDTH,
   CHAT_PANEL_STORAGE_KEY,
 } from "./types";
-
-export {
-  CHAT_TOOLS,
-  TOOL_META,
-  requiresConfirmation,
-  getToolMeta,
-  executeTool,
-} from "./tools";

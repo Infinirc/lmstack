@@ -169,12 +169,15 @@ async def get_or_create_agent(
         llm_api_key = llm_config.api_key
         llm_model = llm_config.model
 
+        # Track if tool calling is supported
+        supports_tool_calling = True
+
         if llm_config.provider == "system" and llm_config.deployment_id:
-            # Look up the deployment
+            # Look up the deployment with model info
             result = await db.execute(
                 select(Deployment)
                 .where(Deployment.id == llm_config.deployment_id)
-                .options(selectinload(Deployment.worker))
+                .options(selectinload(Deployment.worker), selectinload(Deployment.model))
             )
             deployment = result.scalar_one_or_none()
 
@@ -184,9 +187,16 @@ async def get_or_create_agent(
                 raise HTTPException(status_code=400, detail="Deployment is not running")
 
             worker = deployment.worker
-            llm_base_url = f"http://{worker.host}:{deployment.port}/v1"
+            # Extract IP from worker address (format: IP:Port)
+            worker_ip = worker.address.split(":")[0]
+            llm_base_url = f"http://{worker_ip}:{deployment.port}/v1"
             llm_api_key = "dummy"
-            llm_model = llm_config.model or "default"
+            # Use the actual model_id from the LLMModel (e.g., "Qwen/Qwen2.5-0.5B-Instruct")
+            llm_model = deployment.model.model_id
+
+            # Check if deployment has tool calling enabled
+            extra_params = deployment.extra_params or {}
+            supports_tool_calling = extra_params.get("enable-auto-tool-choice", False)
 
         elif llm_config.provider == "openai":
             llm_base_url = "https://api.openai.com/v1"
@@ -216,6 +226,7 @@ async def get_or_create_agent(
             llm_model=llm_model,
             mcp_api_url=mcp_api_url,
             mcp_api_token=api_token,
+            supports_tool_calling=supports_tool_calling,
         )
         await agent.initialize()
 
@@ -443,7 +454,7 @@ async def agent_chat_simple(
         result = await db.execute(
             select(Deployment)
             .where(Deployment.id == request.llm_config.deployment_id)
-            .options(selectinload(Deployment.worker))
+            .options(selectinload(Deployment.worker), selectinload(Deployment.model))
         )
         deployment = result.scalar_one_or_none()
 
@@ -453,9 +464,12 @@ async def agent_chat_simple(
             raise HTTPException(status_code=400, detail="Deployment is not running")
 
         worker = deployment.worker
-        llm_base_url = f"http://{worker.host}:{deployment.port}/v1"
+        # Extract IP from worker address (format: IP:Port)
+        worker_ip = worker.address.split(":")[0]
+        llm_base_url = f"http://{worker_ip}:{deployment.port}/v1"
         llm_api_key = "dummy"
-        llm_model = request.llm_config.model or "default"
+        # Use the actual model_id from the LLMModel (e.g., "Qwen/Qwen2.5-0.5B-Instruct")
+        llm_model = deployment.model.model_id
 
     elif request.llm_config.provider == "openai":
         llm_base_url = "https://api.openai.com/v1"

@@ -2,10 +2,14 @@
 
 Provides CPU, RAM, and disk usage information.
 Supports both host and container environments.
+Also detects OS type and available native backends for Mac support.
 """
 
 import logging
 import os
+import platform
+import shutil
+import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -130,6 +134,141 @@ class SystemDetector:
                 "percent": disk.percent,
             }
 
+    def _get_os_type(self) -> str:
+        """Detect operating system type."""
+        system = platform.system().lower()
+        if system == "darwin":
+            return "darwin"
+        elif system == "windows":
+            return "windows"
+        return "linux"
+
+    def _get_gpu_type(self) -> str:
+        """Detect GPU type."""
+        os_type = self._get_os_type()
+
+        if os_type == "darwin":
+            # Check for Apple Silicon
+            try:
+                result = subprocess.run(
+                    ["sysctl", "-n", "machdep.cpu.brand_string"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if "Apple" in result.stdout:
+                    return "apple_silicon"
+            except (subprocess.SubprocessError, FileNotFoundError):
+                pass
+            # Fallback: check machine type
+            if platform.machine() == "arm64":
+                return "apple_silicon"
+            return "none"
+
+        # Check for NVIDIA GPU on Linux/Windows
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return "nvidia"
+        except (subprocess.SubprocessError, FileNotFoundError):
+            pass
+
+        return "none"
+
+    def _check_docker_available(self) -> bool:
+        """Check if Docker is available and running."""
+        try:
+            result = subprocess.run(
+                ["docker", "info"],
+                capture_output=True,
+                timeout=10,
+            )
+            return result.returncode == 0
+        except (subprocess.SubprocessError, FileNotFoundError):
+            return False
+
+    def _check_ollama_available(self) -> bool:
+        """Check if Ollama is installed."""
+        return shutil.which("ollama") is not None
+
+    def _check_ollama_running(self) -> bool:
+        """Check if Ollama service is running."""
+        try:
+            import httpx
+
+            response = httpx.get("http://localhost:11434/api/tags", timeout=2)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def _check_mlx_available(self) -> bool:
+        """Check if MLX-LM is installed (Mac only)."""
+        if self._get_os_type() != "darwin":
+            return False
+        try:
+            result = subprocess.run(
+                ["python3", "-c", "import mlx_lm; print('ok')"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.returncode == 0 and "ok" in result.stdout
+        except (subprocess.SubprocessError, FileNotFoundError):
+            return False
+
+    def _check_llama_cpp_available(self) -> bool:
+        """Check if llama.cpp server is available."""
+        # Check for llama-server binary
+        if shutil.which("llama-server"):
+            return True
+        # Check for llama-cpp-python
+        try:
+            result = subprocess.run(
+                ["python3", "-c", "import llama_cpp; print('ok')"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.returncode == 0 and "ok" in result.stdout
+        except (subprocess.SubprocessError, FileNotFoundError):
+            return False
+
+    def detect_capabilities(self) -> dict:
+        """Detect available backends and capabilities.
+
+        Returns:
+            Dictionary with:
+            - os_type: Operating system (linux, darwin, windows)
+            - gpu_type: GPU type (nvidia, apple_silicon, amd, none)
+            - docker: Whether Docker is available
+            - ollama: Whether Ollama is installed
+            - ollama_running: Whether Ollama service is running
+            - mlx: Whether MLX-LM is available (Mac only)
+            - llama_cpp: Whether llama.cpp is available
+        """
+        os_type = self._get_os_type()
+        gpu_type = self._get_gpu_type()
+
+        caps = {
+            "os_type": os_type,
+            "gpu_type": gpu_type,
+            "docker": self._check_docker_available(),
+            "ollama": self._check_ollama_available(),
+            "ollama_running": self._check_ollama_running(),
+        }
+
+        # Mac-specific backends
+        if os_type == "darwin":
+            caps["mlx"] = self._check_mlx_available()
+            caps["llama_cpp"] = self._check_llama_cpp_available()
+
+        return caps
+
     def detect(self) -> dict:
         """Detect system CPU, RAM and disk usage.
 
@@ -138,14 +277,22 @@ class SystemDetector:
             - cpu: CPU info (percent, count, freq_mhz)
             - memory: RAM info (total, used, free, percent)
             - disk: Disk info (total, used, free, percent)
+            - os_type: Operating system type
+            - gpu_type: GPU type
+            - capabilities: Available backends
         """
         try:
             import psutil  # noqa: F401 - ensure psutil is available
+
+            caps = self.detect_capabilities()
 
             return {
                 "cpu": self._get_cpu_info(),
                 "memory": self._get_memory_info(),
                 "disk": self._get_disk_info(),
+                "os_type": caps.get("os_type", "linux"),
+                "gpu_type": caps.get("gpu_type", "none"),
+                "capabilities": caps,
             }
 
         except ImportError:

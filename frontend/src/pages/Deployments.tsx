@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  Alert,
   Button,
   Card,
   Form,
@@ -30,9 +31,7 @@ import {
 } from "@ant-design/icons";
 import { useAppTheme } from "../hooks/useTheme";
 import {
-  VllmLogo,
   OllamaLogo,
-  SGLangLogo,
   HuggingFaceLogo,
   DockerIcon,
   getBackendConfig,
@@ -99,14 +98,41 @@ export default function Deployments() {
   // Get the selected model
   const selectedModel = models.find((m) => m.id === selectedModelId);
 
-  // Determine available backends based on model source
-  const availableBackends =
-    selectedModel?.source === "ollama"
-      ? (["ollama"] as const)
-      : (["vllm", "sglang"] as const);
-
   // Get the selected worker's GPU info
   const selectedWorker = workers.find((w) => w.id === selectedWorkerId);
+
+  // Determine available backends based on model source and worker capabilities
+  const availableBackends = (() => {
+    // Start with model-based restrictions
+    if (selectedModel?.source === "ollama") {
+      return ["ollama"] as const;
+    }
+
+    // If no worker selected, show all HuggingFace-compatible backends
+    if (!selectedWorker) {
+      return ["vllm", "sglang"] as const;
+    }
+
+    // macOS workers only support Ollama (vLLM/SGLang require NVIDIA GPU)
+    if (selectedWorker.os_type === "darwin") {
+      return ["ollama"] as const;
+    }
+
+    // Use worker's available_backends if provided
+    if (
+      selectedWorker.available_backends &&
+      selectedWorker.available_backends.length > 0
+    ) {
+      // Filter for HuggingFace-compatible backends from worker's list
+      const hfBackends = selectedWorker.available_backends.filter((b) =>
+        ["vllm", "sglang", "ollama"].includes(b),
+      );
+      return hfBackends.length > 0 ? hfBackends : (["vllm", "sglang"] as const);
+    }
+
+    // Default fallback for Linux workers
+    return ["vllm", "sglang"] as const;
+  })();
   const workerGpus = selectedWorker?.gpu_info || [];
 
   // Calculate total available GPU memory for selected GPUs
@@ -351,11 +377,7 @@ export default function Deployments() {
               {record.model?.source !== "ollama" &&
                 renderSourceTag(record.model?.source, "small")}
               <Tag style={getTagStyle("small")}>
-                {backend === "vllm" && <VllmLogo height={10} isDark={isDark} />}
-                {backend === "sglang" && <SGLangLogo height={10} />}
-                {backend === "ollama" && (
-                  <OllamaLogo height={10} isDark={isDark} />
-                )}
+                {config.icon}
                 <span>{config.label}</span>
               </Tag>
               {record.model?.name} @ {record.worker?.name}
@@ -543,11 +565,7 @@ export default function Deployments() {
               {record.model?.source !== "ollama" &&
                 renderSourceTag(record.model?.source, "small")}
               <Tag style={getTagStyle("small")}>
-                {backend === "vllm" && <VllmLogo height={10} isDark={isDark} />}
-                {backend === "sglang" && <SGLangLogo height={10} />}
-                {backend === "ollama" && (
-                  <OllamaLogo height={10} isDark={isDark} />
-                )}
+                {config.icon}
                 <span>{config.label}</span>
               </Tag>
             </Space>
@@ -836,7 +854,9 @@ export default function Deployments() {
             extra={
               selectedModel?.source === "ollama"
                 ? "Ollama models can only use Ollama backend"
-                : "HuggingFace models can use vLLM or SGLang"
+                : selectedWorker?.os_type === "darwin"
+                  ? "macOS workers only support Ollama backend"
+                  : "HuggingFace models can use vLLM or SGLang"
             }
           >
             <Select
@@ -898,6 +918,86 @@ export default function Deployments() {
               }))}
             />
           </Form.Item>
+
+          {/* macOS Ollama Warning */}
+          {selectedWorker &&
+            selectedWorker.os_type === "darwin" &&
+            !selectedWorker.capabilities?.ollama && (
+              <Alert
+                message="Ollama Not Installed"
+                description={
+                  <div>
+                    <p style={{ margin: "4px 0" }}>
+                      This Mac worker does not have Ollama installed. Please
+                      install it first:
+                    </p>
+                    <pre
+                      style={{
+                        background: "#f5f5f5",
+                        padding: 8,
+                        borderRadius: 4,
+                        fontSize: 12,
+                        margin: "8px 0",
+                      }}
+                    >
+                      brew install ollama{"\n"}
+                      brew services start ollama
+                    </pre>
+                    <p style={{ margin: "4px 0", fontSize: 12, color: "#666" }}>
+                      After installation, the worker will detect Ollama on the
+                      next heartbeat.
+                    </p>
+                  </div>
+                }
+                type="error"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
+          {/* macOS Ollama Not Running Warning */}
+          {selectedWorker &&
+            selectedWorker.os_type === "darwin" &&
+            selectedWorker.capabilities?.ollama &&
+            !selectedWorker.capabilities?.ollama_running && (
+              <Alert
+                message="Ollama Not Running"
+                description={
+                  <div>
+                    <p style={{ margin: "4px 0" }}>
+                      Ollama is installed but not running. Please start it:
+                    </p>
+                    <pre
+                      style={{
+                        background: "#f5f5f5",
+                        padding: 8,
+                        borderRadius: 4,
+                        fontSize: 12,
+                        margin: "8px 0",
+                      }}
+                    >
+                      brew services start ollama
+                    </pre>
+                  </div>
+                }
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
+          {/* macOS Info */}
+          {selectedWorker &&
+            selectedWorker.os_type === "darwin" &&
+            selectedWorker.capabilities?.ollama_running && (
+              <Alert
+                message="macOS Worker"
+                description="This worker uses native Ollama with Metal GPU acceleration. Only Ollama backend is available."
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
 
           <Form.Item
             name="gpu_indexes"

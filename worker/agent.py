@@ -23,10 +23,17 @@ from fastapi import FastAPI
 # Import from docker_ops package - support both direct run and module run
 try:
     from docker_ops import ContainerManager, DockerRunner, GPUDetector, ImageManager, SystemDetector
-    from routes import containers_router, deployment_router, images_router, storage_router
+    from routes import (
+        containers_router,
+        deployment_router,
+        images_router,
+        native_router,
+        storage_router,
+    )
     from routes.containers import set_agent as set_containers_agent
     from routes.deployment import set_agent as set_deployment_agent
     from routes.images import set_agent as set_images_agent
+    from routes.native import set_agent as set_native_agent
     from routes.storage import set_agent as set_storage_agent
 except ImportError:
     # Fallback for when running as package
@@ -37,10 +44,17 @@ except ImportError:
         ImageManager,
         SystemDetector,
     )
-    from worker.routes import containers_router, deployment_router, images_router, storage_router
+    from worker.routes import (
+        containers_router,
+        deployment_router,
+        images_router,
+        native_router,
+        storage_router,
+    )
     from worker.routes.containers import set_agent as set_containers_agent
     from worker.routes.deployment import set_agent as set_deployment_agent
     from worker.routes.images import set_agent as set_images_agent
+    from worker.routes.native import set_agent as set_native_agent
     from worker.routes.storage import set_agent as set_storage_agent
 
 # Configure logging
@@ -69,12 +83,35 @@ class WorkerAgent:
         self.registration_token = registration_token
         self.worker_id: Optional[int] = None
 
-        # Initialize Docker managers
-        self.docker = DockerRunner()
+        # Initialize detectors
         self.gpu_detector = GPUDetector()
         self.system_detector = SystemDetector()
-        self.image_manager = ImageManager(self.docker.client)
-        self.container_manager = ContainerManager(self.docker.client)
+
+        # Check capabilities
+        self.capabilities = self.system_detector.detect_capabilities()
+        self.os_type = self.capabilities.get("os_type", "linux")
+        self.has_docker = self.capabilities.get("docker", True)
+
+        # Initialize Docker managers (if Docker is available)
+        if self.has_docker:
+            self.docker = DockerRunner()
+            self.image_manager = ImageManager(self.docker.client)
+            self.container_manager = ContainerManager(self.docker.client)
+        else:
+            self.docker = None
+            self.image_manager = None
+            self.container_manager = None
+            logger.info("Docker not available, using native process management")
+
+        # Initialize native process manager for Mac (always, for Ollama support)
+        self.native_manager = None
+        if self.os_type == "darwin":
+            try:
+                from native_ops import NativeProcessManager
+            except ImportError:
+                from worker.native_ops import NativeProcessManager
+            self.native_manager = NativeProcessManager()
+            logger.info("Initialized native process manager for macOS")
 
         # Task management
         self._heartbeat_task: Optional[asyncio.Task] = None
@@ -258,6 +295,7 @@ def _set_agent_references(worker_agent: WorkerAgent):
     set_images_agent(worker_agent)
     set_containers_agent(worker_agent)
     set_storage_agent(worker_agent)
+    set_native_agent(worker_agent)
 
 
 @asynccontextmanager
@@ -291,6 +329,7 @@ app.include_router(deployment_router)
 app.include_router(images_router)
 app.include_router(containers_router)
 app.include_router(storage_router)
+app.include_router(native_router)
 
 
 @app.get("/health")

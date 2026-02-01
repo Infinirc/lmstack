@@ -71,6 +71,14 @@ async def list_workers(
             "status": worker.status,
             "gpu_info": worker.gpu_info,
             "system_info": worker.system_info,
+            "os_type": worker.os_type,
+            "gpu_type": worker.gpu_type,
+            "capabilities": worker.capabilities,
+            "available_backends": worker.available_backends,
+            "connection_type": worker.connection_type,
+            "tailscale_ip": worker.tailscale_ip,
+            "headscale_node_id": worker.headscale_node_id,
+            "effective_address": worker.effective_address,
             "created_at": worker.created_at,
             "updated_at": worker.updated_at,
             "last_heartbeat": worker.last_heartbeat,
@@ -149,6 +157,14 @@ async def create_worker(
             original_worker.system_info = (
                 worker_in.system_info.model_dump() if worker_in.system_info else None
             )
+            # Update os_type, gpu_type, capabilities from system_info
+            if worker_in.system_info:
+                if worker_in.system_info.os_type:
+                    original_worker.os_type = worker_in.system_info.os_type
+                if worker_in.system_info.gpu_type:
+                    original_worker.gpu_type = worker_in.system_info.gpu_type
+                if worker_in.system_info.capabilities:
+                    original_worker.capabilities = worker_in.system_info.capabilities.model_dump()
             original_worker.status = WorkerStatus.ONLINE.value
             original_worker.last_heartbeat = datetime.now(UTC)
 
@@ -173,6 +189,14 @@ async def create_worker(
                 status=original_worker.status,
                 gpu_info=original_worker.gpu_info,
                 system_info=original_worker.system_info,
+                os_type=original_worker.os_type,
+                gpu_type=original_worker.gpu_type,
+                capabilities=original_worker.capabilities,
+                available_backends=original_worker.available_backends,
+                connection_type=original_worker.connection_type,
+                tailscale_ip=original_worker.tailscale_ip,
+                headscale_node_id=original_worker.headscale_node_id,
+                effective_address=original_worker.effective_address,
                 created_at=original_worker.created_at,
                 updated_at=original_worker.updated_at,
                 last_heartbeat=original_worker.last_heartbeat,
@@ -206,6 +230,18 @@ async def create_worker(
     if token.is_local:
         worker_labels["type"] = "local"
 
+    # Extract os_type, gpu_type, capabilities from system_info
+    os_type = "linux"
+    gpu_type = "nvidia"
+    capabilities = None
+    if worker_in.system_info:
+        if worker_in.system_info.os_type:
+            os_type = worker_in.system_info.os_type
+        if worker_in.system_info.gpu_type:
+            gpu_type = worker_in.system_info.gpu_type
+        if worker_in.system_info.capabilities:
+            capabilities = worker_in.system_info.capabilities.model_dump()
+
     worker = Worker(
         name=worker_in.name,
         address=real_address,
@@ -213,6 +249,9 @@ async def create_worker(
         labels=worker_labels if worker_labels else None,
         gpu_info=([gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None),
         system_info=(worker_in.system_info.model_dump() if worker_in.system_info else None),
+        os_type=os_type,
+        gpu_type=gpu_type,
+        capabilities=capabilities,
         status=WorkerStatus.ONLINE.value,
         last_heartbeat=datetime.now(UTC),
     )
@@ -236,6 +275,14 @@ async def create_worker(
         status=worker.status,
         gpu_info=worker.gpu_info,
         system_info=worker.system_info,
+        os_type=worker.os_type,
+        gpu_type=worker.gpu_type,
+        capabilities=worker.capabilities,
+        available_backends=worker.available_backends,
+        connection_type=worker.connection_type,
+        tailscale_ip=worker.tailscale_ip,
+        headscale_node_id=worker.headscale_node_id,
+        effective_address=worker.effective_address,
         created_at=worker.created_at,
         updated_at=worker.updated_at,
         last_heartbeat=worker.last_heartbeat,
@@ -268,6 +315,14 @@ async def get_worker(
         status=worker.status,
         gpu_info=worker.gpu_info,
         system_info=worker.system_info,
+        os_type=worker.os_type,
+        gpu_type=worker.gpu_type,
+        capabilities=worker.capabilities,
+        available_backends=worker.available_backends,
+        connection_type=worker.connection_type,
+        tailscale_ip=worker.tailscale_ip,
+        headscale_node_id=worker.headscale_node_id,
+        effective_address=worker.effective_address,
         created_at=worker.created_at,
         updated_at=worker.updated_at,
         last_heartbeat=worker.last_heartbeat,
@@ -318,6 +373,14 @@ async def update_worker(
         status=worker.status,
         gpu_info=worker.gpu_info,
         system_info=worker.system_info,
+        os_type=worker.os_type,
+        gpu_type=worker.gpu_type,
+        capabilities=worker.capabilities,
+        available_backends=worker.available_backends,
+        connection_type=worker.connection_type,
+        tailscale_ip=worker.tailscale_ip,
+        headscale_node_id=worker.headscale_node_id,
+        effective_address=worker.effective_address,
         created_at=worker.created_at,
         updated_at=worker.updated_at,
         last_heartbeat=worker.last_heartbeat,
@@ -377,7 +440,15 @@ async def worker_heartbeat(
         worker.gpu_info = [gpu.model_dump() for gpu in heartbeat.gpu_info]
 
     if heartbeat.system_info:
-        worker.system_info = heartbeat.system_info.model_dump()
+        system_data = heartbeat.system_info.model_dump()
+        worker.system_info = system_data
+        # Extract os_type, gpu_type, capabilities from system_info
+        if heartbeat.system_info.os_type:
+            worker.os_type = heartbeat.system_info.os_type
+        if heartbeat.system_info.gpu_type:
+            worker.gpu_type = heartbeat.system_info.gpu_type
+        if heartbeat.system_info.capabilities:
+            worker.capabilities = heartbeat.system_info.capabilities.model_dump()
 
     # Check if worker is going offline
     is_going_offline = heartbeat.status == WorkerStatus.OFFLINE
@@ -731,21 +802,44 @@ async def _refresh_worker_resources(worker_id: int):
                 continue
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
-                    response = await client.get(
-                        f"http://{worker.address}/containers/{deployment.container_id}"
-                    )
-                    if response.status_code == 200:
-                        container_info = response.json()
-                        state = container_info.get("state", "").lower()
-                        if state == "running":
-                            deployment.status = DeploymentStatus.RUNNING.value
-                            deployment.status_message = "Model ready"
-                        elif state in ("exited", "dead"):
-                            deployment.status = DeploymentStatus.STOPPED.value
-                            deployment.status_message = f"Container {state}"
-                    elif response.status_code == 404:
-                        deployment.status = DeploymentStatus.ERROR.value
-                        deployment.status_message = "Container not found"
+                    # Check if this is a native deployment
+                    if deployment.container_id.startswith("native-"):
+                        # For native deployments, check via /native/processes
+                        response = await client.get(f"http://{worker.address}/native/processes")
+                        if response.status_code == 200:
+                            processes = response.json().get("processes", [])
+                            found = False
+                            for p in processes:
+                                if p.get("process_id") == deployment.container_id:
+                                    found = True
+                                    if p.get("running"):
+                                        deployment.status = DeploymentStatus.RUNNING.value
+                                        deployment.status_message = "Model ready"
+                                    else:
+                                        deployment.status = DeploymentStatus.STOPPED.value
+                                        deployment.status_message = "Process stopped"
+                                    break
+                            if not found:
+                                # Process not in manager, but might still be running via Ollama
+                                # Don't mark as error, just skip
+                                pass
+                    else:
+                        # Docker container check
+                        response = await client.get(
+                            f"http://{worker.address}/containers/{deployment.container_id}"
+                        )
+                        if response.status_code == 200:
+                            container_info = response.json()
+                            state = container_info.get("state", "").lower()
+                            if state == "running":
+                                deployment.status = DeploymentStatus.RUNNING.value
+                                deployment.status_message = "Model ready"
+                            elif state in ("exited", "dead"):
+                                deployment.status = DeploymentStatus.STOPPED.value
+                                deployment.status_message = f"Container {state}"
+                        elif response.status_code == 404:
+                            deployment.status = DeploymentStatus.ERROR.value
+                            deployment.status_message = "Container not found"
             except Exception as e:
                 logger.warning(f"Failed to check deployment {deployment.id}: {e}")
 
