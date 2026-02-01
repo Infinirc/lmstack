@@ -757,7 +757,7 @@ async def agent_chat(
     current_user: User = Depends(require_viewer),
 ):
     """Chat with the Auto-Tuning Agent"""
-    from app.services.tuning_agent import AGENT_SYSTEM_PROMPT, AgentToolExecutor, get_agent_tools
+    from app.services.tuning import AGENT_SYSTEM_PROMPT, AgentToolExecutor, get_agent_tools
 
     config = request.config
     provider = config.get("provider", "system")
