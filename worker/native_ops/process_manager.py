@@ -325,17 +325,14 @@ class NativeProcessManager:
         """Get logs from a process.
 
         For subprocess-based backends, reads from stdout pipe.
-        For Ollama, returns a message about checking system logs.
+        For Ollama, returns status information about loaded models.
         """
         process = self._processes.get(process_id)
         if not process:
             return "Process not found"
 
         if process.backend == "ollama":
-            return (
-                "Ollama logs are managed by the system service.\n"
-                "Check with: journalctl -u ollama (Linux) or Console.app (macOS)"
-            )
+            return self._get_ollama_status(process)
 
         if process.process and process.process.stdout:
             try:
@@ -346,3 +343,52 @@ class NativeProcessManager:
                 return f"Error reading logs: {e}"
 
         return "No logs available"
+
+    def _get_ollama_status(self, process: NativeProcess) -> str:
+        """Get Ollama status information."""
+        import httpx
+
+        lines = []
+        lines.append("=== Ollama Native Deployment ===")
+        lines.append(f"Model: {process.model_id}")
+        lines.append(f"Port: {process.port}")
+        lines.append("")
+
+        try:
+            # Get running models
+            with httpx.Client(timeout=5.0) as client:
+                response = client.get(f"http://localhost:{process.port}/api/ps")
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("models", [])
+                    if models:
+                        lines.append("=== Loaded Models ===")
+                        for m in models:
+                            name = m.get("name", "unknown")
+                            size = m.get("size", 0)
+                            size_gb = size / (1024**3) if size else 0
+                            lines.append(f"  - {name} ({size_gb:.1f} GB)")
+                    else:
+                        lines.append("No models currently loaded in memory")
+                    lines.append("")
+
+                # Get available models
+                response = client.get(f"http://localhost:{process.port}/api/tags")
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("models", [])
+                    if models:
+                        lines.append("=== Available Models ===")
+                        for m in models:
+                            name = m.get("name", "unknown")
+                            size = m.get("size", 0)
+                            size_gb = size / (1024**3) if size else 0
+                            lines.append(f"  - {name} ({size_gb:.1f} GB)")
+
+        except Exception as e:
+            lines.append(f"Error getting Ollama status: {e}")
+
+        lines.append("")
+        lines.append("Note: Detailed logs available in Console.app (macOS)")
+
+        return "\n".join(lines)
