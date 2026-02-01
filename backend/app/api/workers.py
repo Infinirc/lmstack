@@ -157,6 +157,14 @@ async def create_worker(
             original_worker.system_info = (
                 worker_in.system_info.model_dump() if worker_in.system_info else None
             )
+            # Update os_type, gpu_type, capabilities from system_info
+            if worker_in.system_info:
+                if worker_in.system_info.os_type:
+                    original_worker.os_type = worker_in.system_info.os_type
+                if worker_in.system_info.gpu_type:
+                    original_worker.gpu_type = worker_in.system_info.gpu_type
+                if worker_in.system_info.capabilities:
+                    original_worker.capabilities = worker_in.system_info.capabilities.model_dump()
             original_worker.status = WorkerStatus.ONLINE.value
             original_worker.last_heartbeat = datetime.now(UTC)
 
