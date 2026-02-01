@@ -103,9 +103,9 @@ class WorkerAgent:
             self.container_manager = None
             logger.info("Docker not available, using native process management")
 
-        # Initialize native process manager for Mac without Docker
+        # Initialize native process manager for Mac (always, for Ollama support)
         self.native_manager = None
-        if self.os_type == "darwin" and not self.has_docker:
+        if self.os_type == "darwin":
             try:
                 from native_ops import NativeProcessManager
             except ImportError:
