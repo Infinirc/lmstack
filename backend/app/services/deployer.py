@@ -601,19 +601,16 @@ class DeployerService:
     ) -> bool | None:
         """Wait for native API to be ready.
 
+        For native deployments, we check via worker agent because
+        Ollama only listens on localhost.
+
         Returns:
             True: API is ready
             False: Timeout
             None: Cancelled
         """
-        worker_ip = worker_address.split(":")[0]
-        api_base = f"http://{worker_ip}:{port}"
-
-        # Determine health endpoint based on backend
-        if backend == BackendType.OLLAMA.value:
-            health_url = f"{api_base}/v1/models"
-        else:
-            health_url = f"{api_base}/v1/models"
+        # For native deployments, check via worker agent's health endpoint
+        worker_health_url = f"http://{worker_address}/native/health"
 
         elapsed = 0
         check_interval = 5
@@ -635,10 +632,14 @@ class DeployerService:
                     pass
 
                 try:
-                    response = await client.get(health_url)
+                    response = await client.get(
+                        worker_health_url, params={"backend": backend, "port": port}
+                    )
                     if response.status_code == 200:
-                        logger.info(f"Native API ready at {health_url}")
-                        return True
+                        data = response.json()
+                        if data.get("ready"):
+                            logger.info("Native API ready (checked via worker)")
+                            return True
                 except Exception:
                     pass
 

@@ -155,6 +155,39 @@ async def get_native_logs(process_id: str, tail: int = 100):
     return {"logs": logs}
 
 
+@router.get("/native/health")
+async def native_health(backend: str = "ollama", port: int = 11434):
+    """Check if native backend API is ready.
+
+    This endpoint checks locally (on the worker) so it works even when
+    Ollama only listens on localhost.
+    """
+    import httpx
+
+    try:
+        if backend == "ollama":
+            # Check Ollama's OpenAI-compatible endpoint
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"http://localhost:{port}/v1/models")
+                if response.status_code == 200:
+                    data = response.json()
+                    # Check if there are models available
+                    if data.get("data") and len(data["data"]) > 0:
+                        return {"ready": True, "models": len(data["data"])}
+                return {"ready": False, "reason": "No models loaded"}
+        else:
+            # For MLX and llama.cpp, check the /v1/models endpoint
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"http://localhost:{port}/v1/models")
+                if response.status_code == 200:
+                    return {"ready": True}
+                return {"ready": False, "reason": f"Status {response.status_code}"}
+    except httpx.ConnectError:
+        return {"ready": False, "reason": "Connection refused"}
+    except Exception as e:
+        return {"ready": False, "reason": str(e)}
+
+
 def _find_available_port(start: int = 8001, end: int = 9000) -> int:
     """Find an available port."""
     import socket
