@@ -63,9 +63,16 @@ class DeployerService:
 
                 # Check if worker supports Docker or needs native deployment
                 worker = deployment.worker
-                is_mac_native = worker.os_type == OSType.DARWIN.value and not worker.supports_docker
+                backend = deployment.backend
 
-                # Use native deployment for Mac without Docker
+                # Mac with Ollama should always use native deployment (use local Ollama)
+                # Mac without Docker should also use native deployment
+                is_mac = worker.os_type == OSType.DARWIN.value
+                is_mac_native = is_mac and (
+                    backend == BackendType.OLLAMA.value or not worker.supports_docker
+                )
+
+                # Use native deployment for Mac
                 if is_mac_native:
                     result = await self._deploy_native(deployment, db)
                     if result.get("error"):
