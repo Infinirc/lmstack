@@ -314,37 +314,42 @@ export default function Workers() {
     {
       title: "Worker",
       key: "worker",
-      render: (_: unknown, record: Worker) => (
-        <div>
-          <div style={{ fontWeight: 500 }}>{record.name}</div>
-          <div style={{ fontSize: 12, color: "#888" }}>{record.address}</div>
-          <div
-            style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}
-          >
-            <Tag color={record.status === "online" ? "green" : "default"}>
-              {record.status.toUpperCase()}
-            </Tag>
-            {record.os_type === "darwin" && (
-              <>
-                <Tag color="blue" style={{ fontSize: 10 }}>
-                  macOS
-                </Tag>
-                {record.status === "online" &&
-                  !record.capabilities?.ollama_running && (
-                    <Tag color="error" style={{ fontSize: 10 }}>
-                      No Ollama
-                    </Tag>
-                  )}
-              </>
-            )}
+      render: (_: unknown, record: Worker) => {
+        const osMap: Record<string, string> = {
+          darwin: "macOS",
+          linux: "Linux",
+          windows: "Windows",
+        };
+        return (
+          <div>
+            <div style={{ fontWeight: 500 }}>{record.name}</div>
+            <div style={{ fontSize: 12, color: "#888" }}>{record.address}</div>
+            <div
+              style={{
+                marginTop: 4,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 4,
+              }}
+            >
+              <Tag color={record.status === "online" ? "green" : "default"}>
+                {record.status.toUpperCase()}
+              </Tag>
+              <Tag
+                color={record.os_type === "darwin" ? "blue" : "default"}
+                style={{ fontSize: 10 }}
+              >
+                {osMap[record.os_type] || record.os_type}
+              </Tag>
+            </div>
+            <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+              {record.status === "offline"
+                ? "Offline"
+                : `${record.gpu_info?.length || 0} GPU(s) · ${record.deployment_count} deployments`}
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
-            {record.status === "offline"
-              ? "Offline"
-              : `${record.gpu_info?.length || 0} GPU(s) · ${record.deployment_count} deployments`}
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: "Actions",
@@ -409,48 +414,29 @@ export default function Workers() {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status: string, record: Worker) => {
+      width: 100,
+      render: (status: string) => {
         const colorMap: Record<string, string> = {
           online: "green",
           offline: "default",
           error: "red",
         };
-        return (
-          <div>
-            <Tag color={colorMap[status]}>{status.toUpperCase()}</Tag>
-            {record.os_type === "darwin" && (
-              <div style={{ marginTop: 4 }}>
-                <Tag color="blue" style={{ fontSize: 10 }}>
-                  macOS
-                </Tag>
-                {record.status === "online" &&
-                  (record.capabilities?.ollama_running ? (
-                    <Tag color="success" style={{ fontSize: 10 }}>
-                      Ollama
-                    </Tag>
-                  ) : record.capabilities?.ollama ? (
-                    <Tooltip title="Ollama installed but not running. Run: brew services start ollama">
-                      <Tag
-                        color="warning"
-                        style={{ fontSize: 10, cursor: "pointer" }}
-                      >
-                        Ollama Stopped
-                      </Tag>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip title="Ollama not installed. Run: brew install ollama && brew services start ollama">
-                      <Tag
-                        color="error"
-                        style={{ fontSize: 10, cursor: "pointer" }}
-                      >
-                        No Ollama
-                      </Tag>
-                    </Tooltip>
-                  ))}
-              </div>
-            )}
-          </div>
-        );
+        return <Tag color={colorMap[status]}>{status.toUpperCase()}</Tag>;
+      },
+    },
+    {
+      title: "OS",
+      dataIndex: "os_type",
+      key: "os_type",
+      width: 100,
+      render: (osType: string) => {
+        const osMap: Record<string, { label: string; color: string }> = {
+          darwin: { label: "macOS", color: "blue" },
+          linux: { label: "Linux", color: "default" },
+          windows: { label: "Windows", color: "cyan" },
+        };
+        const os = osMap[osType] || { label: osType, color: "default" };
+        return <Tag color={os.color}>{os.label}</Tag>;
       },
     },
     {
