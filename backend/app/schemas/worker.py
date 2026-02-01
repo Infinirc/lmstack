@@ -45,12 +45,27 @@ class DiskInfo(BaseModel):
     percent: float = 0  # percentage
 
 
+class CapabilitiesInfo(BaseModel):
+    """Worker capabilities schema (available backends)"""
+
+    os_type: str = "linux"  # linux, darwin, windows
+    gpu_type: str = "nvidia"  # nvidia, apple_silicon, amd, none
+    docker: bool = True  # Docker available
+    ollama: bool = False  # Ollama installed
+    ollama_running: bool = False  # Ollama service running
+    mlx: bool = False  # MLX-LM available (Mac only)
+    llama_cpp: bool = False  # llama.cpp available
+
+
 class SystemInfo(BaseModel):
     """System information schema (CPU, Memory, Disk)"""
 
     cpu: CPUInfo | None = None
     memory: MemoryInfo | None = None
     disk: DiskInfo | None = None
+    os_type: str | None = None  # linux, darwin, windows
+    gpu_type: str | None = None  # nvidia, apple_silicon, amd, none
+    capabilities: CapabilitiesInfo | None = None  # Available backends
 
 
 class WorkerBase(BaseModel):
@@ -97,6 +112,10 @@ class WorkerResponse(WorkerBase):
     status: str
     gpu_info: list[dict] | None = None
     system_info: dict | None = None
+    os_type: str = "linux"  # linux, darwin, windows
+    gpu_type: str = "nvidia"  # nvidia, apple_silicon, amd, none
+    capabilities: dict | None = None  # Available backends
+    available_backends: list[str] | None = None  # List of available backend names
     tailscale_ip: str | None = None
     headscale_node_id: int | None = None
     effective_address: str | None = None  # The actual address to use for connections

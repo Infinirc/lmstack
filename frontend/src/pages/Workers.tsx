@@ -318,12 +318,26 @@ export default function Workers() {
         <div>
           <div style={{ fontWeight: 500 }}>{record.name}</div>
           <div style={{ fontSize: 12, color: "#888" }}>{record.address}</div>
-          <Tag
-            color={record.status === "online" ? "green" : "default"}
-            style={{ marginTop: 4 }}
+          <div
+            style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}
           >
-            {record.status.toUpperCase()}
-          </Tag>
+            <Tag color={record.status === "online" ? "green" : "default"}>
+              {record.status.toUpperCase()}
+            </Tag>
+            {record.os_type === "darwin" && (
+              <>
+                <Tag color="blue" style={{ fontSize: 10 }}>
+                  macOS
+                </Tag>
+                {record.status === "online" &&
+                  !record.capabilities?.ollama_running && (
+                    <Tag color="error" style={{ fontSize: 10 }}>
+                      No Ollama
+                    </Tag>
+                  )}
+              </>
+            )}
+          </div>
           <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
             {record.status === "offline"
               ? "Offline"
@@ -395,13 +409,48 @@ export default function Workers() {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status: string) => {
+      render: (status: string, record: Worker) => {
         const colorMap: Record<string, string> = {
           online: "green",
           offline: "default",
           error: "red",
         };
-        return <Tag color={colorMap[status]}>{status.toUpperCase()}</Tag>;
+        return (
+          <div>
+            <Tag color={colorMap[status]}>{status.toUpperCase()}</Tag>
+            {record.os_type === "darwin" && (
+              <div style={{ marginTop: 4 }}>
+                <Tag color="blue" style={{ fontSize: 10 }}>
+                  macOS
+                </Tag>
+                {record.status === "online" &&
+                  (record.capabilities?.ollama_running ? (
+                    <Tag color="success" style={{ fontSize: 10 }}>
+                      Ollama
+                    </Tag>
+                  ) : record.capabilities?.ollama ? (
+                    <Tooltip title="Ollama installed but not running. Run: brew services start ollama">
+                      <Tag
+                        color="warning"
+                        style={{ fontSize: 10, cursor: "pointer" }}
+                      >
+                        Ollama Stopped
+                      </Tag>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="Ollama not installed. Run: brew install ollama && brew services start ollama">
+                      <Tag
+                        color="error"
+                        style={{ fontSize: 10, cursor: "pointer" }}
+                      >
+                        No Ollama
+                      </Tag>
+                    </Tooltip>
+                  ))}
+              </div>
+            )}
+          </div>
+        );
       },
     },
     {
@@ -983,6 +1032,99 @@ python agent.py \\
                     </div>
                   ),
                 },
+                {
+                  key: "macos",
+                  label: "macOS (Apple Silicon)",
+                  children: (
+                    <div>
+                      <Alert
+                        message="macOS Requirements"
+                        description={
+                          <div>
+                            <p style={{ margin: "8px 0" }}>
+                              Before running the worker on macOS, install Ollama
+                              for LLM inference:
+                            </p>
+                            <pre
+                              style={{
+                                background: "#1e1e1e",
+                                color: "#d4d4d4",
+                                padding: 8,
+                                borderRadius: 4,
+                                fontSize: 12,
+                              }}
+                            >
+                              brew install ollama{"\n"}
+                              brew services start ollama
+                            </pre>
+                          </div>
+                        }
+                        type="warning"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                      />
+                      <div
+                        style={{
+                          padding: 12,
+                          backgroundColor: "#1e1e1e",
+                          borderRadius: 6,
+                          position: "relative",
+                        }}
+                      >
+                        <pre
+                          style={{
+                            margin: 0,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-all",
+                            color: "#d4d4d4",
+                            fontSize: 12,
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          {generatedToken.docker_command
+                            ?.replace("--gpus all --privileged ", "")
+                            .replace("--network host ", "-p 52001:52001 ")
+                            .replace("-v /:/host:ro ", "")}
+                        </pre>
+                        <Button
+                          type="primary"
+                          icon={<CopyOutlined />}
+                          size="small"
+                          onClick={() => {
+                            const macCmd = generatedToken.docker_command
+                              ?.replace("--gpus all --privileged ", "")
+                              .replace("--network host ", "-p 52001:52001 ")
+                              .replace("-v /:/host:ro ", "");
+                            if (macCmd) {
+                              if (
+                                navigator.clipboard &&
+                                window.isSecureContext
+                              ) {
+                                navigator.clipboard.writeText(macCmd);
+                                message.success("Command copied to clipboard");
+                              } else {
+                                const textArea =
+                                  document.createElement("textarea");
+                                textArea.value = macCmd;
+                                textArea.style.position = "fixed";
+                                textArea.style.left = "-999999px";
+                                document.body.appendChild(textArea);
+                                textArea.focus();
+                                textArea.select();
+                                document.execCommand("copy");
+                                document.body.removeChild(textArea);
+                                message.success("Command copied to clipboard");
+                              }
+                            }
+                          }}
+                          style={{ position: "absolute", top: 8, right: 8 }}
+                        >
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                  ),
+                },
               ]}
             />
             <div style={{ textAlign: "right" }}>
@@ -1023,6 +1165,34 @@ python agent.py \\
               </Descriptions.Item>
               <Descriptions.Item label="Deployments">
                 {detailModal.deployment_count}
+              </Descriptions.Item>
+              <Descriptions.Item label="OS">
+                <Tag
+                  color={detailModal.os_type === "darwin" ? "blue" : "default"}
+                >
+                  {detailModal.os_type === "darwin"
+                    ? "macOS"
+                    : detailModal.os_type === "windows"
+                      ? "Windows"
+                      : "Linux"}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Ollama">
+                {detailModal.capabilities?.ollama ? (
+                  detailModal.capabilities?.ollama_running ? (
+                    <Tag icon={<CheckCircleOutlined />} color="success">
+                      Running
+                    </Tag>
+                  ) : (
+                    <Tag icon={<CloseCircleOutlined />} color="warning">
+                      Installed (Not Running)
+                    </Tag>
+                  )
+                ) : (
+                  <Tag icon={<CloseCircleOutlined />} color="default">
+                    Not Installed
+                  </Tag>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="Created">
                 {dayjs

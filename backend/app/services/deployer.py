@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.database import async_session_maker
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.llm_model import BackendType, LLMModel
+from app.models.worker import OSType
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -59,6 +60,19 @@ class DeployerService:
                 deployment.status = DeploymentStatus.STARTING.value
                 deployment.status_message = "Sending deployment request to worker..."
                 await db.commit()
+
+                # Check if worker supports Docker or needs native deployment
+                worker = deployment.worker
+                is_mac_native = worker.os_type == OSType.DARWIN.value and not worker.supports_docker
+
+                # Use native deployment for Mac without Docker
+                if is_mac_native:
+                    result = await self._deploy_native(deployment, db)
+                    if result.get("error"):
+                        deployment.status = DeploymentStatus.ERROR.value
+                        deployment.status_message = result["error"]
+                        await db.commit()
+                    return
 
                 # Build deployment request
                 deploy_request = self._build_deploy_request(deployment)
@@ -488,6 +502,157 @@ class DeployerService:
         host = address.split(":")[0].lower()
         return host in ("localhost", "127.0.0.1", "local")
 
+    async def _deploy_native(self, deployment: Deployment, db) -> dict:
+        """Deploy using native backend (Mac without Docker).
+
+        Supports Ollama, MLX, and llama.cpp backends on macOS.
+        """
+        worker = deployment.worker
+        model = deployment.model
+        backend = deployment.backend
+
+        # Validate backend is supported
+        available_backends = worker.available_backends
+        if backend not in available_backends:
+            return {
+                "error": f"Backend '{backend}' not available on this worker. "
+                f"Available backends: {', '.join(available_backends)}"
+            }
+
+        try:
+            worker_url = f"http://{worker.effective_address}/native/deploy"
+
+            deploy_request = {
+                "deployment_id": deployment.id,
+                "deployment_name": deployment.name,
+                "model_id": model.model_id,
+                "backend": backend,
+                "port": 0,  # Auto-assign
+                "extra_params": deployment.extra_params,
+            }
+
+            deployment.status_message = f"Starting {backend} deployment..."
+            await db.commit()
+
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                response = await client.post(worker_url, json=deploy_request)
+
+                if response.status_code != 200:
+                    error_detail = response.json().get("detail", response.text)
+                    return {"error": f"Native deployment failed: {error_detail}"}
+
+                result = response.json()
+                deployment.port = result.get("port")
+                # Use process_id as container_id for native deployments
+                deployment.container_id = result.get("process_id")
+
+            # Wait for API to be ready
+            deployment.status_message = "Waiting for model to be ready..."
+            await db.commit()
+
+            # For Ollama on native, the API is at port 11434
+            if backend == BackendType.OLLAMA.value:
+                api_port = 11434
+            else:
+                api_port = deployment.port
+
+            api_ready = await self._wait_for_native_api_ready(
+                worker.effective_address,
+                api_port,
+                deployment.id,
+                db,
+                backend=backend,
+            )
+
+            if api_ready is None:
+                return {}  # Cancelled
+            elif api_ready:
+                deployment.status = DeploymentStatus.RUNNING.value
+                deployment.status_message = "Model ready"
+                asyncio.create_task(_update_semantic_router_config_background())
+            else:
+                deployment.status = DeploymentStatus.ERROR.value
+                deployment.status_message = "API failed to start"
+
+            await db.commit()
+            return {}
+
+        except httpx.ConnectError as e:
+            return {"error": f"Cannot connect to worker: {e}"}
+        except Exception as e:
+            logger.exception(f"Native deployment error: {e}")
+            return {"error": str(e)}
+
+    async def _wait_for_native_api_ready(
+        self,
+        worker_address: str,
+        port: int,
+        deployment_id: int,
+        db,
+        backend: str = BackendType.OLLAMA.value,
+        timeout: int = 300,
+    ) -> bool | None:
+        """Wait for native API to be ready.
+
+        Returns:
+            True: API is ready
+            False: Timeout
+            None: Cancelled
+        """
+        worker_ip = worker_address.split(":")[0]
+        api_base = f"http://{worker_ip}:{port}"
+
+        # Determine health endpoint based on backend
+        if backend == BackendType.OLLAMA.value:
+            health_url = f"{api_base}/v1/models"
+        else:
+            health_url = f"{api_base}/v1/models"
+
+        elapsed = 0
+        check_interval = 5
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            while elapsed < timeout:
+                # Check if cancelled
+                try:
+                    result = await db.execute(
+                        select(Deployment).where(Deployment.id == deployment_id)
+                    )
+                    deployment = result.scalar_one_or_none()
+                    if deployment and deployment.status in [
+                        DeploymentStatus.STOPPED.value,
+                        DeploymentStatus.STOPPING.value,
+                    ]:
+                        return None
+                except Exception:
+                    pass
+
+                try:
+                    response = await client.get(health_url)
+                    if response.status_code == 200:
+                        logger.info(f"Native API ready at {health_url}")
+                        return True
+                except Exception:
+                    pass
+
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
+
+                # Update status periodically
+                if elapsed % 30 == 0:
+                    try:
+                        result = await db.execute(
+                            select(Deployment).where(Deployment.id == deployment_id)
+                        )
+                        deployment = result.scalar_one_or_none()
+                        if deployment:
+                            deployment.status_message = f"Loading model... ({elapsed}s)"
+                            await db.commit()
+                    except Exception:
+                        pass
+
+        return False
+
     def _image_exists_local(self, image: str) -> bool:
         """Check if a Docker image exists locally."""
         try:
@@ -713,6 +878,9 @@ class DeployerService:
                     continue
                 if value is True:
                     cmd.append(f"--{key}")
+                    # Auto-add tool-call-parser when enable-auto-tool-choice is enabled
+                    if key == "enable-auto-tool-choice":
+                        cmd.extend(["--tool-call-parser", "hermes"])
                 elif value is not False and value is not None:
                     cmd.extend([f"--{key}", str(value)])
 
@@ -854,18 +1022,33 @@ class DeployerService:
                 return
 
             try:
-                is_local = self._is_local_worker(deployment.worker.address)
+                worker = deployment.worker
 
-                if is_local:
-                    # Stop locally using Docker directly
-                    await self._stop_local(deployment.container_id)
-                else:
-                    worker_url = f"http://{deployment.worker.address}/stop"
+                # Check if this is a native deployment (process_id starts with "native-")
+                is_native = deployment.container_id.startswith("native-")
 
+                if is_native:
+                    # Stop native process
+                    worker_url = f"http://{worker.effective_address}/native/stop"
                     async with httpx.AsyncClient(timeout=60.0) as client:
                         await client.post(
-                            worker_url, json={"container_id": deployment.container_id}
+                            worker_url,
+                            json={"process_id": deployment.container_id},
                         )
+                else:
+                    # Docker-based deployment
+                    is_local = self._is_local_worker(worker.address)
+
+                    if is_local:
+                        # Stop locally using Docker directly
+                        await self._stop_local(deployment.container_id)
+                    else:
+                        worker_url = f"http://{worker.address}/stop"
+
+                        async with httpx.AsyncClient(timeout=60.0) as client:
+                            await client.post(
+                                worker_url, json={"container_id": deployment.container_id}
+                            )
 
             except Exception as e:
                 logger.warning(f"Error stopping deployment {deployment_id}: {e}")
@@ -889,26 +1072,44 @@ class DeployerService:
             return "No container running"
 
         try:
-            is_local = self._is_local_worker(deployment.worker.address)
+            worker = deployment.worker
 
-            if is_local:
-                return self._get_logs_local(deployment.container_id, tail)
-            else:
-                worker_url = f"http://{deployment.worker.address}/logs"
+            # Check if this is a native deployment
+            is_native = deployment.container_id.startswith("native-")
 
+            if is_native:
+                # Get logs from native process
+                worker_url = (
+                    f"http://{worker.effective_address}/native/logs/{deployment.container_id}"
+                )
                 async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.get(
-                        worker_url,
-                        params={
-                            "container_id": deployment.container_id,
-                            "tail": tail,
-                        },
-                    )
-
+                    response = await client.get(worker_url, params={"tail": tail})
                     if response.status_code == 200:
                         return response.json().get("logs", "")
                     else:
                         return f"Error fetching logs: {response.text}"
+            else:
+                # Docker-based deployment
+                is_local = self._is_local_worker(worker.address)
+
+                if is_local:
+                    return self._get_logs_local(deployment.container_id, tail)
+                else:
+                    worker_url = f"http://{worker.address}/logs"
+
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.get(
+                            worker_url,
+                            params={
+                                "container_id": deployment.container_id,
+                                "tail": tail,
+                            },
+                        )
+
+                        if response.status_code == 200:
+                            return response.json().get("logs", "")
+                        else:
+                            return f"Error fetching logs: {response.text}"
 
         except httpx.ConnectError:
             return f"Cannot connect to worker at {deployment.worker.address}"

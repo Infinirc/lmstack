@@ -38,10 +38,12 @@ export function formatWorkers(workers: any[]): string {
     if (worker.gpu_info && worker.gpu_info.length > 0) {
       lines.push(`- **GPUs:** ${worker.gpu_info.length}`);
       for (const gpu of worker.gpu_info) {
-        const usedGB = (gpu.memory_used / 1024).toFixed(1);
-        const totalGB = (gpu.memory_total / 1024).toFixed(1);
-        const freeGB = ((gpu.memory_total - gpu.memory_used) / 1024).toFixed(1);
-        const util = gpu.utilization_gpu || 0;
+        // Memory values from pynvml are in bytes
+        const bytesToGB = 1024 * 1024 * 1024;
+        const usedGB = (gpu.memory_used / bytesToGB).toFixed(1);
+        const totalGB = (gpu.memory_total / bytesToGB).toFixed(1);
+        const freeGB = ((gpu.memory_total - gpu.memory_used) / bytesToGB).toFixed(1);
+        const util = gpu.utilization_gpu ?? gpu.utilization ?? 0;
         lines.push(`  - GPU ${gpu.index}: ${gpu.name}`);
         lines.push(`    - Memory: ${usedGB}GB / ${totalGB}GB (${freeGB}GB free)`);
         lines.push(`    - Utilization: ${util}%`);
@@ -191,7 +193,8 @@ export function formatSystemStatus(
   );
   const runningDeployments = deployments.filter((d) => d.status === "running");
 
-  // Calculate total GPU memory
+  // Calculate total GPU memory (values from pynvml are in bytes)
+  const bytesToGB = 1024 * 1024 * 1024;
   let totalGpuMemory = 0;
   let usedGpuMemory = 0;
   for (const worker of workers) {
@@ -212,7 +215,7 @@ export function formatSystemStatus(
     `- **Containers:** ${runningContainers.length}/${containers.length} running`,
     `- **Deployments:** ${runningDeployments.length}/${deployments.length} running`,
     `- **Models:** ${models.length} available`,
-    `- **GPU Memory:** ${(usedGpuMemory / 1024).toFixed(1)}GB used / ${(freeGpuMemory / 1024).toFixed(1)}GB free / ${(totalGpuMemory / 1024).toFixed(1)}GB total`,
+    `- **GPU Memory:** ${(usedGpuMemory / bytesToGB).toFixed(1)}GB used / ${(freeGpuMemory / bytesToGB).toFixed(1)}GB free / ${(totalGpuMemory / bytesToGB).toFixed(1)}GB total`,
     "",
   ];
 

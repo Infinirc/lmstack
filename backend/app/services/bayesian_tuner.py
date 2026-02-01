@@ -13,7 +13,6 @@ Key concepts:
 """
 
 import asyncio
-import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -21,7 +20,6 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
-import httpx
 import optuna
 from optuna.samplers import TPESampler
 from sqlalchemy import select
@@ -32,6 +30,7 @@ from app.database import async_session_maker
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.tuning import OptimizationTarget, PerformanceKnowledge, TuningJob, TuningJobStatus
 from app.models.worker import Worker
+from app.services.benchmark import BenchmarkConfig, BenchmarkRunner, LoadPattern
 from app.services.deployer import DeployerService
 
 # Configure logging with detailed format
@@ -251,6 +250,7 @@ class ObjectiveCalculator:
     Computes optimization objective from benchmark metrics.
 
     Implements Scorer phase: score valid configurations by performance.
+    Supports comprehensive metrics including percentiles.
     """
 
     def __init__(self, target: OptimizationTarget):
@@ -262,27 +262,42 @@ class ObjectiveCalculator:
 
         For Optuna, we negate values when minimizing so all objectives
         are treated as maximization internally.
+
+        Uses p95 latencies for SLA-focused optimization.
         """
         throughput = metrics.get("throughput_tps", 0.0)
-        ttft = metrics.get("avg_ttft_ms", float("inf"))
-        tpot = metrics.get("avg_tpot_ms", float("inf"))
+
+        # Use mean for basic calculation, p95 for SLA
+        ttft_mean = metrics.get("avg_ttft_ms", float("inf"))
+        tpot_mean = metrics.get("avg_tpot_ms", float("inf"))
+        ttft_p95 = metrics.get("ttft_p95_ms", ttft_mean)
+        tpot_p95 = metrics.get("tpot_p95_ms", tpot_mean)
+        itl_p95 = metrics.get("itl_p95_ms", 0.0)
 
         if self.target == OptimizationTarget.THROUGHPUT:
             # Maximize throughput
             return throughput
 
         elif self.target == OptimizationTarget.LATENCY:
-            # Minimize latency (negate for maximization)
-            if ttft == float("inf"):
+            # Minimize latency using p95 values for SLA compliance
+            if ttft_p95 == float("inf") or ttft_p95 == 0:
                 return float("-inf")
-            return -1.0 * (ttft + tpot * 10)  # Weight TPOT more
+            # Combined latency score: TTFT + (ITL * typical_output_tokens)
+            # Assume ~50 output tokens for a typical response
+            estimated_generation_latency = itl_p95 * 50 if itl_p95 > 0 else tpot_p95 * 50
+            total_latency = ttft_p95 + estimated_generation_latency
+            return -1.0 * total_latency
 
         elif self.target == OptimizationTarget.BALANCED:
-            # Combined score: throughput / latency
-            if ttft == 0 or throughput == 0:
+            # Combined score: throughput / latency with p95 consideration
+            if ttft_mean == 0 or throughput == 0:
                 return float("-inf")
-            latency_factor = 1 + (ttft / 100) + (tpot / 10)
-            return throughput / latency_factor
+
+            # Penalize high p95 latencies more than mean
+            latency_factor = 1 + (ttft_mean / 100) + (tpot_mean / 10)
+            p95_penalty = 1 + (ttft_p95 - ttft_mean) / 200 + (tpot_p95 - tpot_mean) / 20
+
+            return throughput / (latency_factor * p95_penalty)
 
         elif self.target == OptimizationTarget.COST:
             # Maximize efficiency (throughput per resource unit)
@@ -763,10 +778,14 @@ class BayesianTuningService:
     async def _run_benchmark(
         self,
         deployment_id: int,
-        num_requests: int = 20,
-        concurrency: int = 4,
+        num_requests: int = 30,
+        concurrency: int = 8,
     ) -> dict[str, float]:
-        """Run benchmark against deployment"""
+        """
+        Run benchmark against deployment using the benchmark module.
+
+        Returns comprehensive metrics including percentiles.
+        """
         result = await self.db.execute(
             select(Deployment)
             .where(Deployment.id == deployment_id)
@@ -779,106 +798,32 @@ class BayesianTuningService:
 
         # Build endpoint URL
         worker_ip = deployment.worker.address.split(":")[0]
-        base_url = f"http://{worker_ip}:{deployment.port}/v1"
+        endpoint = f"http://{worker_ip}:{deployment.port}/v1"
         model_name = deployment.model.model_id
 
-        # Run HTTP benchmark (reuse existing implementation pattern)
-        return await self._http_benchmark(base_url, model_name, num_requests, concurrency)
+        # Configure benchmark
+        config = BenchmarkConfig(
+            endpoint=endpoint,
+            model_name=model_name,
+            load_pattern=LoadPattern.FIXED,
+            concurrency=concurrency,
+            num_requests=num_requests,
+            warmup_requests=5,
+            output_tokens=64,
+            prompt_tokens=200,
+            stream=True,
+            verbose=False,
+        )
 
-    async def _http_benchmark(
-        self,
-        base_url: str,
-        model_name: str,
-        num_requests: int,
-        concurrency: int,
-    ) -> dict[str, float]:
-        """Execute HTTP benchmark against OpenAI-compatible endpoint"""
-        test_prompt = "Explain the concept of machine learning in simple terms. " * 20
+        # Run benchmark
+        runner = BenchmarkRunner(config)
+        bench_result = await runner.run()
 
-        results = []
-        semaphore = asyncio.Semaphore(concurrency)
+        if bench_result.error:
+            await self._log("WARNING", f"Benchmark warning: {bench_result.error}")
 
-        async def make_request(client: httpx.AsyncClient) -> dict | None:
-            async with semaphore:
-                start = time.perf_counter()
-                first_token_time = None
-                token_count = 0
-
-                try:
-                    async with client.stream(
-                        "POST",
-                        f"{base_url}/chat/completions",
-                        json={
-                            "model": model_name,
-                            "messages": [{"role": "user", "content": test_prompt}],
-                            "max_tokens": 64,
-                            "stream": True,
-                        },
-                        timeout=60.0,
-                    ) as resp:
-                        if resp.status_code != 200:
-                            return None
-
-                        async for line in resp.aiter_lines():
-                            if line.startswith("data: ") and line != "data: [DONE]":
-                                try:
-                                    chunk = json.loads(line[6:])
-                                    content = (
-                                        chunk.get("choices", [{}])[0]
-                                        .get("delta", {})
-                                        .get("content", "")
-                                    )
-                                    if content:
-                                        if first_token_time is None:
-                                            first_token_time = time.perf_counter()
-                                        token_count += 1
-                                except json.JSONDecodeError:
-                                    pass
-
-                        end = time.perf_counter()
-
-                        if first_token_time and token_count > 0:
-                            return {
-                                "ttft_ms": (first_token_time - start) * 1000,
-                                "tpot_ms": (
-                                    ((end - first_token_time) / max(1, token_count - 1)) * 1000
-                                    if token_count > 1
-                                    else 0
-                                ),
-                                "tokens": token_count,
-                                "total_time": end - start,
-                            }
-                except Exception:
-                    pass
-                return None
-
-        async with httpx.AsyncClient() as client:
-            # Warmup
-            for _ in range(2):
-                await make_request(client)
-
-            # Actual benchmark
-            tasks = [make_request(client) for _ in range(num_requests)]
-            results = await asyncio.gather(*tasks)
-
-        valid = [r for r in results if r]
-        if not valid:
-            return {"throughput_tps": 0, "avg_ttft_ms": 0, "avg_tpot_ms": 0}
-
-        total_tokens = sum(r["tokens"] for r in valid)
-        total_time = sum(r["total_time"] for r in valid)
-
-        return {
-            "throughput_tps": round(total_tokens / total_time, 2) if total_time > 0 else 0,
-            "avg_ttft_ms": round(sum(r["ttft_ms"] for r in valid) / len(valid), 2),
-            "avg_tpot_ms": round(
-                sum(r["tpot_ms"] for r in valid if r["tpot_ms"] > 0)
-                / max(1, len([r for r in valid if r["tpot_ms"] > 0])),
-                2,
-            ),
-            "successful_requests": len(valid),
-            "total_requests": num_requests,
-        }
+        # Return comprehensive metrics in simple dict format
+        return bench_result.metrics.to_simple_dict()
 
     async def _cleanup_deployment(self):
         """Stop and remove current deployment"""

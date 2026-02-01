@@ -71,6 +71,14 @@ async def list_workers(
             "status": worker.status,
             "gpu_info": worker.gpu_info,
             "system_info": worker.system_info,
+            "os_type": worker.os_type,
+            "gpu_type": worker.gpu_type,
+            "capabilities": worker.capabilities,
+            "available_backends": worker.available_backends,
+            "connection_type": worker.connection_type,
+            "tailscale_ip": worker.tailscale_ip,
+            "headscale_node_id": worker.headscale_node_id,
+            "effective_address": worker.effective_address,
             "created_at": worker.created_at,
             "updated_at": worker.updated_at,
             "last_heartbeat": worker.last_heartbeat,
@@ -173,6 +181,14 @@ async def create_worker(
                 status=original_worker.status,
                 gpu_info=original_worker.gpu_info,
                 system_info=original_worker.system_info,
+                os_type=original_worker.os_type,
+                gpu_type=original_worker.gpu_type,
+                capabilities=original_worker.capabilities,
+                available_backends=original_worker.available_backends,
+                connection_type=original_worker.connection_type,
+                tailscale_ip=original_worker.tailscale_ip,
+                headscale_node_id=original_worker.headscale_node_id,
+                effective_address=original_worker.effective_address,
                 created_at=original_worker.created_at,
                 updated_at=original_worker.updated_at,
                 last_heartbeat=original_worker.last_heartbeat,
@@ -206,6 +222,18 @@ async def create_worker(
     if token.is_local:
         worker_labels["type"] = "local"
 
+    # Extract os_type, gpu_type, capabilities from system_info
+    os_type = "linux"
+    gpu_type = "nvidia"
+    capabilities = None
+    if worker_in.system_info:
+        if worker_in.system_info.os_type:
+            os_type = worker_in.system_info.os_type
+        if worker_in.system_info.gpu_type:
+            gpu_type = worker_in.system_info.gpu_type
+        if worker_in.system_info.capabilities:
+            capabilities = worker_in.system_info.capabilities.model_dump()
+
     worker = Worker(
         name=worker_in.name,
         address=real_address,
@@ -213,6 +241,9 @@ async def create_worker(
         labels=worker_labels if worker_labels else None,
         gpu_info=([gpu.model_dump() for gpu in worker_in.gpu_info] if worker_in.gpu_info else None),
         system_info=(worker_in.system_info.model_dump() if worker_in.system_info else None),
+        os_type=os_type,
+        gpu_type=gpu_type,
+        capabilities=capabilities,
         status=WorkerStatus.ONLINE.value,
         last_heartbeat=datetime.now(UTC),
     )
@@ -236,6 +267,14 @@ async def create_worker(
         status=worker.status,
         gpu_info=worker.gpu_info,
         system_info=worker.system_info,
+        os_type=worker.os_type,
+        gpu_type=worker.gpu_type,
+        capabilities=worker.capabilities,
+        available_backends=worker.available_backends,
+        connection_type=worker.connection_type,
+        tailscale_ip=worker.tailscale_ip,
+        headscale_node_id=worker.headscale_node_id,
+        effective_address=worker.effective_address,
         created_at=worker.created_at,
         updated_at=worker.updated_at,
         last_heartbeat=worker.last_heartbeat,
@@ -268,6 +307,14 @@ async def get_worker(
         status=worker.status,
         gpu_info=worker.gpu_info,
         system_info=worker.system_info,
+        os_type=worker.os_type,
+        gpu_type=worker.gpu_type,
+        capabilities=worker.capabilities,
+        available_backends=worker.available_backends,
+        connection_type=worker.connection_type,
+        tailscale_ip=worker.tailscale_ip,
+        headscale_node_id=worker.headscale_node_id,
+        effective_address=worker.effective_address,
         created_at=worker.created_at,
         updated_at=worker.updated_at,
         last_heartbeat=worker.last_heartbeat,
@@ -318,6 +365,14 @@ async def update_worker(
         status=worker.status,
         gpu_info=worker.gpu_info,
         system_info=worker.system_info,
+        os_type=worker.os_type,
+        gpu_type=worker.gpu_type,
+        capabilities=worker.capabilities,
+        available_backends=worker.available_backends,
+        connection_type=worker.connection_type,
+        tailscale_ip=worker.tailscale_ip,
+        headscale_node_id=worker.headscale_node_id,
+        effective_address=worker.effective_address,
         created_at=worker.created_at,
         updated_at=worker.updated_at,
         last_heartbeat=worker.last_heartbeat,
@@ -377,7 +432,15 @@ async def worker_heartbeat(
         worker.gpu_info = [gpu.model_dump() for gpu in heartbeat.gpu_info]
 
     if heartbeat.system_info:
-        worker.system_info = heartbeat.system_info.model_dump()
+        system_data = heartbeat.system_info.model_dump()
+        worker.system_info = system_data
+        # Extract os_type, gpu_type, capabilities from system_info
+        if heartbeat.system_info.os_type:
+            worker.os_type = heartbeat.system_info.os_type
+        if heartbeat.system_info.gpu_type:
+            worker.gpu_type = heartbeat.system_info.gpu_type
+        if heartbeat.system_info.capabilities:
+            worker.capabilities = heartbeat.system_info.capabilities.model_dump()
 
     # Check if worker is going offline
     is_going_offline = heartbeat.status == WorkerStatus.OFFLINE

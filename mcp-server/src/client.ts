@@ -308,4 +308,46 @@ export class LMStackClient {
       return [];
     }
   }
+
+  // ============================================================================
+  // Comprehensive Benchmark
+  // ============================================================================
+
+  async runComprehensiveBenchmark(config: {
+    deployment_id: number;
+    concurrency?: number;
+    num_requests?: number;
+    warmup_requests?: number;
+    prompt_tokens?: number;
+    output_tokens?: number;
+    custom_prompt?: string;
+  }): Promise<any> {
+    try {
+      const response = await this.client.post("/auto-tuning/benchmarks/comprehensive", config, {
+        timeout: 300000, // 5 minutes timeout for comprehensive benchmark
+      });
+      return response.data;
+    } catch (error: any) {
+      return { error: error.response?.data?.detail || error.message };
+    }
+  }
+
+  async runSaturationDetection(config: {
+    deployment_id: number;
+    start_concurrency?: number;
+    max_concurrency?: number;
+    requests_per_level?: number;
+    use_exponential?: boolean;
+    step_size?: number;
+    step_multiplier?: number;
+  }): Promise<any> {
+    try {
+      const response = await this.client.post("/auto-tuning/benchmarks/saturation", config, {
+        timeout: 600000, // 10 minutes timeout for saturation detection
+      });
+      return response.data;
+    } catch (error: any) {
+      return { error: error.response?.data?.detail || error.message };
+    }
+  }
 }

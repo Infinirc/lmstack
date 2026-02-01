@@ -10,13 +10,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button, Tooltip } from "antd";
 import {
-  RobotOutlined,
   UserOutlined,
   LoadingOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
   CaretRightOutlined,
-  ThunderboltOutlined,
   ToolOutlined,
   BulbOutlined,
   CopyOutlined,
@@ -83,7 +81,13 @@ export function AgentChatView({
   }, [messages, currentSteps, userScrolledUp]);
 
   if (messages.length === 0 && currentSteps.length === 0) {
-    return <EmptyState colors={chatColors} isDark={isDark} />;
+    return (
+      <EmptyState
+        colors={chatColors}
+        isDark={isDark}
+        onSendMessage={onSendMessage}
+      />
+    );
   }
 
   return (
@@ -128,11 +132,20 @@ export function AgentChatView({
 function EmptyState({
   colors,
   isDark: _isDark,
+  onSendMessage,
 }: {
   colors: ThemeColors;
   isDark: boolean;
+  onSendMessage?: (message: string) => void;
 }) {
   const isDark = _isDark;
+
+  const quickActions = [
+    { icon: <ClusterOutlined />, text: "列出所有 Worker 狀態" },
+    { icon: <DashboardOutlined />, text: "GPU 記憶體使用狀況" },
+    { icon: <ContainerOutlined />, text: "列出所有容器" },
+  ];
+
   return (
     <div
       style={{
@@ -147,90 +160,87 @@ function EmptyState({
     >
       <div
         style={{
-          width: 56,
-          height: 56,
-          borderRadius: 16,
-          background: `linear-gradient(135deg, #3b82f6, #8b5cf6)`,
+          width: 44,
+          height: 44,
+          borderRadius: 10,
+          background: isDark ? "#27272a" : "#f4f4f5",
+          border: `1px solid ${isDark ? "#3f3f46" : "#e4e4e7"}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          marginBottom: 20,
-          boxShadow: "0 4px 20px rgba(59, 130, 246, 0.3)",
+          marginBottom: 16,
         }}
       >
-        <ThunderboltOutlined style={{ fontSize: 28, color: "#fff" }} />
+        <ToolOutlined style={{ fontSize: 20, color: colors.textSecondary }} />
       </div>
       <div
         style={{
-          fontSize: 17,
-          fontWeight: 600,
+          fontSize: 15,
+          fontWeight: 500,
           color: colors.text,
-          marginBottom: 8,
+          marginBottom: 6,
         }}
       >
-        LMStack AI Agent
+        Agent
       </div>
       <div
         style={{
-          fontSize: 14,
+          fontSize: 13,
           color: colors.textMuted,
-          marginBottom: 24,
-          maxWidth: 280,
+          marginBottom: 20,
+          maxWidth: 260,
           lineHeight: 1.5,
         }}
       >
-        Powered by MCP. Deploy models, run benchmarks, and optimize
-        configurations through natural language.
+        部署模型、執行基準測試、查詢系統狀態
       </div>
 
-      {/* Capability cards */}
+      {/* Quick actions */}
       <div
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: 10,
+          gap: 8,
           width: "100%",
-          maxWidth: 320,
+          maxWidth: 280,
         }}
       >
-        {[
-          { icon: <RobotOutlined />, text: "Deploy LLM models to GPU workers" },
-          { icon: <ToolOutlined />, text: "Run performance benchmarks" },
-          {
-            icon: <BulbOutlined />,
-            text: "Query knowledge base for optimal configs",
-          },
-        ].map((item, idx) => (
+        {quickActions.map((item, idx) => (
           <div
             key={idx}
+            onClick={() => onSendMessage?.(item.text)}
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 12,
-              padding: "12px 16px",
-              borderRadius: 10,
+              gap: 10,
+              padding: "10px 14px",
+              borderRadius: 8,
               background: isDark
                 ? "rgba(255,255,255,0.03)"
                 : "rgba(0,0,0,0.02)",
               border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`,
+              cursor: "pointer",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = isDark
+                ? "rgba(255,255,255,0.06)"
+                : "rgba(0,0,0,0.04)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = isDark
+                ? "rgba(255,255,255,0.03)"
+                : "rgba(0,0,0,0.02)";
             }}
           >
-            <div style={{ color: "#3b82f6", fontSize: 16 }}>{item.icon}</div>
+            <div style={{ color: colors.textMuted, fontSize: 14 }}>
+              {item.icon}
+            </div>
             <div style={{ fontSize: 13, color: colors.textSecondary }}>
               {item.text}
             </div>
           </div>
         ))}
-      </div>
-
-      <div
-        style={{
-          marginTop: 24,
-          fontSize: 12,
-          color: colors.textMuted,
-        }}
-      >
-        Try: "Deploy Qwen-7B on Worker 1" or "What's the GPU memory status?"
       </div>
     </div>
   );
@@ -309,17 +319,19 @@ function MessageBlock({
       {/* Avatar */}
       <div
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: 10,
-          background: `linear-gradient(135deg, #3b82f6, #8b5cf6)`,
+          width: 28,
+          height: 28,
+          borderRadius: 6,
+          background: isDark ? "#27272a" : "#f4f4f5",
+          border: `1px solid ${isDark ? "#3f3f46" : "#e4e4e7"}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
+          marginTop: 2,
         }}
       >
-        <ThunderboltOutlined style={{ fontSize: 16, color: "#fff" }} />
+        <ToolOutlined style={{ fontSize: 13, color: colors.textSecondary }} />
       </div>
 
       {/* Content */}
@@ -342,19 +354,22 @@ function MessageBlock({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              padding: "12px 14px",
-              borderRadius: 12,
+              gap: 8,
+              padding: "10px 12px",
+              borderRadius: 8,
               background: isDark
-                ? "rgba(59, 130, 246, 0.1)"
-                : "rgba(59, 130, 246, 0.06)",
-              border: `1px solid ${isDark ? "rgba(59, 130, 246, 0.2)" : "rgba(59, 130, 246, 0.15)"}`,
+                ? "rgba(255,255,255,0.03)"
+                : "rgba(0,0,0,0.02)",
+              border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`,
               marginBottom: 12,
             }}
           >
-            <LoadingOutlined style={{ color: "#3b82f6", fontSize: 14 }} spin />
-            <span style={{ fontSize: 13, color: "#3b82f6" }}>
-              Analyzing your request...
+            <LoadingOutlined
+              style={{ color: colors.textMuted, fontSize: 12 }}
+              spin
+            />
+            <span style={{ fontSize: 13, color: colors.textMuted }}>
+              處理中...
             </span>
           </div>
         )}
@@ -436,7 +451,7 @@ function PageReferenceCard({
   colors,
 }: PageReferenceCardProps) {
   const getIcon = () => {
-    const iconStyle = { fontSize: 16, color: "#3b82f6" };
+    const iconStyle = { fontSize: 14, color: colors.textMuted };
     switch (reference.icon) {
       case "cluster":
         return <ClusterOutlined style={iconStyle} />;
@@ -462,66 +477,44 @@ function PageReferenceCard({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "10px 14px",
-        borderRadius: 10,
-        background: isDark
-          ? "rgba(59, 130, 246, 0.1)"
-          : "rgba(59, 130, 246, 0.06)",
+        padding: "8px 12px",
+        borderRadius: 6,
+        background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
         border: `1px solid ${
-          isDark ? "rgba(59, 130, 246, 0.25)" : "rgba(59, 130, 246, 0.2)"
+          isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"
         }`,
         cursor: "pointer",
-        transition: "all 0.2s ease",
-        minWidth: 180,
+        transition: "background 0.15s",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = isDark
-          ? "rgba(59, 130, 246, 0.15)"
-          : "rgba(59, 130, 246, 0.1)";
-        e.currentTarget.style.borderColor = isDark
-          ? "rgba(59, 130, 246, 0.4)"
-          : "rgba(59, 130, 246, 0.35)";
+          ? "rgba(255,255,255,0.06)"
+          : "rgba(0,0,0,0.04)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = isDark
-          ? "rgba(59, 130, 246, 0.1)"
-          : "rgba(59, 130, 246, 0.06)";
-        e.currentTarget.style.borderColor = isDark
-          ? "rgba(59, 130, 246, 0.25)"
-          : "rgba(59, 130, 246, 0.2)";
+          ? "rgba(255,255,255,0.03)"
+          : "rgba(0,0,0,0.02)";
       }}
     >
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: isDark
-            ? "rgba(59, 130, 246, 0.15)"
-            : "rgba(59, 130, 246, 0.1)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {getIcon()}
-      </div>
+      {getIcon()}
       <div style={{ flex: 1 }}>
         <div
           style={{
             fontSize: 13,
             fontWeight: 500,
             color: colors.text,
-            marginBottom: 2,
           }}
         >
           {reference.title}
         </div>
-        <div style={{ fontSize: 11, color: colors.textMuted }}>
-          {reference.description}
-        </div>
+        {reference.description && (
+          <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 1 }}>
+            {reference.description}
+          </div>
+        )}
       </div>
-      <RightOutlined style={{ fontSize: 12, color: colors.textMuted }} />
+      <RightOutlined style={{ fontSize: 10, color: colors.textMuted }} />
     </div>
   );
 }
@@ -543,7 +536,7 @@ function ActionSuggestionButton({
   colors,
 }: ActionSuggestionButtonProps) {
   const getIcon = () => {
-    const iconStyle = { fontSize: 14 };
+    const iconStyle = { fontSize: 12 };
     switch (suggestion.icon) {
       case "rocket":
         return <RocketOutlined style={iconStyle} />;
@@ -558,60 +551,11 @@ function ActionSuggestionButton({
       case "tool":
         return <ToolOutlined style={iconStyle} />;
       default:
-        return <ThunderboltOutlined style={iconStyle} />;
+        return <RightOutlined style={iconStyle} />;
     }
   };
 
-  const getButtonStyle = () => {
-    switch (suggestion.type) {
-      case "primary":
-        return {
-          background: isDark
-            ? "rgba(59, 130, 246, 0.15)"
-            : "rgba(59, 130, 246, 0.1)",
-          border: `1px solid ${
-            isDark ? "rgba(59, 130, 246, 0.4)" : "rgba(59, 130, 246, 0.3)"
-          }`,
-          color: "#3b82f6",
-          hoverBg: isDark
-            ? "rgba(59, 130, 246, 0.25)"
-            : "rgba(59, 130, 246, 0.15)",
-          hoverBorder: isDark
-            ? "rgba(59, 130, 246, 0.6)"
-            : "rgba(59, 130, 246, 0.5)",
-        };
-      case "danger":
-        return {
-          background: isDark
-            ? "rgba(239, 68, 68, 0.1)"
-            : "rgba(239, 68, 68, 0.06)",
-          border: `1px solid ${
-            isDark ? "rgba(239, 68, 68, 0.3)" : "rgba(239, 68, 68, 0.2)"
-          }`,
-          color: "#ef4444",
-          hoverBg: isDark ? "rgba(239, 68, 68, 0.2)" : "rgba(239, 68, 68, 0.1)",
-          hoverBorder: isDark
-            ? "rgba(239, 68, 68, 0.5)"
-            : "rgba(239, 68, 68, 0.4)",
-        };
-      default:
-        return {
-          background: isDark
-            ? "rgba(255, 255, 255, 0.05)"
-            : "rgba(0, 0, 0, 0.04)",
-          border: `1px solid ${
-            isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"
-          }`,
-          color: colors.textSecondary,
-          hoverBg: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.08)",
-          hoverBorder: isDark
-            ? "rgba(255, 255, 255, 0.2)"
-            : "rgba(0, 0, 0, 0.2)",
-        };
-    }
-  };
-
-  const style = getButtonStyle();
+  const isDanger = suggestion.type === "danger";
 
   return (
     <div
@@ -619,27 +563,47 @@ function ActionSuggestionButton({
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 8,
-        padding: "8px 14px",
-        borderRadius: 8,
-        background: style.background,
-        border: style.border,
-        color: style.color,
+        gap: 6,
+        padding: "6px 12px",
+        borderRadius: 6,
+        background: isDanger
+          ? isDark
+            ? "rgba(239, 68, 68, 0.1)"
+            : "rgba(239, 68, 68, 0.06)"
+          : isDark
+            ? "rgba(255, 255, 255, 0.04)"
+            : "rgba(0, 0, 0, 0.03)",
+        border: `1px solid ${
+          isDanger
+            ? isDark
+              ? "rgba(239, 68, 68, 0.25)"
+              : "rgba(239, 68, 68, 0.2)"
+            : isDark
+              ? "rgba(255, 255, 255, 0.08)"
+              : "rgba(0, 0, 0, 0.08)"
+        }`,
+        color: isDanger ? "#ef4444" : colors.textSecondary,
         cursor: "pointer",
-        transition: "all 0.2s ease",
-        fontSize: 13,
-        fontWeight: 500,
+        transition: "background 0.15s",
+        fontSize: 12,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = style.hoverBg;
-        e.currentTarget.style.borderColor = style.hoverBorder;
+        e.currentTarget.style.background = isDanger
+          ? isDark
+            ? "rgba(239, 68, 68, 0.15)"
+            : "rgba(239, 68, 68, 0.1)"
+          : isDark
+            ? "rgba(255, 255, 255, 0.08)"
+            : "rgba(0, 0, 0, 0.06)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = style.background;
-        e.currentTarget.style.borderColor = style.border.replace(
-          "1px solid ",
-          "",
-        );
+        e.currentTarget.style.background = isDanger
+          ? isDark
+            ? "rgba(239, 68, 68, 0.1)"
+            : "rgba(239, 68, 68, 0.06)"
+          : isDark
+            ? "rgba(255, 255, 255, 0.04)"
+            : "rgba(0, 0, 0, 0.03)";
       }}
     >
       {getIcon()}
@@ -751,12 +715,10 @@ function StepItem({ step, onToggle, isDark, colors }: StepItemProps) {
     return (
       <div
         style={{
-          borderRadius: 10,
-          border: `1px solid ${isDark ? "rgba(139,92,246,0.3)" : "rgba(139,92,246,0.2)"}`,
+          borderRadius: 8,
+          border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}`,
           overflow: "hidden",
-          background: isDark
-            ? "rgba(139,92,246,0.05)"
-            : "rgba(139,92,246,0.03)",
+          background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)",
         }}
       >
         {/* Header */}
@@ -768,27 +730,27 @@ function StepItem({ step, onToggle, isDark, colors }: StepItemProps) {
             gap: 8,
             padding: "10px 12px",
             cursor: "pointer",
-            background: isDark
-              ? "rgba(139,92,246,0.08)"
-              : "rgba(139,92,246,0.05)",
+            background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
             borderBottom: step.expanded
-              ? `1px solid ${isDark ? "rgba(139,92,246,0.2)" : "rgba(139,92,246,0.15)"}`
+              ? `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`
               : "none",
           }}
         >
-          <BulbOutlined style={{ color: "#8b5cf6", fontSize: 14 }} />
+          <BulbOutlined style={{ color: colors.textMuted, fontSize: 13 }} />
           <span
             style={{
               flex: 1,
               fontSize: 13,
               fontWeight: 500,
-              color: "#8b5cf6",
+              color: colors.textSecondary,
             }}
           >
             {step.title}
           </span>
           {step.status === "running" && (
-            <LoadingOutlined style={{ fontSize: 12, color: "#8b5cf6" }} />
+            <LoadingOutlined
+              style={{ fontSize: 12, color: colors.textMuted }}
+            />
           )}
           <CaretRightOutlined
             style={{

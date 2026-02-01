@@ -920,7 +920,7 @@ export default function AutoTuning() {
             <Statistic
               title="Completed Jobs"
               value={completedJobs}
-              prefix={<CheckCircleOutlined style={{ color: "#52c41a" }} />}
+              prefix={<CheckCircleOutlined style={{ color: "#8c8c8c" }} />}
             />
           </Card>
         </Col>
@@ -931,9 +931,9 @@ export default function AutoTuning() {
               value={runningJobs}
               prefix={
                 runningJobs > 0 ? (
-                  <LoadingOutlined spin style={{ color: "#1890ff" }} />
+                  <LoadingOutlined spin style={{ color: "#8c8c8c" }} />
                 ) : (
-                  <ExperimentOutlined style={{ color: "#d9d9d9" }} />
+                  <ExperimentOutlined style={{ color: "#bfbfbf" }} />
                 )
               }
             />
@@ -944,7 +944,7 @@ export default function AutoTuning() {
             <Statistic
               title="Knowledge Records"
               value={knowledge.length}
-              prefix={<DatabaseOutlined style={{ color: "#722ed1" }} />}
+              prefix={<DatabaseOutlined style={{ color: "#8c8c8c" }} />}
             />
           </Card>
         </Col>
@@ -1214,7 +1214,18 @@ export default function AutoTuning() {
       <Modal
         title={
           <Space>
-            <LoadingOutlined spin />
+            {logModal &&
+            [
+              "pending",
+              "analyzing",
+              "querying_kb",
+              "exploring",
+              "benchmarking",
+            ].includes(logModal.status) ? (
+              <LoadingOutlined spin />
+            ) : (
+              <BarChartOutlined />
+            )}
             <span>Live Logs</span>
             {logModal && (
               <>

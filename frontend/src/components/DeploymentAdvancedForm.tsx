@@ -95,6 +95,14 @@ const VllmAdvancedParams = () => (
       <Switch />
     </Form.Item>
     <Form.Item
+      name={["extra_params", "enable-auto-tool-choice"]}
+      label="Enable Tool Calling"
+      valuePropName="checked"
+      extra="Enable function/tool calling support for Agent mode"
+    >
+      <Switch />
+    </Form.Item>
+    <Form.Item
       name={["extra_params", "dtype"]}
       label="Model Dtype"
       extra="Data type for model weights"

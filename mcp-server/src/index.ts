@@ -34,6 +34,8 @@ import {
   startAutoTuning,
   getTuningJobStatus,
   waitForTuningJob,
+  runComprehensiveBenchmark,
+  runSaturationDetection,
 } from "./tools/benchmark.js";
 
 // Configuration from environment
@@ -894,6 +896,68 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: [],
         },
       },
+      {
+        name: "run_comprehensive_benchmark",
+        description:
+          "Run a comprehensive benchmark with detailed metrics including TTFT, ITL, TPOT with percentiles (p50, p90, p95, p99). More detailed than run_benchmark.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deployment_id: {
+              type: "number",
+              description: "ID of the deployment to benchmark",
+            },
+            concurrency: {
+              type: "number",
+              description: "Number of concurrent requests (default: 10)",
+            },
+            num_requests: {
+              type: "number",
+              description: "Total number of requests to make (default: 50)",
+            },
+            warmup_requests: {
+              type: "number",
+              description: "Number of warmup requests (default: 5)",
+            },
+            prompt_tokens: {
+              type: "number",
+              description: "Approximate input token count (default: 256)",
+            },
+            output_tokens: {
+              type: "number",
+              description: "Maximum output tokens (default: 128)",
+            },
+          },
+          required: ["deployment_id"],
+        },
+      },
+      {
+        name: "run_saturation_detection",
+        description:
+          "Automatically find the optimal concurrency level by incrementally increasing load until throughput plateaus or latency degrades. Returns the recommended concurrency for best performance.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deployment_id: {
+              type: "number",
+              description: "ID of the deployment to test",
+            },
+            start_concurrency: {
+              type: "number",
+              description: "Starting concurrency level (default: 1)",
+            },
+            max_concurrency: {
+              type: "number",
+              description: "Maximum concurrency to test (default: 64)",
+            },
+            requests_per_level: {
+              type: "number",
+              description: "Requests to run at each concurrency level (default: 20)",
+            },
+          },
+          required: ["deployment_id"],
+        },
+      },
     ],
   };
 });
@@ -1014,17 +1078,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           filtered = filtered.filter((w: any) => w.id === args.worker_id);
         }
 
+        // Memory values from pynvml are in bytes
+        const bytesToGB = 1024 * 1024 * 1024;
         const lines: string[] = ["# GPU Status\n"];
         for (const worker of filtered) {
           lines.push(`## ${worker.name} (${worker.status})`);
           if (worker.gpu_info && worker.gpu_info.length > 0) {
             for (const gpu of worker.gpu_info) {
-              const usedGB = (gpu.memory_used / 1024).toFixed(1);
-              const totalGB = (gpu.memory_total / 1024).toFixed(1);
-              const freeGB = ((gpu.memory_total - gpu.memory_used) / 1024).toFixed(1);
+              const usedGB = (gpu.memory_used / bytesToGB).toFixed(1);
+              const totalGB = (gpu.memory_total / bytesToGB).toFixed(1);
+              const freeGB = ((gpu.memory_total - gpu.memory_used) / bytesToGB).toFixed(1);
+              const util = gpu.utilization_gpu ?? gpu.utilization ?? 0;
               lines.push(`- GPU ${gpu.index}: ${gpu.name}`);
               lines.push(`  - Memory: ${usedGB}GB used / ${freeGB}GB free / ${totalGB}GB total`);
-              lines.push(`  - Utilization: ${gpu.utilization_gpu}%`);
+              lines.push(`  - Utilization: ${util}%`);
             }
           } else {
             lines.push("- No GPU information available");
@@ -1589,6 +1656,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: output,
+            },
+          ],
+        };
+      }
+
+      case "run_comprehensive_benchmark": {
+        if (!args?.deployment_id) {
+          throw new Error("deployment_id is required");
+        }
+
+        const comprehensiveResults = await runComprehensiveBenchmark(client, {
+          deploymentId: Number(args.deployment_id),
+          concurrency: args.concurrency ? Number(args.concurrency) : undefined,
+          numRequests: args.num_requests ? Number(args.num_requests) : undefined,
+          warmupRequests: args.warmup_requests ? Number(args.warmup_requests) : undefined,
+          promptTokens: args.prompt_tokens ? Number(args.prompt_tokens) : undefined,
+          outputTokens: args.output_tokens ? Number(args.output_tokens) : undefined,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: comprehensiveResults,
+            },
+          ],
+        };
+      }
+
+      case "run_saturation_detection": {
+        if (!args?.deployment_id) {
+          throw new Error("deployment_id is required");
+        }
+
+        const saturationResults = await runSaturationDetection(client, {
+          deploymentId: Number(args.deployment_id),
+          startConcurrency: args.start_concurrency ? Number(args.start_concurrency) : undefined,
+          maxConcurrency: args.max_concurrency ? Number(args.max_concurrency) : undefined,
+          requestsPerLevel: args.requests_per_level ? Number(args.requests_per_level) : undefined,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: saturationResults,
             },
           ],
         };

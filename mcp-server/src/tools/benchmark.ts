@@ -371,3 +371,175 @@ export async function compareBenchmarkResults(
 
   return output;
 }
+
+/**
+ * Run a comprehensive benchmark with detailed metrics and percentiles
+ */
+export async function runComprehensiveBenchmark(
+  client: LMStackClient,
+  config: {
+    deploymentId: number;
+    concurrency?: number;
+    numRequests?: number;
+    warmupRequests?: number;
+    promptTokens?: number;
+    outputTokens?: number;
+  }
+): Promise<string> {
+  const {
+    deploymentId,
+    concurrency = 10,
+    numRequests = 50,
+    warmupRequests = 5,
+    promptTokens = 256,
+    outputTokens = 128,
+  } = config;
+
+  try {
+    // Get deployment info
+    const deployment = await client.getDeployment(deploymentId);
+    if (!deployment) {
+      return `## Benchmark Failed\n\nDeployment ID ${deploymentId} not found.`;
+    }
+
+    if (deployment.status !== "running") {
+      return `## Benchmark Failed\n\nDeployment "${deployment.name}" is not running.`;
+    }
+
+    // Run comprehensive benchmark
+    const result = await client.runComprehensiveBenchmark({
+      deployment_id: deploymentId,
+      concurrency,
+      num_requests: numRequests,
+      warmup_requests: warmupRequests,
+      prompt_tokens: promptTokens,
+      output_tokens: outputTokens,
+    });
+
+    if (result.error) {
+      return `## Benchmark Failed\n\nError: ${result.error}`;
+    }
+
+    const metrics = result.metrics;
+
+    let output = `## Comprehensive Benchmark Results\n\n`;
+    output += `**Deployment:** ${deployment.name}\n`;
+    output += `**Model:** ${deployment.model?.name || "Unknown"}\n`;
+    output += `**Duration:** ${result.duration_seconds?.toFixed(1) || "N/A"}s\n\n`;
+
+    output += `### Configuration\n`;
+    output += `- Concurrency: ${concurrency}\n`;
+    output += `- Requests: ${numRequests} (+ ${warmupRequests} warmup)\n`;
+    output += `- Input: ~${promptTokens} tokens, Output: ${outputTokens} tokens\n\n`;
+
+    output += `### Throughput\n`;
+    output += `- **Output TPS:** ${metrics.output_tps?.toFixed(2) || "N/A"} tokens/sec\n`;
+    output += `- **Requests/sec:** ${metrics.throughput_rps?.toFixed(4) || "N/A"}\n\n`;
+
+    output += `### Latency Metrics (ms)\n`;
+    output += `| Metric | Mean | p50 | p95 | p99 |\n`;
+    output += `|--------|------|-----|-----|-----|\n`;
+
+    const formatRow = (name: string, m: any) => {
+      if (!m) return `| ${name} | N/A | N/A | N/A | N/A |\n`;
+      return `| ${name} | ${m.mean?.toFixed(1) || "N/A"} | ${m.p50?.toFixed(1) || "N/A"} | ${m.p95?.toFixed(1) || "N/A"} | ${m.p99?.toFixed(1) || "N/A"} |\n`;
+    };
+
+    output += formatRow("TTFT", metrics.ttft);
+    output += formatRow("ITL", metrics.itl);
+    output += formatRow("TPOT", metrics.tpot);
+    output += formatRow("E2E Latency", metrics.e2e_latency);
+
+    output += `\n### Request Statistics\n`;
+    output += `- Successful: ${metrics.successful_requests}/${metrics.total_requests}`;
+    output += ` (${(metrics.success_rate * 100).toFixed(1)}%)\n`;
+    output += `- Avg tokens: ${metrics.avg_prompt_tokens?.toFixed(0) || "N/A"} in, `;
+    output += `${metrics.avg_completion_tokens?.toFixed(0) || "N/A"} out\n`;
+
+    return output;
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return `## Benchmark Failed\n\nError: ${errMsg}`;
+  }
+}
+
+/**
+ * Run saturation detection to find optimal concurrency
+ */
+export async function runSaturationDetection(
+  client: LMStackClient,
+  config: {
+    deploymentId: number;
+    startConcurrency?: number;
+    maxConcurrency?: number;
+    requestsPerLevel?: number;
+  }
+): Promise<string> {
+  const {
+    deploymentId,
+    startConcurrency = 1,
+    maxConcurrency = 64,
+    requestsPerLevel = 20,
+  } = config;
+
+  try {
+    // Get deployment info
+    const deployment = await client.getDeployment(deploymentId);
+    if (!deployment) {
+      return `## Saturation Detection Failed\n\nDeployment ID ${deploymentId} not found.`;
+    }
+
+    if (deployment.status !== "running") {
+      return `## Saturation Detection Failed\n\nDeployment "${deployment.name}" is not running.`;
+    }
+
+    // Run saturation detection
+    const result = await client.runSaturationDetection({
+      deployment_id: deploymentId,
+      start_concurrency: startConcurrency,
+      max_concurrency: maxConcurrency,
+      requests_per_level: requestsPerLevel,
+    });
+
+    if (result.error) {
+      return `## Saturation Detection Failed\n\nError: ${result.error}`;
+    }
+
+    let output = `## Saturation Detection Results\n\n`;
+    output += `**Deployment:** ${deployment.name}\n`;
+    output += `**Model:** ${deployment.model?.name || "Unknown"}\n\n`;
+
+    output += `### Optimal Configuration\n`;
+    output += `- **Optimal Concurrency:** ${result.optimal_concurrency}\n`;
+    output += `- **Max Throughput:** ${result.max_throughput_tps?.toFixed(2)} TPS\n`;
+    output += `- **Latency at Optimal:** ${result.latency_at_optimal_ms?.toFixed(1)} ms\n\n`;
+
+    if (result.saturation_detected) {
+      output += `### Saturation Point\n`;
+      output += `- **Saturation Concurrency:** ${result.saturation_concurrency}\n`;
+      output += `- **Reason:** ${result.stop_reason}\n\n`;
+    }
+
+    if (result.concurrency_results && result.concurrency_results.length > 0) {
+      output += `### Concurrency vs Performance\n`;
+      output += `| Concurrency | TPS | Latency (ms) | p95 (ms) | Success |\n`;
+      output += `|-------------|-----|--------------|----------|----------|\n`;
+
+      for (const r of result.concurrency_results) {
+        const marker = r.concurrency === result.optimal_concurrency ? " *" : "";
+        output += `| ${r.concurrency}${marker} | ${r.throughput_tps?.toFixed(1)} | `;
+        output += `${r.avg_latency_ms?.toFixed(1)} | ${r.p95_latency_ms?.toFixed(1)} | `;
+        output += `${(r.success_rate * 100).toFixed(0)}% |\n`;
+      }
+      output += `\n*\\* = optimal concurrency*\n`;
+    }
+
+    output += `\n### Recommendation\n`;
+    output += `Use concurrency of **${result.optimal_concurrency}** for best throughput/latency balance.\n`;
+
+    return output;
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return `## Saturation Detection Failed\n\nError: ${errMsg}`;
+  }
+}
