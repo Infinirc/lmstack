@@ -43,6 +43,16 @@ class NativeProcessManager:
         self._log_dir = Path.home() / ".lmstack" / "logs"
         self._log_dir.mkdir(parents=True, exist_ok=True)
 
+    def _write_log(self, process_id: str, message: str) -> None:
+        """Write a message to a process's log file."""
+        log_file = self._log_dir / f"{process_id}.log"
+        with open(log_file, "a") as f:
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{timestamp}] {message}\n")
+            f.flush()
+
     async def ensure_ollama_running(
         self, host: str = "0.0.0.0", port: int = OLLAMA_DEFAULT_PORT
     ) -> bool:
@@ -371,8 +381,13 @@ class NativeProcessManager:
         MLX-LM provides OpenAI-compatible API via mlx_lm.server.
         Automatically installs mlx-lm and converts models if needed.
         """
+        # Initialize log file early so we can track progress
+        self._write_log(process_id, f"Starting MLX deployment for {model_id}")
+
         # Ensure MLX-LM is installed (auto-install if needed)
+        self._write_log(process_id, "Checking MLX-LM installation...")
         python_cmd = await self._ensure_mlx_lm_installed()
+        self._write_log(process_id, f"MLX-LM ready: {python_cmd}")
 
         effective_model_id = model_id
 
@@ -382,28 +397,36 @@ class NativeProcessManager:
             cached = self._converter.get_cached_model(model_id, "mlx")
             if cached:
                 logger.info(f"Using cached MLX model: {cached}")
+                self._write_log(process_id, f"Using cached MLX model: {cached}")
                 effective_model_id = cached
             else:
                 # Try to find an existing MLX variant on HuggingFace
                 mlx_variant = ModelConverter.find_mlx_variant(model_id)
                 if mlx_variant and ModelConverter.is_mlx_ready(mlx_variant):
                     logger.info(f"Using MLX variant: {mlx_variant}")
+                    self._write_log(process_id, f"Using MLX variant: {mlx_variant}")
                     effective_model_id = mlx_variant
                 else:
                     # Convert the model
                     logger.info(f"Converting {model_id} to MLX format...")
+                    self._write_log(process_id, f"Converting {model_id} to MLX format...")
+                    self._write_log(process_id, "This may take a while...")
                     try:
                         quantize = kwargs.pop("mlx_quantize", True)
                         bits = kwargs.pop("mlx_bits", 4)
                         effective_model_id = await self._converter.convert_to_mlx(
                             model_id, quantize=quantize, bits=bits
                         )
+                        self._write_log(process_id, f"Conversion complete: {effective_model_id}")
                     except Exception as e:
                         logger.error(f"MLX conversion failed: {e}")
+                        self._write_log(process_id, f"ERROR: MLX conversion failed: {e}")
                         raise RuntimeError(
                             f"Failed to convert model to MLX format: {e}. "
                             "Consider using an mlx-community model or Ollama backend."
                         )
+        else:
+            self._write_log(process_id, f"Model {model_id} is MLX-ready")
 
         # Build command using venv python
         cmd = [
@@ -427,7 +450,7 @@ class NativeProcessManager:
 
         # Start the process with log file
         env = os.environ.copy()
-        with open(log_file, "w") as f:
+        with open(log_file, "a") as f:
             process = subprocess.Popen(
                 cmd,
                 stdout=f,
@@ -511,28 +534,39 @@ class NativeProcessManager:
         llama.cpp provides OpenAI-compatible API via llama-server.
         Automatically installs llama.cpp and downloads/converts models if needed.
         """
+        # Initialize log file early so we can track progress
+        self._write_log(process_id, f"Starting llama.cpp deployment for {model_id}")
+
         # Ensure llama.cpp is installed (auto-install if needed)
+        self._write_log(process_id, "Checking llama.cpp installation...")
         llama_server = await self._ensure_llama_cpp_installed()
+        self._write_log(process_id, f"llama.cpp ready: {llama_server}")
 
         effective_model_path = model_id
 
         # Check if model_id is already a local GGUF file path
         if model_id.endswith(".gguf") and Path(model_id).exists():
             logger.info(f"Using local GGUF file: {model_id}")
+            self._write_log(process_id, f"Using local GGUF file: {model_id}")
             effective_model_path = model_id
         else:
             # Check for cached model
             cached = self._converter.get_cached_model(model_id, "gguf")
             if cached:
                 logger.info(f"Using cached GGUF model: {cached}")
+                self._write_log(process_id, f"Using cached GGUF model: {cached}")
                 effective_model_path = cached
             elif ModelConverter.is_gguf_ready(model_id):
                 # Model is already GGUF on HuggingFace, download it directly
                 logger.info(f"Downloading GGUF model from HuggingFace: {model_id}")
+                self._write_log(process_id, f"Downloading GGUF model from HuggingFace: {model_id}")
+                self._write_log(process_id, "This may take a while depending on model size...")
                 try:
                     effective_model_path = await self._converter.download_gguf_model(model_id)
+                    self._write_log(process_id, f"Download complete: {effective_model_path}")
                 except Exception as e:
                     logger.error(f"GGUF download failed: {e}")
+                    self._write_log(process_id, f"ERROR: GGUF download failed: {e}")
                     raise RuntimeError(
                         f"Failed to download GGUF model: {e}. "
                         "Check if the model exists and has .gguf files."
@@ -540,13 +574,17 @@ class NativeProcessManager:
             else:
                 # Need to convert from HuggingFace format
                 logger.info(f"Converting {model_id} to GGUF format...")
+                self._write_log(process_id, f"Converting {model_id} to GGUF format...")
+                self._write_log(process_id, "This may take a while...")
                 try:
                     quant_type = kwargs.pop("gguf_quant", "q8_0")
                     effective_model_path = await self._converter.convert_to_gguf(
                         model_id, quant_type=quant_type
                     )
+                    self._write_log(process_id, f"Conversion complete: {effective_model_path}")
                 except Exception as e:
                     logger.error(f"GGUF conversion failed: {e}")
+                    self._write_log(process_id, f"ERROR: GGUF conversion failed: {e}")
                     raise RuntimeError(
                         f"Failed to convert model to GGUF format: {e}. "
                         "Consider using a pre-quantized GGUF model or Ollama backend."
@@ -577,7 +615,7 @@ class NativeProcessManager:
 
         # Start the process with log file
         env = os.environ.copy()
-        with open(log_file, "w") as f:
+        with open(log_file, "a") as f:
             process = subprocess.Popen(
                 cmd,
                 stdout=f,
@@ -669,8 +707,13 @@ class NativeProcessManager:
         Automatically installs vllm-metal in a virtual environment if needed.
         See: https://github.com/vllm-project/vllm-metal
         """
+        # Initialize log file early so we can track progress
+        self._write_log(process_id, f"Starting vLLM-Metal deployment for {model_id}")
+
         # Ensure vLLM-Metal is installed (auto-install if needed)
+        self._write_log(process_id, "Checking vLLM-Metal installation...")
         vllm_cmd = await self._ensure_vllm_metal_installed()
+        self._write_log(process_id, f"vLLM-Metal ready: {vllm_cmd}")
 
         # Build command using vllm serve
         cmd = [
@@ -701,7 +744,7 @@ class NativeProcessManager:
 
         # Start the process with log file
         env = os.environ.copy()
-        with open(log_file, "w") as f:
+        with open(log_file, "a") as f:
             process = subprocess.Popen(
                 cmd,
                 stdout=f,
