@@ -37,7 +37,7 @@ interface ModelCompatibilityCheckProps {
   precision?: string; // fp32, fp16, bf16, int8, int4
   gpuMemoryGb?: number; // Available GPU memory for compatibility check
   contextLength?: number;
-  backend?: "vllm" | "sglang" | "ollama";
+  backend?: "vllm" | "sglang" | "ollama" | "mlx" | "llama_cpp";
 }
 
 const { Text, Title } = Typography;

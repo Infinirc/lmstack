@@ -50,6 +50,16 @@ export interface HFSearchResult {
   likes: number;
   pipeline_tag?: string;
   tags: string[];
+  is_mlx_ready?: boolean;
+  is_gguf_ready?: boolean;
+}
+
+export interface ModelFormatInfo {
+  model_id: string;
+  is_mlx_ready: boolean;
+  is_gguf_ready: boolean;
+  mlx_variants: string[];
+  gguf_files: string[];
 }
 
 export const huggingfaceApi = {
@@ -122,6 +132,45 @@ export const huggingfaceApi = {
       content: string | null;
       message?: string;
     }>(`/huggingface/readme/${encodeURIComponent(modelId)}`, { params });
+    return response.data;
+  },
+
+  getFormatInfo: async (
+    modelId: string,
+    token?: string,
+  ): Promise<ModelFormatInfo> => {
+    const params: Record<string, string> = {};
+    if (token) params.token = token;
+    const response = await api.get<ModelFormatInfo>(
+      `/huggingface/format-info/${encodeURIComponent(modelId)}`,
+      { params },
+    );
+    return response.data;
+  },
+
+  searchMLX: async (
+    query: string,
+    limit?: number,
+  ): Promise<HFSearchResult[]> => {
+    const response = await api.get<HFSearchResult[]>(
+      "/huggingface/search-mlx",
+      {
+        params: { query, limit },
+      },
+    );
+    return response.data;
+  },
+
+  searchGGUF: async (
+    query: string,
+    limit?: number,
+  ): Promise<HFSearchResult[]> => {
+    const response = await api.get<HFSearchResult[]>(
+      "/huggingface/search-gguf",
+      {
+        params: { query, limit },
+      },
+    );
     return response.data;
   },
 };

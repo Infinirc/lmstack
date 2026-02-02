@@ -4,13 +4,18 @@ Utilities for registering the local machine as a worker.
 """
 
 import logging
+import os
 import platform
+import shutil
 import socket
 import subprocess
+import time
 
 import psutil
 
 logger = logging.getLogger(__name__)
+
+OLLAMA_DEFAULT_PORT = 11434
 
 
 def get_local_hostname() -> str:
@@ -121,6 +126,80 @@ def get_local_worker_info() -> dict:
     }
 
 
+def ensure_ollama_running_on_host(host: str = "0.0.0.0", port: int = OLLAMA_DEFAULT_PORT) -> bool:
+    """Ensure Ollama is running on the host with external access enabled.
+
+    This is called BEFORE starting Docker worker so that the container
+    can access Ollama on the host via localhost (with --network host).
+
+    Args:
+        host: Host to bind to (default 0.0.0.0 for external access)
+        port: Port to bind to (default 11434)
+
+    Returns:
+        True if Ollama is running and accessible
+    """
+    # Only run on macOS
+    if platform.system() != "Darwin":
+        return True  # Not needed on Linux (Docker can use GPU directly)
+
+    # Check if Ollama is installed
+    ollama_path = shutil.which("ollama")
+    if not ollama_path:
+        logger.info("Ollama is not installed on this Mac")
+        return False
+
+    # Check if Ollama is already running
+    try:
+        import httpx
+
+        with httpx.Client(timeout=2.0) as client:
+            response = client.get(f"http://localhost:{port}/api/tags")
+            if response.status_code == 200:
+                logger.info("Ollama service is already running")
+                return True
+    except Exception:
+        pass
+
+    # Ollama not running, start it with external access
+    logger.info(f"Starting Ollama service on {host}:{port}")
+
+    env = os.environ.copy()
+    env["OLLAMA_HOST"] = f"{host}:{port}"
+
+    try:
+        # Start ollama serve in background
+        process = subprocess.Popen(
+            [ollama_path, "serve"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=True,
+        )
+        logger.info(f"Started Ollama service (PID {process.pid})")
+
+        # Wait for Ollama to be ready (up to 30 seconds)
+        import httpx
+
+        for _ in range(30):
+            time.sleep(1)
+            try:
+                with httpx.Client(timeout=2.0) as client:
+                    response = client.get(f"http://localhost:{port}/api/tags")
+                    if response.status_code == 200:
+                        logger.info("Ollama service is ready")
+                        return True
+            except Exception:
+                pass
+
+        logger.error("Ollama service failed to start in time")
+        return False
+
+    except Exception as e:
+        logger.error(f"Failed to start Ollama service: {e}")
+        return False
+
+
 def spawn_docker_worker(
     worker_name: str,
     backend_url: str,
@@ -132,6 +211,11 @@ def spawn_docker_worker(
     Returns:
         dict with keys: success, message, container_id (if success)
     """
+    # On Mac, ensure Ollama is running with external access before starting Docker
+    if platform.system() == "Darwin":
+        logger.info("Mac detected, ensuring Ollama is running with external access...")
+        ensure_ollama_running_on_host()
+
     # First, check if container with same name exists and remove it
     try:
         check_result = subprocess.run(

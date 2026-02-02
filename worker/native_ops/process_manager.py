@@ -4,13 +4,19 @@ Manages LLM inference processes without Docker for macOS with Apple Silicon.
 Supports Ollama, MLX-LM, and llama.cpp backends.
 """
 
+import asyncio
 import logging
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
+from .converter import ModelConverter
+
 logger = logging.getLogger(__name__)
+
+OLLAMA_DEFAULT_PORT = 11434
 
 
 @dataclass
@@ -30,6 +36,76 @@ class NativeProcessManager:
 
     def __init__(self):
         self._processes: dict[str, NativeProcess] = {}
+        self._ollama_process: Optional[subprocess.Popen] = None
+        self._converter = ModelConverter()
+
+    async def ensure_ollama_running(
+        self, host: str = "0.0.0.0", port: int = OLLAMA_DEFAULT_PORT
+    ) -> bool:
+        """Ensure Ollama service is running and accessible.
+
+        If Ollama is not running, starts it with OLLAMA_HOST set to allow external connections.
+
+        Args:
+            host: Host to bind to (default 0.0.0.0 for external access)
+            port: Port to bind to (default 11434)
+
+        Returns:
+            True if Ollama is running and accessible
+        """
+        import httpx
+
+        # Check if Ollama is already running
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                response = await client.get(f"http://localhost:{port}/api/tags")
+                if response.status_code == 200:
+                    logger.info("Ollama service is already running")
+                    return True
+        except Exception:
+            pass
+
+        # Ollama not running, try to start it
+        ollama_path = shutil.which("ollama")
+        if not ollama_path:
+            logger.warning("Ollama is not installed")
+            return False
+
+        logger.info(f"Starting Ollama service on {host}:{port}")
+
+        # Set environment for Ollama to bind to all interfaces
+        env = os.environ.copy()
+        env["OLLAMA_HOST"] = f"{host}:{port}"
+
+        try:
+            # Start ollama serve in background
+            self._ollama_process = subprocess.Popen(
+                [ollama_path, "serve"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=env,
+                start_new_session=True,
+            )
+            logger.info(f"Started Ollama service (PID {self._ollama_process.pid})")
+
+            # Wait for Ollama to be ready
+            for _ in range(30):  # Wait up to 30 seconds
+                await asyncio.sleep(1)
+                try:
+                    async with httpx.AsyncClient(timeout=2.0) as client:
+                        response = await client.get(f"http://localhost:{port}/api/tags")
+                        if response.status_code == 200:
+                            logger.info("Ollama service is ready")
+                            return True
+                except Exception:
+                    pass
+
+            logger.error("Ollama service failed to start in time")
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to start Ollama service: {e}")
+            return False
 
     def get_process(self, process_id: str) -> Optional[NativeProcess]:
         """Get a managed process by ID."""
@@ -145,17 +221,13 @@ class NativeProcessManager:
         """
         import httpx
 
-        ollama_port = 11434  # Ollama's default port
+        ollama_port = OLLAMA_DEFAULT_PORT
 
-        # Check if Ollama service is running
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"http://localhost:{ollama_port}/api/tags")
-                if response.status_code != 200:
-                    raise RuntimeError("Ollama service is not responding")
-        except httpx.ConnectError:
+        # Ensure Ollama service is running (starts it if needed)
+        if not await self.ensure_ollama_running():
             raise RuntimeError(
-                "Ollama service is not running. " "Please start it with: ollama serve"
+                "Ollama service is not running and could not be started. "
+                "Please install Ollama: https://ollama.ai"
             )
 
         # Pull the model if needed
@@ -226,14 +298,46 @@ class NativeProcessManager:
         """Start MLX-LM server for Apple Silicon.
 
         MLX-LM provides OpenAI-compatible API via mlx_lm.server.
+        Automatically converts HuggingFace models to MLX format if needed.
         """
+        effective_model_id = model_id
+
+        # Check if model needs conversion
+        if not ModelConverter.is_mlx_ready(model_id):
+            # Check for cached conversion first
+            cached = self._converter.get_cached_model(model_id, "mlx")
+            if cached:
+                logger.info(f"Using cached MLX model: {cached}")
+                effective_model_id = cached
+            else:
+                # Try to find an existing MLX variant on HuggingFace
+                mlx_variant = ModelConverter.find_mlx_variant(model_id)
+                if mlx_variant and ModelConverter.is_mlx_ready(mlx_variant):
+                    logger.info(f"Using MLX variant: {mlx_variant}")
+                    effective_model_id = mlx_variant
+                else:
+                    # Convert the model
+                    logger.info(f"Converting {model_id} to MLX format...")
+                    try:
+                        quantize = kwargs.pop("mlx_quantize", True)
+                        bits = kwargs.pop("mlx_bits", 4)
+                        effective_model_id = await self._converter.convert_to_mlx(
+                            model_id, quantize=quantize, bits=bits
+                        )
+                    except Exception as e:
+                        logger.error(f"MLX conversion failed: {e}")
+                        raise RuntimeError(
+                            f"Failed to convert model to MLX format: {e}. "
+                            "Consider using an mlx-community model or Ollama backend."
+                        )
+
         # Build command
         cmd = [
             "python3",
             "-m",
             "mlx_lm.server",
             "--model",
-            model_id,
+            effective_model_id,
             "--host",
             "0.0.0.0",
             "--port",
@@ -254,13 +358,13 @@ class NativeProcessManager:
             start_new_session=True,
         )
 
-        logger.info(f"Started MLX-LM server (PID {process.pid}) for {model_id}")
+        logger.info(f"Started MLX-LM server (PID {process.pid}) for {effective_model_id}")
 
         return NativeProcess(
             process_id=process_id,
             pid=process.pid,
             backend="mlx",
-            model_id=model_id,
+            model_id=effective_model_id,
             port=port,
             process=process,
         )
@@ -275,6 +379,7 @@ class NativeProcessManager:
         """Start llama.cpp server with Metal acceleration.
 
         llama.cpp provides OpenAI-compatible API via llama-server.
+        Automatically converts HuggingFace models to GGUF format if needed.
         """
         # Check for llama-server binary
         import shutil
@@ -286,11 +391,36 @@ class NativeProcessManager:
                 "llama-server not found. " "Please install llama.cpp: brew install llama.cpp"
             )
 
+        effective_model_path = model_id
+
+        # Check if model_id is a GGUF file path
+        if not model_id.endswith(".gguf"):
+            # Check for cached GGUF conversion
+            cached = self._converter.get_cached_model(model_id, "gguf")
+            if cached:
+                logger.info(f"Using cached GGUF model: {cached}")
+                effective_model_path = cached
+            else:
+                # Check if model has GGUF files on HuggingFace
+                # For now, attempt conversion
+                logger.info(f"Converting {model_id} to GGUF format...")
+                try:
+                    quant_type = kwargs.pop("gguf_quant", "q8_0")
+                    effective_model_path = await self._converter.convert_to_gguf(
+                        model_id, quant_type=quant_type
+                    )
+                except Exception as e:
+                    logger.error(f"GGUF conversion failed: {e}")
+                    raise RuntimeError(
+                        f"Failed to convert model to GGUF format: {e}. "
+                        "Consider using a pre-quantized GGUF model or Ollama backend."
+                    )
+
         # Build command
         cmd = [
             llama_server,
             "--model",
-            model_id,
+            effective_model_path,
             "--host",
             "0.0.0.0",
             "--port",
@@ -316,13 +446,13 @@ class NativeProcessManager:
             start_new_session=True,
         )
 
-        logger.info(f"Started llama.cpp server (PID {process.pid}) for {model_id}")
+        logger.info(f"Started llama.cpp server (PID {process.pid}) for {effective_model_path}")
 
         return NativeProcess(
             process_id=process_id,
             pid=process.pid,
             backend="llama_cpp",
-            model_id=model_id,
+            model_id=effective_model_path,
             port=port,
             process=process,
         )

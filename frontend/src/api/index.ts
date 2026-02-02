@@ -88,6 +88,7 @@ export type {
   VRAMEstimate,
   HFModelFile,
   HFSearchResult,
+  ModelFormatInfo,
 } from "./huggingface";
 
 // Types - Ollama

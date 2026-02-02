@@ -43,6 +43,7 @@ import { useResponsive } from "../hooks";
 import { useAuth } from "../contexts/AuthContext";
 import DeploymentAdvancedForm from "../components/DeploymentAdvancedForm";
 import ModelCompatibilityCheck from "../components/ModelCompatibilityCheck";
+import ModelFormatCompatibility from "../components/ModelFormatCompatibility";
 import backendVersionsData from "../constants/backendVersions.json";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
@@ -86,7 +87,7 @@ export default function Deployments() {
   const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null);
   const [selectedGpuIndexes, setSelectedGpuIndexes] = useState<number[]>([]);
   const [selectedBackend, setSelectedBackend] = useState<
-    "vllm" | "sglang" | "ollama"
+    "vllm" | "sglang" | "ollama" | "mlx" | "llama_cpp"
   >("vllm");
   const [editingDeployment, setEditingDeployment] = useState<Deployment | null>(
     null,
@@ -113,12 +114,24 @@ export default function Deployments() {
       return ["vllm", "sglang"] as const;
     }
 
-    // macOS workers only support Ollama (vLLM/SGLang require NVIDIA GPU)
+    // macOS workers support Ollama, MLX, and llama.cpp (native Apple Silicon)
     if (selectedWorker.os_type === "darwin") {
-      return ["ollama"] as const;
+      // Use worker's available_backends if provided (should include mlx, llama_cpp, ollama)
+      if (
+        selectedWorker.available_backends &&
+        selectedWorker.available_backends.length > 0
+      ) {
+        // Filter for macOS-compatible backends
+        const macBackends = selectedWorker.available_backends.filter((b) =>
+          ["ollama", "mlx", "llama_cpp"].includes(b),
+        );
+        return macBackends.length > 0 ? macBackends : (["ollama"] as const);
+      }
+      // Default fallback for macOS workers
+      return ["ollama", "mlx", "llama_cpp"] as const;
     }
 
-    // Use worker's available_backends if provided
+    // Use worker's available_backends if provided for Linux workers
     if (
       selectedWorker.available_backends &&
       selectedWorker.available_backends.length > 0
@@ -855,7 +868,7 @@ export default function Deployments() {
               selectedModel?.source === "ollama"
                 ? "Ollama models can only use Ollama backend"
                 : selectedWorker?.os_type === "darwin"
-                  ? "macOS workers only support Ollama backend"
+                  ? "macOS workers support Ollama, MLX, and llama.cpp backends with Apple Silicon acceleration"
                   : "HuggingFace models can use vLLM or SGLang"
             }
           >
@@ -991,8 +1004,32 @@ export default function Deployments() {
             selectedWorker.os_type === "darwin" &&
             selectedWorker.capabilities?.ollama_running && (
               <Alert
-                message="macOS Worker"
-                description="This worker uses native Ollama with Metal GPU acceleration. Only Ollama backend is available."
+                message="macOS Worker with Apple Silicon"
+                description={
+                  <div>
+                    <p style={{ margin: "4px 0" }}>
+                      This worker supports native Apple Silicon backends:
+                    </p>
+                    <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+                      <li>
+                        <strong>Ollama</strong> - Easiest, pull and run models
+                        directly
+                      </li>
+                      <li>
+                        <strong>MLX</strong> - Apple's ML framework, optimized
+                        for Apple Silicon
+                      </li>
+                      <li>
+                        <strong>llama.cpp</strong> - Cross-platform with Metal
+                        acceleration
+                      </li>
+                    </ul>
+                    <p style={{ margin: "4px 0", fontSize: 12, color: "#666" }}>
+                      For MLX/llama.cpp, HuggingFace models will be
+                      automatically converted if needed.
+                    </p>
+                  </div>
+                }
                 type="info"
                 showIcon
                 style={{ marginBottom: 16 }}
@@ -1054,14 +1091,27 @@ export default function Deployments() {
           </Form.Item>
 
           {/* Model Compatibility Check - Show when model is selected for vLLM/SGLang */}
-          {selectedModel && selectedModel.source !== "ollama" && (
-            <ModelCompatibilityCheck
-              modelId={selectedModel.model_id}
-              backend={selectedBackend}
-              gpuMemoryGb={selectedGpuMemoryGb}
-              precision="fp16"
-            />
-          )}
+          {selectedModel &&
+            selectedModel.source !== "ollama" &&
+            !["mlx", "llama_cpp"].includes(selectedBackend) && (
+              <ModelCompatibilityCheck
+                modelId={selectedModel.model_id}
+                backend={selectedBackend}
+                gpuMemoryGb={selectedGpuMemoryGb}
+                precision="fp16"
+              />
+            )}
+
+          {/* Model Format Compatibility - Show for MLX/llama.cpp backends */}
+          {selectedModel &&
+            selectedModel.source !== "ollama" &&
+            ["mlx", "llama_cpp"].includes(selectedBackend) && (
+              <ModelFormatCompatibility
+                modelId={selectedModel.model_id}
+                backend={selectedBackend as "mlx" | "llama_cpp"}
+                showDetails={true}
+              />
+            )}
 
           {/* Version Override - Show when model is selected */}
           {selectedModelId && (

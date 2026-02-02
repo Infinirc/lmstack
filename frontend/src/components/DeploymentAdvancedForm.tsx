@@ -21,7 +21,7 @@ import type { FormInstance } from "antd";
 const { Text } = Typography;
 
 interface DeploymentAdvancedFormProps {
-  backend: "vllm" | "sglang" | "ollama";
+  backend: "vllm" | "sglang" | "ollama" | "mlx" | "llama_cpp";
   form: FormInstance;
 }
 
@@ -235,6 +235,90 @@ const CustomArgsInput = ({ backend }: { backend: string }) => (
   </Form.Item>
 );
 
+// MLX Parameter definitions
+const MLXParams = () => (
+  <>
+    <Form.Item
+      name={["extra_params", "mlx_quantize"]}
+      label="Quantize Model"
+      valuePropName="checked"
+      extra="Quantize model during conversion (recommended for memory efficiency)"
+      initialValue={true}
+    >
+      <Switch defaultChecked />
+    </Form.Item>
+    <Form.Item
+      name={["extra_params", "mlx_bits"]}
+      label="Quantization Bits"
+      extra="Number of bits for quantization (4 or 8)"
+    >
+      <Select
+        placeholder="4"
+        defaultValue={4}
+        options={[
+          { label: "4-bit (smaller, slightly less accurate)", value: 4 },
+          { label: "8-bit (larger, more accurate)", value: 8 },
+        ]}
+      />
+    </Form.Item>
+    <Form.Item
+      name={["extra_params", "trust_remote_code"]}
+      label="Trust Remote Code"
+      valuePropName="checked"
+      extra="Allow execution of custom model code from HuggingFace"
+    >
+      <Switch />
+    </Form.Item>
+  </>
+);
+
+// llama.cpp Parameter definitions
+const LlamaCppParams = () => (
+  <>
+    <Form.Item
+      name={["extra_params", "gguf_quant"]}
+      label="Quantization Type"
+      extra="GGUF quantization type for conversion"
+    >
+      <Select
+        placeholder="q8_0"
+        defaultValue="q8_0"
+        options={[
+          { label: "Q4_0 (smallest, fastest)", value: "q4_0" },
+          { label: "Q4_K_M (balanced)", value: "q4_k_m" },
+          { label: "Q8_0 (highest quality)", value: "q8_0" },
+          { label: "F16 (no quantization)", value: "f16" },
+        ]}
+      />
+    </Form.Item>
+    <Form.Item
+      name={["extra_params", "ctx_size"]}
+      label="Context Size"
+      extra="Maximum context length in tokens"
+    >
+      <InputNumber
+        min={512}
+        max={131072}
+        step={512}
+        placeholder="4096"
+        style={{ width: "100%" }}
+      />
+    </Form.Item>
+    <Form.Item
+      name={["extra_params", "n_threads"]}
+      label="CPU Threads"
+      extra="Number of CPU threads for computation (0 = auto)"
+    >
+      <InputNumber
+        min={0}
+        max={64}
+        placeholder="Auto"
+        style={{ width: "100%" }}
+      />
+    </Form.Item>
+  </>
+);
+
 // Ollama Parameter definitions
 const OllamaParams = () => (
   <>
@@ -304,6 +388,7 @@ export default function DeploymentAdvancedForm({
   backend,
 }: DeploymentAdvancedFormProps) {
   const renderBackendParams = () => {
+    // Native Mac backends
     if (backend === "ollama") {
       return (
         <div style={{ padding: "16px 0" }}>
@@ -313,6 +398,25 @@ export default function DeploymentAdvancedForm({
       );
     }
 
+    if (backend === "mlx") {
+      return (
+        <div style={{ padding: "16px 0" }}>
+          <MLXParams />
+          <CustomArgsInput backend={backend} />
+        </div>
+      );
+    }
+
+    if (backend === "llama_cpp") {
+      return (
+        <div style={{ padding: "16px 0" }}>
+          <LlamaCppParams />
+          <CustomArgsInput backend={backend} />
+        </div>
+      );
+    }
+
+    // vLLM and SGLang (Docker-based)
     const isVllm = backend === "vllm";
     const tabItems = [
       {
