@@ -318,6 +318,18 @@ async def lifespan(app: FastAPI):
         # Set agent references for routes
         _set_agent_references(agent)
 
+        # Recover native processes from previous run (Mac only)
+        if agent.native_manager:
+            logger.info("Attempting to recover native processes from previous run...")
+            try:
+                results = await agent.native_manager.recover_processes()
+                if results:
+                    recovered = sum(1 for v in results.values() if v == "recovered")
+                    if recovered > 0:
+                        logger.info(f"Recovered {recovered} native process(es)")
+            except Exception as e:
+                logger.warning(f"Failed to recover native processes: {e}")
+
         # Register with server
         registered = await agent.register()
         if not registered:

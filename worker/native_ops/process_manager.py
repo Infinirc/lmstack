@@ -42,6 +42,125 @@ class NativeProcessManager:
         self._converter = ModelConverter()
         self._log_dir = Path.home() / ".lmstack" / "logs"
         self._log_dir.mkdir(parents=True, exist_ok=True)
+        self._state_file = Path.home() / ".lmstack" / "native_processes.json"
+
+    def _save_state(self) -> None:
+        """Save process state to disk for recovery after restart."""
+        state = {}
+        for process_id, proc in self._processes.items():
+            state[process_id] = {
+                "process_id": proc.process_id,
+                "pid": proc.pid,
+                "backend": proc.backend,
+                "model_id": proc.model_id,
+                "port": proc.port,
+            }
+        try:
+            import json
+
+            self._state_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._state_file, "w") as f:
+                json.dump(state, f, indent=2)
+            logger.debug(f"Saved {len(state)} process(es) to state file")
+        except Exception as e:
+            logger.warning(f"Failed to save process state: {e}")
+
+    def _load_state(self) -> dict:
+        """Load process state from disk."""
+        if not self._state_file.exists():
+            return {}
+        try:
+            import json
+
+            with open(self._state_file) as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load process state: {e}")
+            return {}
+
+    async def recover_processes(self) -> dict[str, str]:
+        """Recover processes from previous run.
+
+        Checks if previously tracked processes are still running by testing
+        their API endpoints. If running, re-registers them in the manager.
+
+        Returns:
+            Dictionary mapping process_id to recovery status:
+            - "recovered": Process still running and re-registered
+            - "stopped": Process no longer running, cleaned up
+            - "error": Recovery failed
+        """
+        import httpx
+
+        state = self._load_state()
+        if not state:
+            logger.info("No previous process state to recover")
+            return {}
+
+        results = {}
+        for process_id, proc_info in state.items():
+            port = proc_info.get("port")
+            backend = proc_info.get("backend")
+            model_id = proc_info.get("model_id")
+            pid = proc_info.get("pid", 0)
+
+            logger.info(f"Attempting to recover process {process_id} ({backend}) on port {port}")
+
+            # Skip Ollama - it's a system service, just re-register it
+            if backend == "ollama":
+                # Check if Ollama is running
+                try:
+                    async with httpx.AsyncClient(timeout=2.0) as client:
+                        response = await client.get(f"http://localhost:{port}/api/tags")
+                        if response.status_code == 200:
+                            self._processes[process_id] = NativeProcess(
+                                process_id=process_id,
+                                pid=0,
+                                backend=backend,
+                                model_id=model_id,
+                                port=port,
+                            )
+                            results[process_id] = "recovered"
+                            logger.info(f"Recovered Ollama process {process_id}")
+                            continue
+                except Exception:
+                    pass
+                results[process_id] = "stopped"
+                logger.info(f"Ollama not running for {process_id}")
+                continue
+
+            # For MLX, llama.cpp, vLLM - check if port is responding
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(f"http://localhost:{port}/v1/models")
+                    if response.status_code == 200:
+                        # Process is still running! Re-register it
+                        self._processes[process_id] = NativeProcess(
+                            process_id=process_id,
+                            pid=pid,
+                            backend=backend,
+                            model_id=model_id,
+                            port=port,
+                            log_file=self._log_dir / f"{process_id}.log",
+                        )
+                        results[process_id] = "recovered"
+                        logger.info(f"Recovered process {process_id} ({backend}) on port {port}")
+                        continue
+            except Exception:
+                pass
+
+            # Process not running
+            results[process_id] = "stopped"
+            logger.info(f"Process {process_id} no longer running on port {port}")
+
+        # Update state file to remove stopped processes
+        self._save_state()
+
+        recovered = sum(1 for v in results.values() if v == "recovered")
+        stopped = sum(1 for v in results.values() if v == "stopped")
+        logger.info(f"Process recovery complete: {recovered} recovered, {stopped} stopped")
+
+        return results
 
     def _write_log(self, process_id: str, message: str) -> None:
         """Write a message to a process's log file."""
@@ -170,6 +289,7 @@ class NativeProcessManager:
             raise ValueError(f"Unknown backend: {backend}")
 
         self._processes[process_id] = process
+        self._save_state()  # Persist for recovery after restart
         logger.info(f"Started {backend} process {process_id} on port {port}")
         return process
 
@@ -201,6 +321,7 @@ class NativeProcessManager:
                         process.process.kill()
 
             del self._processes[process_id]
+            self._save_state()  # Update persisted state
             logger.info(f"Stopped process {process_id}")
             return True
 
