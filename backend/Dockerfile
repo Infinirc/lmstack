@@ -21,9 +21,11 @@ WORKDIR /app
 
 # Install docker CLI for local worker spawn feature
 # Using Docker 27.x for API version 1.47 compatibility
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.4.1.tgz | tar xz --strip-components=1 -C /usr/local/bin docker/docker \
+# Auto-detect architecture (x86_64 or aarch64)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && ARCH=$(uname -m) \
+    && if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then DOCKER_ARCH="aarch64"; else DOCKER_ARCH="x86_64"; fi \
+    && curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-27.4.1.tgz" | tar xz --strip-components=1 -C /usr/local/bin docker/docker \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
