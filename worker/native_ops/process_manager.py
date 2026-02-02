@@ -30,6 +30,7 @@ class NativeProcess:
     model_id: str
     port: int
     process: Optional[subprocess.Popen] = None
+    log_file: Optional[Path] = None  # Path to log file for this process
 
 
 class NativeProcessManager:
@@ -39,6 +40,8 @@ class NativeProcessManager:
         self._processes: dict[str, NativeProcess] = {}
         self._ollama_process: Optional[subprocess.Popen] = None
         self._converter = ModelConverter()
+        self._log_dir = Path.home() / ".lmstack" / "logs"
+        self._log_dir.mkdir(parents=True, exist_ok=True)
 
     async def ensure_ollama_running(
         self, host: str = "0.0.0.0", port: int = OLLAMA_DEFAULT_PORT
@@ -419,15 +422,19 @@ class NativeProcessManager:
         if kwargs.get("trust_remote_code"):
             cmd.append("--trust-remote-code")
 
-        # Start the process
+        # Create log file
+        log_file = self._log_dir / f"{process_id}.log"
+
+        # Start the process with log file
         env = os.environ.copy()
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            env=env,
-            start_new_session=True,
-        )
+        with open(log_file, "w") as f:
+            process = subprocess.Popen(
+                cmd,
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                env=env,
+                start_new_session=True,
+            )
 
         logger.info(f"Started MLX-LM server (PID {process.pid}) for {effective_model_id}")
 
@@ -438,6 +445,7 @@ class NativeProcessManager:
             model_id=effective_model_id,
             port=port,
             process=process,
+            log_file=log_file,
         )
 
     async def _ensure_llama_cpp_installed(self) -> str:
@@ -551,15 +559,19 @@ class NativeProcessManager:
         if n_threads := kwargs.get("n_threads"):
             cmd.extend(["-t", str(n_threads)])
 
-        # Start the process
+        # Create log file
+        log_file = self._log_dir / f"{process_id}.log"
+
+        # Start the process with log file
         env = os.environ.copy()
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            env=env,
-            start_new_session=True,
-        )
+        with open(log_file, "w") as f:
+            process = subprocess.Popen(
+                cmd,
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                env=env,
+                start_new_session=True,
+            )
 
         logger.info(f"Started llama.cpp server (PID {process.pid}) for {effective_model_path}")
 
@@ -570,6 +582,7 @@ class NativeProcessManager:
             model_id=effective_model_path,
             port=port,
             process=process,
+            log_file=log_file,
         )
 
     async def _ensure_vllm_metal_installed(self) -> str:
@@ -670,15 +683,19 @@ class NativeProcessManager:
         if kwargs.get("trust_remote_code"):
             cmd.append("--trust-remote-code")
 
-        # Start the process
+        # Create log file
+        log_file = self._log_dir / f"{process_id}.log"
+
+        # Start the process with log file
         env = os.environ.copy()
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            env=env,
-            start_new_session=True,
-        )
+        with open(log_file, "w") as f:
+            process = subprocess.Popen(
+                cmd,
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                env=env,
+                start_new_session=True,
+            )
 
         logger.info(f"Started vLLM-Metal server (PID {process.pid}) for {model_id}")
 
@@ -689,12 +706,13 @@ class NativeProcessManager:
             model_id=model_id,
             port=port,
             process=process,
+            log_file=log_file,
         )
 
     def get_logs(self, process_id: str, tail: int = 100) -> str:
         """Get logs from a process.
 
-        For subprocess-based backends, reads from stdout pipe.
+        Reads from log file for MLX, llama.cpp, and vLLM-Metal backends.
         For Ollama, returns status information about loaded models.
         """
         process = self._processes.get(process_id)
@@ -704,11 +722,15 @@ class NativeProcessManager:
         if process.backend == "ollama":
             return self._get_ollama_status(process)
 
-        if process.process and process.process.stdout:
+        # Read from log file
+        if process.log_file and process.log_file.exists():
             try:
-                # This is a simple implementation - in production you'd want
-                # to capture logs to a file and read the tail
-                return "Logs are available but streaming is not yet implemented"
+                with open(process.log_file) as f:
+                    lines = f.readlines()
+                    # Return last 'tail' lines
+                    if len(lines) > tail:
+                        lines = lines[-tail:]
+                    return "".join(lines)
             except Exception as e:
                 return f"Error reading logs: {e}"
 
