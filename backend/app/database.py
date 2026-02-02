@@ -135,6 +135,14 @@ async def _run_migrations(conn):
         await conn.execute(text("ALTER TABLE workers ADD COLUMN capabilities JSON"))
         logger.info("'capabilities' column added!")
 
+    # Migration: Add parent_app_id to apps (for monitoring services like Prometheus)
+    if not await column_exists("apps", "parent_app_id"):
+        logger.info("Adding 'parent_app_id' column to apps table...")
+        await conn.execute(
+            text("ALTER TABLE apps ADD COLUMN parent_app_id INTEGER REFERENCES apps(id)")
+        )
+        logger.info("'parent_app_id' column added!")
+
 
 async def init_db():
     """Initialize database tables and run migrations"""
