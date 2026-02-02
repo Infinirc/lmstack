@@ -1,7 +1,7 @@
 """Native Mac deployment operations.
 
 This module handles native deployment operations for macOS,
-including Ollama, MLX, and llama.cpp backends.
+including Ollama, MLX, llama.cpp, and vLLM-Metal backends.
 
 Supports automatic model conversion from HuggingFace to MLX/GGUF formats.
 """
@@ -30,7 +30,7 @@ def _is_gguf_file(model_id: str) -> bool:
 async def deploy_native(deployment: Deployment, db) -> dict:
     """Deploy using native backend (Mac without Docker).
 
-    Supports Ollama, MLX, and llama.cpp backends on macOS.
+    Supports Ollama, MLX, llama.cpp, and vLLM-Metal backends on macOS.
     Handles automatic conversion of HuggingFace models to MLX/GGUF formats.
     """
     # Import here to avoid circular imports

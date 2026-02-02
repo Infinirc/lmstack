@@ -102,6 +102,11 @@ export default function Deployments() {
   // Get the selected worker's GPU info
   const selectedWorker = workers.find((w) => w.id === selectedWorkerId);
 
+  // Helper functions to check model format
+  const isMLXReady = (modelId: string) => modelId.startsWith("mlx-community/");
+  const isGGUFReady = (modelId: string) =>
+    modelId.toLowerCase().includes("gguf");
+
   // Determine available backends based on model source and worker capabilities
   const availableBackends = (() => {
     // Start with model-based restrictions
@@ -109,41 +114,19 @@ export default function Deployments() {
       return ["ollama"] as const;
     }
 
-    // If no worker selected, show all HuggingFace-compatible backends
+    // If no worker selected, show all possible backends for HuggingFace models
     if (!selectedWorker) {
-      return ["vllm", "sglang"] as const;
+      return ["vllm", "sglang", "mlx", "llama_cpp"] as const;
     }
 
-    // macOS workers support Ollama, MLX, and llama.cpp (native Apple Silicon)
+    // macOS workers support vLLM-Metal, MLX, and llama.cpp for HuggingFace models
+    // Ollama is NOT shown for HF models since Ollama can't use HF models directly
     if (selectedWorker.os_type === "darwin") {
-      // Use worker's available_backends if provided (should include mlx, llama_cpp, ollama)
-      if (
-        selectedWorker.available_backends &&
-        selectedWorker.available_backends.length > 0
-      ) {
-        // Filter for macOS-compatible backends
-        const macBackends = selectedWorker.available_backends.filter((b) =>
-          ["ollama", "mlx", "llama_cpp"].includes(b),
-        );
-        return macBackends.length > 0 ? macBackends : (["ollama"] as const);
-      }
-      // Default fallback for macOS workers
-      return ["ollama", "mlx", "llama_cpp"] as const;
+      return ["vllm", "mlx", "llama_cpp"] as const;
     }
 
-    // Use worker's available_backends if provided for Linux workers
-    if (
-      selectedWorker.available_backends &&
-      selectedWorker.available_backends.length > 0
-    ) {
-      // Filter for HuggingFace-compatible backends from worker's list
-      const hfBackends = selectedWorker.available_backends.filter((b) =>
-        ["vllm", "sglang", "ollama"].includes(b),
-      );
-      return hfBackends.length > 0 ? hfBackends : (["vllm", "sglang"] as const);
-    }
-
-    // Default fallback for Linux workers
+    // Linux workers: only vLLM and SGLang for HuggingFace models
+    // Ollama can't use HF models directly, so don't show it
     return ["vllm", "sglang"] as const;
   })();
   const workerGpus = selectedWorker?.gpu_info || [];
@@ -842,6 +825,10 @@ export default function Deployments() {
                   );
                 const sourceLabel =
                   m.source === "ollama" ? "Ollama" : "HuggingFace";
+                const mlxReady =
+                  m.source !== "ollama" && isMLXReady(m.model_id);
+                const ggufReady =
+                  m.source !== "ollama" && isGGUFReady(m.model_id);
                 return {
                   label: (
                     <span
@@ -852,43 +839,25 @@ export default function Deployments() {
                         {sourceLabel}
                       </Tag>
                       {m.name}
+                      {mlxReady && (
+                        <Tag
+                          color="green"
+                          style={{ fontSize: 10, margin: 0, padding: "0 4px" }}
+                        >
+                          MLX
+                        </Tag>
+                      )}
+                      {ggufReady && (
+                        <Tag
+                          color="blue"
+                          style={{ fontSize: 10, margin: 0, padding: "0 4px" }}
+                        >
+                          GGUF
+                        </Tag>
+                      )}
                     </span>
                   ),
                   value: m.id,
-                };
-              })}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="backend"
-            label="Inference Backend"
-            rules={[{ required: true, message: "Please select a backend" }]}
-            extra={
-              selectedModel?.source === "ollama"
-                ? "Ollama models can only use Ollama backend"
-                : selectedWorker?.os_type === "darwin"
-                  ? "macOS workers support Ollama, MLX, and llama.cpp backends with Apple Silicon acceleration"
-                  : "HuggingFace models can use vLLM or SGLang"
-            }
-          >
-            <Select
-              placeholder="Select a backend"
-              disabled={!selectedModelId}
-              value={selectedBackend}
-              onChange={(value) => setSelectedBackend(value)}
-              options={availableBackends.map((b) => {
-                const config = BACKEND_CONFIG[b];
-                return {
-                  label: (
-                    <span
-                      style={{ display: "flex", alignItems: "center", gap: 8 }}
-                    >
-                      {config.icon}
-                      {config.label}
-                    </span>
-                  ),
-                  value: b,
                 };
               })}
             />
@@ -906,6 +875,25 @@ export default function Deployments() {
                 // Reset GPU selection when worker changes
                 setSelectedGpuIndexes([]);
                 form.setFieldValue("gpu_indexes", undefined);
+                // Check if current backend is available on the new worker
+                const newWorker = workers.find((w) => w.id === value);
+                const isMac = newWorker?.os_type === "darwin";
+                const macBackends = ["ollama", "mlx", "llama_cpp", "vllm"];
+                const linuxBackends = ["vllm", "sglang", "ollama"];
+                const newAvailable = isMac ? macBackends : linuxBackends;
+                // Reset to first available backend if current is not available
+                if (!newAvailable.includes(selectedBackend)) {
+                  const defaultBackend = isMac ? "vllm" : "vllm";
+                  setSelectedBackend(
+                    defaultBackend as
+                      | "vllm"
+                      | "sglang"
+                      | "ollama"
+                      | "mlx"
+                      | "llama_cpp",
+                  );
+                  form.setFieldValue("backend", defaultBackend);
+                }
               }}
               options={workers.map((w) => ({
                 label: (
@@ -919,12 +907,17 @@ export default function Deployments() {
                     <span>
                       {w.name} ({w.address})
                     </span>
-                    {w.gpu_info && w.gpu_info.length > 0 && (
-                      <Tag color="blue" style={{ marginLeft: 8 }}>
-                        {w.gpu_info.length} GPU
-                        {w.gpu_info.length > 1 ? "s" : ""}
-                      </Tag>
-                    )}
+                    <span style={{ display: "flex", gap: 4 }}>
+                      {w.os_type === "darwin" && (
+                        <Tag color="purple">macOS</Tag>
+                      )}
+                      {w.gpu_info && w.gpu_info.length > 0 && (
+                        <Tag color="blue">
+                          {w.gpu_info.length} GPU
+                          {w.gpu_info.length > 1 ? "s" : ""}
+                        </Tag>
+                      )}
+                    </span>
                   </span>
                 ),
                 value: w.id,
@@ -932,9 +925,53 @@ export default function Deployments() {
             />
           </Form.Item>
 
-          {/* macOS Ollama Warning */}
+          <Form.Item
+            name="backend"
+            label="Inference Backend"
+            rules={[{ required: true, message: "Please select a backend" }]}
+            extra={
+              !selectedWorker
+                ? "Select a worker first"
+                : selectedModel?.source === "ollama"
+                  ? "Ollama models can only use Ollama backend"
+                  : selectedWorker?.os_type === "darwin"
+                    ? "macOS workers support vLLM-Metal, Ollama, MLX, and llama.cpp with Apple Silicon acceleration"
+                    : "HuggingFace models can use vLLM or SGLang"
+            }
+          >
+            <Select
+              placeholder={
+                selectedWorker ? "Select a backend" : "Select a worker first"
+              }
+              disabled={!selectedModelId || !selectedWorkerId}
+              value={selectedBackend}
+              onChange={(value) => setSelectedBackend(value)}
+              options={availableBackends.map((b) => {
+                const config = BACKEND_CONFIG[b];
+                // Show "vLLM-Metal" for vllm on Mac workers
+                const label =
+                  b === "vllm" && selectedWorker?.os_type === "darwin"
+                    ? "vLLM-Metal"
+                    : config.label;
+                return {
+                  label: (
+                    <span
+                      style={{ display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      {config.icon}
+                      {label}
+                    </span>
+                  ),
+                  value: b,
+                };
+              })}
+            />
+          </Form.Item>
+
+          {/* macOS Ollama Warning - only show when Ollama backend is selected */}
           {selectedWorker &&
             selectedWorker.os_type === "darwin" &&
+            selectedBackend === "ollama" &&
             !selectedWorker.capabilities?.ollama && (
               <Alert
                 message="Ollama Not Installed"
@@ -968,9 +1005,10 @@ export default function Deployments() {
               />
             )}
 
-          {/* macOS Ollama Not Running Warning */}
+          {/* macOS Ollama Not Running Warning - only show when Ollama backend is selected */}
           {selectedWorker &&
             selectedWorker.os_type === "darwin" &&
+            selectedBackend === "ollama" &&
             selectedWorker.capabilities?.ollama &&
             !selectedWorker.capabilities?.ollama_running && (
               <Alert
@@ -994,6 +1032,56 @@ export default function Deployments() {
                   </div>
                 }
                 type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
+          {/* macOS Backend Info - show auto-install message */}
+          {selectedWorker &&
+            selectedWorker.os_type === "darwin" &&
+            selectedBackend === "vllm" && (
+              <Alert
+                message="vLLM-Metal"
+                description={
+                  <span style={{ fontSize: 12 }}>
+                    Uses Apple Silicon GPU acceleration. Will be automatically
+                    installed on first deployment.
+                  </span>
+                }
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
+          {selectedWorker &&
+            selectedWorker.os_type === "darwin" &&
+            selectedBackend === "mlx" && (
+              <Alert
+                message="MLX-LM"
+                description={
+                  <span style={{ fontSize: 12 }}>
+                    Native Apple Silicon ML framework. Will be automatically
+                    installed on first deployment.
+                  </span>
+                }
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
+          {selectedWorker &&
+            selectedWorker.os_type === "darwin" &&
+            selectedBackend === "llama_cpp" && (
+              <Alert
+                message="llama.cpp"
+                description={
+                  <span style={{ fontSize: 12 }}>
+                    High-performance inference with Metal acceleration. Will be
+                    automatically installed via Homebrew on first deployment.
+                  </span>
+                }
+                type="info"
                 showIcon
                 style={{ marginBottom: 16 }}
               />
@@ -1113,54 +1201,56 @@ export default function Deployments() {
               />
             )}
 
-          {/* Version Override - Show when model is selected */}
-          {selectedModelId && (
-            <Form.Item
-              name={["extra_params", "docker_image"]}
-              label={`${BACKEND_CONFIG[selectedBackend]?.label || "Backend"} Version`}
-              extra="Override the model's default backend version for this deployment"
-            >
-              <Select
-                placeholder="Use model default"
-                allowClear
-                showSearch
-                options={(
-                  (
-                    backendVersionsData as Record<
-                      string,
-                      {
-                        versions: Array<{
-                          version: string;
-                          image: string;
-                          recommended?: boolean;
-                        }>;
-                      }
-                    >
-                  )[selectedBackend]?.versions || []
-                ).map((v) => ({
-                  label: (
-                    <span>
-                      {v.version}
-                      {v.recommended && (
-                        <Tag
-                          color="green"
-                          style={{ marginLeft: 8, fontSize: 10 }}
-                        >
-                          Recommended
-                        </Tag>
-                      )}
-                    </span>
-                  ),
-                  value: v.image,
-                }))}
-              />
-            </Form.Item>
-          )}
+          {/* Version Override - Show when model is selected (not for MLX/llama.cpp) */}
+          {selectedModelId &&
+            !["mlx", "llama_cpp"].includes(selectedBackend) && (
+              <Form.Item
+                name={["extra_params", "docker_image"]}
+                label={`${BACKEND_CONFIG[selectedBackend]?.label || "Backend"} Version`}
+                extra="Override the model's default backend version for this deployment"
+              >
+                <Select
+                  placeholder="Use model default"
+                  allowClear
+                  showSearch
+                  options={(
+                    (
+                      backendVersionsData as Record<
+                        string,
+                        {
+                          versions: Array<{
+                            version: string;
+                            image: string;
+                            recommended?: boolean;
+                          }>;
+                        }
+                      >
+                    )[selectedBackend]?.versions || []
+                  ).map((v) => ({
+                    label: (
+                      <span>
+                        {v.version}
+                        {v.recommended && (
+                          <Tag
+                            color="green"
+                            style={{ marginLeft: 8, fontSize: 10 }}
+                          >
+                            Recommended
+                          </Tag>
+                        )}
+                      </span>
+                    ),
+                    value: v.image,
+                  }))}
+                />
+              </Form.Item>
+            )}
 
-          {/* Advanced Parameters - Show when model is selected */}
-          {selectedModelId && (
-            <DeploymentAdvancedForm backend={selectedBackend} form={form} />
-          )}
+          {/* Advanced Parameters - Show when model is selected (not for MLX/llama.cpp) */}
+          {selectedModelId &&
+            !["mlx", "llama_cpp"].includes(selectedBackend) && (
+              <DeploymentAdvancedForm backend={selectedBackend} form={form} />
+            )}
 
           <Form.Item>
             <Space>

@@ -1,7 +1,7 @@
 """Native process manager for Mac workers.
 
 Manages LLM inference processes without Docker for macOS with Apple Silicon.
-Supports Ollama, MLX-LM, and llama.cpp backends.
+Supports Ollama, MLX-LM, llama.cpp, and vLLM-Metal backends.
 """
 
 import asyncio
@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from .converter import ModelConverter
@@ -25,7 +26,7 @@ class NativeProcess:
 
     process_id: str  # Unique identifier (deployment_id based)
     pid: int  # OS process ID
-    backend: str  # ollama, mlx, llama_cpp
+    backend: str  # ollama, mlx, llama_cpp, vllm
     model_id: str
     port: int
     process: Optional[subprocess.Popen] = None
@@ -150,6 +151,8 @@ class NativeProcessManager:
             process = await self._start_mlx(process_id, model_id, port, **kwargs)
         elif backend == "llama_cpp":
             process = await self._start_llama_cpp(process_id, model_id, port, **kwargs)
+        elif backend == "vllm":
+            process = await self._start_vllm_metal(process_id, model_id, port, **kwargs)
         else:
             raise ValueError(f"Unknown backend: {backend}")
 
@@ -288,6 +291,71 @@ class NativeProcessManager:
         except Exception as e:
             logger.warning(f"Failed to unload Ollama model: {e}")
 
+    async def _ensure_mlx_lm_installed(self) -> str:
+        """Ensure MLX-LM is installed in a virtual environment.
+
+        Creates a virtual environment at ~/.lmstack/venvs/mlx-lm
+        and installs mlx-lm if not already present.
+
+        Returns:
+            Path to the python command in the virtual environment
+        """
+        venv_dir = Path.home() / ".lmstack" / "venvs" / "mlx-lm"
+        python_cmd = venv_dir / "bin" / "python"
+
+        # Check if mlx-lm is already installed in venv
+        if python_cmd.exists():
+            # Verify mlx_lm is importable
+            check = await asyncio.create_subprocess_exec(
+                str(python_cmd),
+                "-c",
+                "import mlx_lm",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await check.wait()
+            if check.returncode == 0:
+                logger.info(f"MLX-LM already installed at {venv_dir}")
+                return str(python_cmd)
+
+        # Create virtual environment
+        logger.info(f"Creating virtual environment for MLX-LM at {venv_dir}")
+        venv_dir.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create venv
+        create_venv = await asyncio.create_subprocess_exec(
+            "python3",
+            "-m",
+            "venv",
+            str(venv_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await create_venv.wait()
+
+        if create_venv.returncode != 0:
+            stderr = await create_venv.stderr.read()
+            raise RuntimeError(f"Failed to create virtual environment: {stderr.decode()}")
+
+        # Install mlx-lm
+        pip_cmd = venv_dir / "bin" / "pip"
+        logger.info("Installing mlx-lm (this may take a few minutes)...")
+
+        install_proc = await asyncio.create_subprocess_exec(
+            str(pip_cmd),
+            "install",
+            "mlx-lm",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await install_proc.communicate()
+
+        if install_proc.returncode != 0:
+            raise RuntimeError(f"Failed to install mlx-lm: {stderr.decode()}")
+
+        logger.info("MLX-LM installed successfully")
+        return str(python_cmd)
+
     async def _start_mlx(
         self,
         process_id: str,
@@ -298,8 +366,11 @@ class NativeProcessManager:
         """Start MLX-LM server for Apple Silicon.
 
         MLX-LM provides OpenAI-compatible API via mlx_lm.server.
-        Automatically converts HuggingFace models to MLX format if needed.
+        Automatically installs mlx-lm and converts models if needed.
         """
+        # Ensure MLX-LM is installed (auto-install if needed)
+        python_cmd = await self._ensure_mlx_lm_installed()
+
         effective_model_id = model_id
 
         # Check if model needs conversion
@@ -331,9 +402,9 @@ class NativeProcessManager:
                             "Consider using an mlx-community model or Ollama backend."
                         )
 
-        # Build command
+        # Build command using venv python
         cmd = [
-            "python3",
+            python_cmd,
             "-m",
             "mlx_lm.server",
             "--model",
@@ -369,6 +440,57 @@ class NativeProcessManager:
             process=process,
         )
 
+    async def _ensure_llama_cpp_installed(self) -> str:
+        """Ensure llama.cpp is installed.
+
+        Installs llama.cpp via Homebrew if not already present.
+
+        Returns:
+            Path to the llama-server command
+        """
+        llama_server = shutil.which("llama-server")
+        if llama_server:
+            logger.info(f"llama.cpp already installed at {llama_server}")
+            return llama_server
+
+        # Check if brew is available
+        brew = shutil.which("brew")
+        if not brew:
+            raise RuntimeError(
+                "llama-server not found and Homebrew is not installed. "
+                "Please install Homebrew first: https://brew.sh"
+            )
+
+        # Install llama.cpp via brew
+        logger.info("Installing llama.cpp via Homebrew (this may take a few minutes)...")
+
+        install_proc = await asyncio.create_subprocess_exec(
+            brew,
+            "install",
+            "llama.cpp",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await install_proc.communicate()
+
+        if install_proc.returncode != 0:
+            raise RuntimeError(f"Failed to install llama.cpp: {stderr.decode()}")
+
+        # Find llama-server again
+        llama_server = shutil.which("llama-server")
+        if not llama_server:
+            # Try common Homebrew paths
+            for path in ["/opt/homebrew/bin/llama-server", "/usr/local/bin/llama-server"]:
+                if Path(path).exists():
+                    llama_server = path
+                    break
+
+        if not llama_server:
+            raise RuntimeError("llama.cpp installed but llama-server not found in PATH")
+
+        logger.info("llama.cpp installed successfully")
+        return llama_server
+
     async def _start_llama_cpp(
         self,
         process_id: str,
@@ -379,17 +501,10 @@ class NativeProcessManager:
         """Start llama.cpp server with Metal acceleration.
 
         llama.cpp provides OpenAI-compatible API via llama-server.
-        Automatically converts HuggingFace models to GGUF format if needed.
+        Automatically installs llama.cpp and converts models if needed.
         """
-        # Check for llama-server binary
-        import shutil
-
-        llama_server = shutil.which("llama-server")
-
-        if not llama_server:
-            raise RuntimeError(
-                "llama-server not found. " "Please install llama.cpp: brew install llama.cpp"
-            )
+        # Ensure llama.cpp is installed (auto-install if needed)
+        llama_server = await self._ensure_llama_cpp_installed()
 
         effective_model_path = model_id
 
@@ -453,6 +568,125 @@ class NativeProcessManager:
             pid=process.pid,
             backend="llama_cpp",
             model_id=effective_model_path,
+            port=port,
+            process=process,
+        )
+
+    async def _ensure_vllm_metal_installed(self) -> str:
+        """Ensure vLLM-Metal is installed in a virtual environment.
+
+        Creates a virtual environment at ~/.lmstack/venvs/vllm-metal
+        and installs vllm-metal if not already present.
+
+        Returns:
+            Path to the vllm command in the virtual environment
+        """
+        venv_dir = Path.home() / ".lmstack" / "venvs" / "vllm-metal"
+        vllm_cmd = venv_dir / "bin" / "vllm"
+
+        # Check if vllm is already installed in venv
+        if vllm_cmd.exists():
+            logger.info(f"vLLM-Metal already installed at {vllm_cmd}")
+            return str(vllm_cmd)
+
+        # Create virtual environment
+        logger.info(f"Creating virtual environment for vLLM-Metal at {venv_dir}")
+        venv_dir.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create venv
+        create_venv = await asyncio.create_subprocess_exec(
+            "python3",
+            "-m",
+            "venv",
+            str(venv_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await create_venv.wait()
+
+        if create_venv.returncode != 0:
+            stderr = await create_venv.stderr.read()
+            raise RuntimeError(f"Failed to create virtual environment: {stderr.decode()}")
+
+        # Install vllm-metal
+        pip_cmd = venv_dir / "bin" / "pip"
+        logger.info("Installing vllm-metal (this may take a few minutes)...")
+
+        install_proc = await asyncio.create_subprocess_exec(
+            str(pip_cmd),
+            "install",
+            "vllm-metal",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await install_proc.communicate()
+
+        if install_proc.returncode != 0:
+            raise RuntimeError(
+                f"Failed to install vllm-metal: {stderr.decode()}\n"
+                "You may need to install it manually: pip install vllm-metal"
+            )
+
+        logger.info("vLLM-Metal installed successfully")
+        return str(vllm_cmd)
+
+    async def _start_vllm_metal(
+        self,
+        process_id: str,
+        model_id: str,
+        port: int,
+        **kwargs,
+    ) -> NativeProcess:
+        """Start vLLM-Metal server for Apple Silicon.
+
+        vLLM-Metal provides OpenAI-compatible API via `vllm serve`.
+        Automatically installs vllm-metal in a virtual environment if needed.
+        See: https://github.com/vllm-project/vllm-metal
+        """
+        # Ensure vLLM-Metal is installed (auto-install if needed)
+        vllm_cmd = await self._ensure_vllm_metal_installed()
+
+        # Build command using vllm serve
+        cmd = [
+            vllm_cmd,
+            "serve",
+            model_id,
+            "--host",
+            "0.0.0.0",
+            "--port",
+            str(port),
+        ]
+
+        # Add optional parameters
+        if gpu_memory_util := kwargs.get("gpu_memory_utilization"):
+            cmd.extend(["--gpu-memory-utilization", str(gpu_memory_util)])
+
+        if max_model_len := kwargs.get("max_model_len"):
+            cmd.extend(["--max-model-len", str(max_model_len)])
+
+        if dtype := kwargs.get("dtype"):
+            cmd.extend(["--dtype", str(dtype)])
+
+        if kwargs.get("trust_remote_code"):
+            cmd.append("--trust-remote-code")
+
+        # Start the process
+        env = os.environ.copy()
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=True,
+        )
+
+        logger.info(f"Started vLLM-Metal server (PID {process.pid}) for {model_id}")
+
+        return NativeProcess(
+            process_id=process_id,
+            pid=process.pid,
+            backend="vllm",
+            model_id=model_id,
             port=port,
             process=process,
         )
