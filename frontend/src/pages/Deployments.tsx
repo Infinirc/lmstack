@@ -28,12 +28,14 @@ import {
   VerticalAlignBottomOutlined,
   ExclamationCircleOutlined,
   SettingOutlined,
+  CodeOutlined,
 } from "@ant-design/icons";
 import { useAppTheme } from "../hooks/useTheme";
 import {
   OllamaLogo,
   HuggingFaceLogo,
   DockerIcon,
+  AppleIcon,
   getBackendConfig,
 } from "../components/logos";
 import { getDeploymentStatusColor } from "../utils";
@@ -45,6 +47,13 @@ import DeploymentAdvancedForm from "../components/DeploymentAdvancedForm";
 import ModelCompatibilityCheck from "../components/ModelCompatibilityCheck";
 import ModelFormatCompatibility from "../components/ModelFormatCompatibility";
 import backendVersionsData from "../constants/backendVersions.json";
+import {
+  generateDockerCompose,
+  parseDockerCompose,
+  validateDockerCompose,
+  type DeploymentConfig,
+} from "../utils/dockerCompose";
+import Editor from "@monaco-editor/react";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 
@@ -92,6 +101,12 @@ export default function Deployments() {
   const [editingDeployment, setEditingDeployment] = useState<Deployment | null>(
     null,
   );
+  // YAML editor state
+  const [showYamlPanel, setShowYamlPanel] = useState(true); // Show YAML panel on desktop
+  const [yamlContent, setYamlContent] = useState<string>("");
+  const [yamlError, setYamlError] = useState<string | null>(null);
+  const [isYamlUserEditing, setIsYamlUserEditing] = useState(false); // Track if user is editing YAML
+  const yamlSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isMobile } = useResponsive();
   const { isDark } = useAppTheme();
   const { canEdit } = useAuth();
@@ -150,6 +165,141 @@ export default function Deployments() {
     | "ollama";
 
   const BACKEND_CONFIG = getBackendConfig(isDark);
+
+  // Check if backend is Docker-based (not native Mac)
+  const isDockerBackend = (backend: string, worker?: Worker | null) => {
+    // Native Mac backends
+    if (backend === "mlx" || backend === "llama_cpp") return false;
+    // Ollama on Mac is native
+    if (backend === "ollama" && worker?.os_type === "darwin") return false;
+    // vLLM on Mac (vLLM-Metal) is native
+    if (backend === "vllm" && worker?.os_type === "darwin") return false;
+    return true;
+  };
+
+  // Generate YAML from current form values
+  const generateYamlFromForm = useCallback(() => {
+    const values = form.getFieldsValue();
+    // Use selectedModelId as fallback if form value not available yet
+    const modelId = values.model_id || selectedModelId;
+    const model = models.find((m) => m.id === modelId);
+
+    if (!model) return "";
+
+    const config: DeploymentConfig = {
+      name: values.name || "deployment",
+      model_id: model.model_id,
+      model_name: model.name,
+      backend: selectedBackend,
+      worker_name: selectedWorker?.name,
+      gpu_indexes:
+        selectedGpuIndexes.length > 0 ? selectedGpuIndexes : undefined,
+      extra_params: values.extra_params || {},
+    };
+
+    return generateDockerCompose(config);
+  }, [
+    form,
+    models,
+    selectedModelId,
+    selectedBackend,
+    selectedWorker,
+    selectedGpuIndexes,
+  ]);
+
+  // Watch form values for auto-sync to YAML
+  const formName = Form.useWatch("name", form);
+  const formModelId = Form.useWatch("model_id", form);
+  const formExtraParams = Form.useWatch("extra_params", form);
+
+  // Auto-update YAML when form values change (if not user-editing YAML)
+  useEffect(() => {
+    if (!showYamlPanel) return;
+    if (isYamlUserEditing) return; // Don't overwrite user edits
+    if (!selectedModelId && !formModelId) return;
+
+    const yaml = generateYamlFromForm();
+    if (yaml && yaml !== yamlContent) {
+      setYamlContent(yaml);
+    }
+  }, [
+    showYamlPanel,
+    isYamlUserEditing,
+    formName,
+    formModelId,
+    formExtraParams,
+    selectedModelId,
+    selectedBackend,
+    selectedWorker,
+    selectedGpuIndexes,
+    generateYamlFromForm,
+    yamlContent,
+  ]);
+
+  // Handle YAML edit with debounced sync back to form
+  const handleYamlChange = useCallback(
+    (newYaml: string) => {
+      setYamlContent(newYaml);
+      setIsYamlUserEditing(true);
+
+      // Validate YAML
+      const validation = validateDockerCompose(newYaml);
+      setYamlError(validation.valid ? null : validation.error || null);
+
+      // Debounce sync to form
+      if (yamlSyncTimeoutRef.current) {
+        clearTimeout(yamlSyncTimeoutRef.current);
+      }
+
+      if (validation.valid) {
+        yamlSyncTimeoutRef.current = setTimeout(() => {
+          const config = parseDockerCompose(newYaml);
+          if (config) {
+            // Update form fields that correspond to YAML values
+            if (config.name && config.name !== form.getFieldValue("name")) {
+              form.setFieldValue("name", config.name);
+            }
+            if (config.extra_params?.docker_image) {
+              form.setFieldValue(
+                ["extra_params", "docker_image"],
+                config.extra_params.docker_image,
+              );
+            }
+            if (config.extra_params?.tensor_parallel_size !== undefined) {
+              form.setFieldValue(
+                ["extra_params", "tensor_parallel_size"],
+                config.extra_params.tensor_parallel_size,
+              );
+            }
+            if (config.extra_params?.max_model_len !== undefined) {
+              form.setFieldValue(
+                ["extra_params", "max_model_len"],
+                config.extra_params.max_model_len,
+              );
+            }
+            if (config.extra_params?.gpu_memory_utilization !== undefined) {
+              form.setFieldValue(
+                ["extra_params", "gpu_memory_utilization"],
+                config.extra_params.gpu_memory_utilization,
+              );
+            }
+          }
+          // Reset editing flag after sync
+          setIsYamlUserEditing(false);
+        }, 500); // 500ms debounce
+      }
+    },
+    [form],
+  );
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (yamlSyncTimeoutRef.current) {
+        clearTimeout(yamlSyncTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const fetchDeployments = useCallback(async () => {
     try {
@@ -390,12 +540,22 @@ export default function Deployments() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 2,
-                    background: "rgba(13, 148, 227, 0.1)",
-                    border: "1px solid rgba(13, 148, 227, 0.3)",
-                    color: "#0d94e3",
+                    background: record.container_id.startsWith("native-")
+                      ? "rgba(147, 147, 147, 0.1)"
+                      : "rgba(13, 148, 227, 0.1)",
+                    border: record.container_id.startsWith("native-")
+                      ? "1px solid rgba(147, 147, 147, 0.3)"
+                      : "1px solid rgba(13, 148, 227, 0.3)",
+                    color: record.container_id.startsWith("native-")
+                      ? "#666"
+                      : "#0d94e3",
                   }}
                 >
-                  <DockerIcon size={10} />
+                  {record.container_id.startsWith("native-") ? (
+                    <AppleIcon size={10} />
+                  ) : (
+                    <DockerIcon size={10} />
+                  )}
                 </Tag>
               )}
             </Space>
@@ -535,13 +695,28 @@ export default function Deployments() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 3,
-                  background: "rgba(13, 148, 227, 0.1)",
-                  border: "1px solid rgba(13, 148, 227, 0.3)",
-                  color: "#0d94e3",
+                  background: record.container_id.startsWith("native-")
+                    ? "rgba(147, 147, 147, 0.1)"
+                    : "rgba(13, 148, 227, 0.1)",
+                  border: record.container_id.startsWith("native-")
+                    ? "1px solid rgba(147, 147, 147, 0.3)"
+                    : "1px solid rgba(13, 148, 227, 0.3)",
+                  color: record.container_id.startsWith("native-")
+                    ? "#666"
+                    : "#0d94e3",
                 }}
               >
-                <DockerIcon size={10} />
-                <span>Docker</span>
+                {record.container_id.startsWith("native-") ? (
+                  <>
+                    <AppleIcon size={10} />
+                    <span>Native</span>
+                  </>
+                ) : (
+                  <>
+                    <DockerIcon size={10} />
+                    <span>Docker</span>
+                  </>
+                )}
               </Tag>
             </div>
           )}
@@ -769,7 +944,36 @@ export default function Deployments() {
       </Card>
 
       <Modal
-        title="New Deployment"
+        title={
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingRight: 32,
+            }}
+          >
+            <span>New Deployment</span>
+            {isDockerBackend(selectedBackend, selectedWorker) && !isMobile && (
+              <Button
+                size="small"
+                type={showYamlPanel ? "primary" : "default"}
+                icon={<CodeOutlined />}
+                onClick={() => {
+                  if (!showYamlPanel) {
+                    // Generate YAML when opening panel
+                    const yaml = generateYamlFromForm();
+                    setYamlContent(yaml);
+                    setYamlError(null);
+                  }
+                  setShowYamlPanel(!showYamlPanel);
+                }}
+              >
+                YAML
+              </Button>
+            )}
+          </div>
+        }
         open={modalOpen}
         onCancel={() => {
           setModalOpen(false);
@@ -777,509 +981,620 @@ export default function Deployments() {
           setSelectedWorkerId(null);
           setSelectedGpuIndexes([]);
           setSelectedBackend("vllm");
+          setShowYamlPanel(true);
+          setYamlContent("");
+          setYamlError(null);
           form.resetFields();
         }}
         footer={null}
-        width={isMobile ? "100%" : 600}
+        width={
+          isMobile
+            ? "100%"
+            : showYamlPanel && isDockerBackend(selectedBackend, selectedWorker)
+              ? 1100
+              : 600
+        }
         style={
           isMobile ? { top: 20, maxWidth: "100%", margin: "0 8px" } : undefined
         }
       >
         <Form form={form} layout="vertical" onFinish={handleCreate}>
-          <Form.Item
-            name="name"
-            label="Deployment Name"
-            rules={[
-              { required: true, message: "Please enter deployment name" },
-            ]}
-          >
-            <Input placeholder="e.g., qwen3-0.6b-prod" />
-          </Form.Item>
-
-          <Form.Item
-            name="model_id"
-            label="Model"
-            rules={[{ required: true, message: "Please select a model" }]}
-          >
-            <Select
-              placeholder="Select a model"
-              optionLabelProp="label"
-              onChange={(value) => {
-                setSelectedModelId(value);
-                // Auto-select backend based on model source
-                const model = models.find((m) => m.id === value);
-                if (model?.source === "ollama") {
-                  setSelectedBackend("ollama");
-                  form.setFieldValue("backend", "ollama");
-                } else {
-                  setSelectedBackend("vllm");
-                  form.setFieldValue("backend", "vllm");
-                }
+          <div style={{ display: "flex", gap: 24 }}>
+            {/* Left side: Form fields */}
+            <div
+              style={{
+                flex:
+                  showYamlPanel &&
+                  !isMobile &&
+                  isDockerBackend(selectedBackend, selectedWorker)
+                    ? "0 0 500px"
+                    : 1,
               }}
-              options={models.map((m) => {
-                const sourceIcon =
-                  m.source === "ollama" ? (
-                    <OllamaLogo height={10} isDark={isDark} />
-                  ) : (
-                    <HuggingFaceLogo height={10} />
-                  );
-                const sourceLabel =
-                  m.source === "ollama" ? "Ollama" : "HuggingFace";
-                const mlxReady =
-                  m.source !== "ollama" && isMLXReady(m.model_id);
-                const ggufReady =
-                  m.source !== "ollama" && isGGUFReady(m.model_id);
-                return {
-                  label: (
-                    <span
-                      style={{ display: "flex", alignItems: "center", gap: 6 }}
-                    >
-                      <Tag
-                        style={{
-                          ...getTagStyle("small"),
-                          margin: 0,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
-                          width: 90,
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 16,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          {sourceIcon}
-                        </span>
-                        {sourceLabel}
-                      </Tag>
-                      {m.name}
-                      {mlxReady && (
-                        <Tag
-                          color="green"
-                          style={{ fontSize: 10, margin: 0, padding: "0 4px" }}
-                        >
-                          MLX
-                        </Tag>
-                      )}
-                      {ggufReady && (
-                        <Tag
-                          color="blue"
-                          style={{ fontSize: 10, margin: 0, padding: "0 4px" }}
-                        >
-                          GGUF
-                        </Tag>
-                      )}
-                    </span>
-                  ),
-                  value: m.id,
-                };
-              })}
-            />
-          </Form.Item>
+            >
+              <Form.Item
+                name="name"
+                label="Deployment Name"
+                rules={[
+                  { required: true, message: "Please enter deployment name" },
+                ]}
+              >
+                <Input placeholder="e.g., qwen3-0.6b-prod" />
+              </Form.Item>
 
-          <Form.Item
-            name="worker_id"
-            label="Worker"
-            rules={[{ required: true, message: "Please select a worker" }]}
-          >
-            <Select
-              placeholder="Select a worker"
-              onChange={(value) => {
-                setSelectedWorkerId(value);
-                // Reset GPU selection when worker changes
-                setSelectedGpuIndexes([]);
-                form.setFieldValue("gpu_indexes", undefined);
-                // Check if current backend is available on the new worker
-                const newWorker = workers.find((w) => w.id === value);
-                const isMac = newWorker?.os_type === "darwin";
-                const macBackends = ["ollama", "mlx", "llama_cpp", "vllm"];
-                const linuxBackends = ["vllm", "sglang", "ollama"];
-                const newAvailable = isMac ? macBackends : linuxBackends;
-                // Reset to first available backend if current is not available
-                if (!newAvailable.includes(selectedBackend)) {
-                  const defaultBackend = isMac ? "vllm" : "vllm";
-                  setSelectedBackend(
-                    defaultBackend as
-                      | "vllm"
-                      | "sglang"
-                      | "ollama"
-                      | "mlx"
-                      | "llama_cpp",
-                  );
-                  form.setFieldValue("backend", defaultBackend);
-                }
-              }}
-              options={workers.map((w) => ({
-                label: (
-                  <span
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <span>
-                      {w.name} ({w.address})
-                    </span>
-                    <span style={{ display: "flex", gap: 4 }}>
-                      {w.os_type === "darwin" && (
-                        <Tag color="purple">macOS</Tag>
-                      )}
-                      {w.gpu_info && w.gpu_info.length > 0 && (
-                        <Tag color="blue">
-                          {w.gpu_info.length} GPU
-                          {w.gpu_info.length > 1 ? "s" : ""}
-                        </Tag>
-                      )}
-                    </span>
-                  </span>
-                ),
-                value: w.id,
-              }))}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="backend"
-            label="Inference Backend"
-            rules={[{ required: true, message: "Please select a backend" }]}
-            extra={
-              !selectedWorker
-                ? "Select a worker first"
-                : selectedModel?.source === "ollama"
-                  ? "Ollama models can only use Ollama backend"
-                  : selectedWorker?.os_type === "darwin"
-                    ? "macOS workers support vLLM-Metal, Ollama, MLX, and llama.cpp with Apple Silicon acceleration"
-                    : "HuggingFace models can use vLLM or SGLang"
-            }
-          >
-            <Select
-              placeholder={
-                selectedWorker ? "Select a backend" : "Select a worker first"
-              }
-              disabled={!selectedModelId || !selectedWorkerId}
-              value={selectedBackend}
-              onChange={(value) => setSelectedBackend(value)}
-              options={availableBackends.map((b) => {
-                const config = BACKEND_CONFIG[b];
-                // Show "vLLM-Metal" for vllm on Mac workers
-                const label =
-                  b === "vllm" && selectedWorker?.os_type === "darwin"
-                    ? "vLLM-Metal"
-                    : config.label;
-                return {
-                  label: (
-                    <span
-                      style={{ display: "flex", alignItems: "center", gap: 8 }}
-                    >
-                      <span
-                        style={{
-                          width: 50,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {config.icon}
-                      </span>
-                      {label}
-                    </span>
-                  ),
-                  value: b,
-                };
-              })}
-            />
-          </Form.Item>
-
-          {/* macOS Ollama Warning - only show when Ollama backend is selected */}
-          {selectedWorker &&
-            selectedWorker.os_type === "darwin" &&
-            selectedBackend === "ollama" &&
-            !selectedWorker.capabilities?.ollama && (
-              <Alert
-                message="Ollama Not Installed"
-                description={
-                  <div>
-                    <p style={{ margin: "4px 0" }}>
-                      This Mac worker does not have Ollama installed. Please
-                      install it first:
-                    </p>
-                    <pre
-                      style={{
-                        background: "#f5f5f5",
-                        padding: 8,
-                        borderRadius: 4,
-                        fontSize: 12,
-                        margin: "8px 0",
-                      }}
-                    >
-                      brew install ollama{"\n"}
-                      brew services start ollama
-                    </pre>
-                    <p style={{ margin: "4px 0", fontSize: 12, color: "#666" }}>
-                      After installation, the worker will detect Ollama on the
-                      next heartbeat.
-                    </p>
-                  </div>
-                }
-                type="error"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            )}
-
-          {/* macOS Ollama Not Running Warning - only show when Ollama backend is selected */}
-          {selectedWorker &&
-            selectedWorker.os_type === "darwin" &&
-            selectedBackend === "ollama" &&
-            selectedWorker.capabilities?.ollama &&
-            !selectedWorker.capabilities?.ollama_running && (
-              <Alert
-                message="Ollama Not Running"
-                description={
-                  <div>
-                    <p style={{ margin: "4px 0" }}>
-                      Ollama is installed but not running. Please start it:
-                    </p>
-                    <pre
-                      style={{
-                        background: "#f5f5f5",
-                        padding: 8,
-                        borderRadius: 4,
-                        fontSize: 12,
-                        margin: "8px 0",
-                      }}
-                    >
-                      brew services start ollama
-                    </pre>
-                  </div>
-                }
-                type="warning"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            )}
-
-          {/* macOS Backend Info - show auto-install message */}
-          {selectedWorker &&
-            selectedWorker.os_type === "darwin" &&
-            selectedBackend === "vllm" && (
-              <Alert
-                message="vLLM-Metal"
-                description={
-                  <span style={{ fontSize: 12 }}>
-                    Uses Apple Silicon GPU acceleration. Will be automatically
-                    installed on first deployment.
-                  </span>
-                }
-                type="info"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            )}
-          {selectedWorker &&
-            selectedWorker.os_type === "darwin" &&
-            selectedBackend === "mlx" && (
-              <Alert
-                message="MLX-LM"
-                description={
-                  <span style={{ fontSize: 12 }}>
-                    Native Apple Silicon ML framework. Will be automatically
-                    installed on first deployment.
-                  </span>
-                }
-                type="info"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            )}
-          {selectedWorker &&
-            selectedWorker.os_type === "darwin" &&
-            selectedBackend === "llama_cpp" && (
-              <Alert
-                message="llama.cpp"
-                description={
-                  <span style={{ fontSize: 12 }}>
-                    High-performance inference with Metal acceleration. Will be
-                    automatically installed via Homebrew on first deployment.
-                  </span>
-                }
-                type="info"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            )}
-
-          {/* macOS Info */}
-          {selectedWorker &&
-            selectedWorker.os_type === "darwin" &&
-            selectedWorker.capabilities?.ollama_running && (
-              <Alert
-                message="macOS Worker with Apple Silicon"
-                description={
-                  <div>
-                    <p style={{ margin: "4px 0" }}>
-                      This worker supports native Apple Silicon backends:
-                    </p>
-                    <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
-                      <li>
-                        <strong>Ollama</strong> - Easiest, pull and run models
-                        directly
-                      </li>
-                      <li>
-                        <strong>MLX</strong> - Apple's ML framework, optimized
-                        for Apple Silicon
-                      </li>
-                      <li>
-                        <strong>llama.cpp</strong> - Cross-platform with Metal
-                        acceleration
-                      </li>
-                    </ul>
-                    <p style={{ margin: "4px 0", fontSize: 12, color: "#666" }}>
-                      For MLX/llama.cpp, HuggingFace models will be
-                      automatically converted if needed.
-                    </p>
-                  </div>
-                }
-                type="info"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            )}
-
-          <Form.Item
-            name="gpu_indexes"
-            label="GPU Indexes"
-            extra={
-              selectedWorkerId
-                ? workerGpus.length > 0
-                  ? "Leave empty to use GPU 0"
-                  : "No GPUs detected on this worker"
-                : "Select a worker first"
-            }
-          >
-            <Select
-              mode="multiple"
-              placeholder={
-                selectedWorkerId
-                  ? "Select GPUs (default: 0)"
-                  : "Select a worker first"
-              }
-              disabled={!selectedWorkerId}
-              onChange={(values: number[]) => setSelectedGpuIndexes(values)}
-              options={
-                workerGpus.length > 0
-                  ? workerGpus.map((gpu) => ({
+              <Form.Item
+                name="model_id"
+                label="Model"
+                rules={[{ required: true, message: "Please select a model" }]}
+              >
+                <Select
+                  placeholder="Select a model"
+                  optionLabelProp="label"
+                  onChange={(value) => {
+                    setSelectedModelId(value);
+                    // Auto-select backend based on model source
+                    const model = models.find((m) => m.id === value);
+                    if (model?.source === "ollama") {
+                      setSelectedBackend("ollama");
+                      form.setFieldValue("backend", "ollama");
+                    } else {
+                      setSelectedBackend("vllm");
+                      form.setFieldValue("backend", "vllm");
+                    }
+                  }}
+                  options={models.map((m) => {
+                    const sourceIcon =
+                      m.source === "ollama" ? (
+                        <OllamaLogo height={10} isDark={isDark} />
+                      ) : (
+                        <HuggingFaceLogo height={10} />
+                      );
+                    const sourceLabel =
+                      m.source === "ollama" ? "Ollama" : "HuggingFace";
+                    const mlxReady =
+                      m.source !== "ollama" && isMLXReady(m.model_id);
+                    const ggufReady =
+                      m.source !== "ollama" && isGGUFReady(m.model_id);
+                    return {
                       label: (
                         <span
                           style={{
                             display: "flex",
-                            justifyContent: "space-between",
                             alignItems: "center",
+                            gap: 6,
                           }}
                         >
-                          <span>
-                            GPU {gpu.index}: {gpu.name}
-                          </span>
                           <Tag
-                            color={
-                              gpu.memory_free / gpu.memory_total > 0.5
-                                ? "green"
-                                : "orange"
-                            }
-                            style={{ marginLeft: 8, fontSize: 11 }}
+                            style={{
+                              ...getTagStyle("small"),
+                              margin: 0,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              width: 90,
+                            }}
                           >
-                            {Math.round(gpu.memory_free / 1024 / 1024 / 1024)}GB
-                            free
+                            <span
+                              style={{
+                                width: 16,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              {sourceIcon}
+                            </span>
+                            {sourceLabel}
                           </Tag>
+                          {m.name}
+                          {mlxReady && (
+                            <Tag
+                              color="green"
+                              style={{
+                                fontSize: 10,
+                                margin: 0,
+                                padding: "0 4px",
+                              }}
+                            >
+                              MLX
+                            </Tag>
+                          )}
+                          {ggufReady && (
+                            <Tag
+                              color="blue"
+                              style={{
+                                fontSize: 10,
+                                margin: 0,
+                                padding: "0 4px",
+                              }}
+                            >
+                              GGUF
+                            </Tag>
+                          )}
                         </span>
                       ),
-                      value: gpu.index,
-                    }))
-                  : [{ label: <span>GPU 0</span>, value: 0 }]
-              }
-            />
-          </Form.Item>
+                      value: m.id,
+                    };
+                  })}
+                />
+              </Form.Item>
 
-          {/* Model Compatibility Check - Show when model is selected for vLLM/SGLang */}
-          {selectedModel &&
-            selectedModel.source !== "ollama" &&
-            !["mlx", "llama_cpp"].includes(selectedBackend) && (
-              <ModelCompatibilityCheck
-                modelId={selectedModel.model_id}
-                backend={selectedBackend}
-                gpuMemoryGb={selectedGpuMemoryGb}
-                precision="fp16"
-              />
-            )}
-
-          {/* Model Format Compatibility - Show for MLX/llama.cpp backends */}
-          {selectedModel &&
-            selectedModel.source !== "ollama" &&
-            ["mlx", "llama_cpp"].includes(selectedBackend) && (
-              <ModelFormatCompatibility
-                modelId={selectedModel.model_id}
-                backend={selectedBackend as "mlx" | "llama_cpp"}
-                showDetails={true}
-              />
-            )}
-
-          {/* Version Override - Show when model is selected (not for MLX/llama.cpp) */}
-          {selectedModelId &&
-            !["mlx", "llama_cpp"].includes(selectedBackend) && (
               <Form.Item
-                name={["extra_params", "docker_image"]}
-                label={`${BACKEND_CONFIG[selectedBackend]?.label || "Backend"} Version`}
-                extra="Override the model's default backend version for this deployment"
+                name="worker_id"
+                label="Worker"
+                rules={[{ required: true, message: "Please select a worker" }]}
               >
                 <Select
-                  placeholder="Use model default"
-                  allowClear
-                  showSearch
-                  options={(
-                    (
-                      backendVersionsData as Record<
-                        string,
-                        {
-                          versions: Array<{
-                            version: string;
-                            image: string;
-                            recommended?: boolean;
-                          }>;
-                        }
-                      >
-                    )[selectedBackend]?.versions || []
-                  ).map((v) => ({
+                  placeholder="Select a worker"
+                  onChange={(value) => {
+                    setSelectedWorkerId(value);
+                    // Reset GPU selection when worker changes
+                    setSelectedGpuIndexes([]);
+                    form.setFieldValue("gpu_indexes", undefined);
+                    // Check if current backend is available on the new worker
+                    const newWorker = workers.find((w) => w.id === value);
+                    const isMac = newWorker?.os_type === "darwin";
+                    const macBackends = ["ollama", "mlx", "llama_cpp", "vllm"];
+                    const linuxBackends = ["vllm", "sglang", "ollama"];
+                    const newAvailable = isMac ? macBackends : linuxBackends;
+                    // Reset to first available backend if current is not available
+                    if (!newAvailable.includes(selectedBackend)) {
+                      const defaultBackend = isMac ? "vllm" : "vllm";
+                      setSelectedBackend(
+                        defaultBackend as
+                          | "vllm"
+                          | "sglang"
+                          | "ollama"
+                          | "mlx"
+                          | "llama_cpp",
+                      );
+                      form.setFieldValue("backend", defaultBackend);
+                    }
+                  }}
+                  options={workers.map((w) => ({
                     label: (
-                      <span>
-                        {v.version}
-                        {v.recommended && (
-                          <Tag
-                            color="green"
-                            style={{ marginLeft: 8, fontSize: 10 }}
-                          >
-                            Recommended
-                          </Tag>
-                        )}
+                      <span
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span>
+                          {w.name} ({w.address})
+                        </span>
+                        <span style={{ display: "flex", gap: 4 }}>
+                          {w.os_type === "darwin" && (
+                            <Tag color="purple">macOS</Tag>
+                          )}
+                          {w.gpu_info && w.gpu_info.length > 0 && (
+                            <Tag color="blue">
+                              {w.gpu_info.length} GPU
+                              {w.gpu_info.length > 1 ? "s" : ""}
+                            </Tag>
+                          )}
+                        </span>
                       </span>
                     ),
-                    value: v.image,
+                    value: w.id,
                   }))}
                 />
               </Form.Item>
-            )}
 
-          {/* Advanced Parameters - Show when model is selected (not for MLX/llama.cpp) */}
-          {selectedModelId &&
-            !["mlx", "llama_cpp"].includes(selectedBackend) && (
-              <DeploymentAdvancedForm backend={selectedBackend} form={form} />
-            )}
+              <Form.Item
+                name="backend"
+                label="Inference Backend"
+                rules={[{ required: true, message: "Please select a backend" }]}
+                extra={
+                  !selectedWorker
+                    ? "Select a worker first"
+                    : selectedModel?.source === "ollama"
+                      ? "Ollama models can only use Ollama backend"
+                      : selectedWorker?.os_type === "darwin"
+                        ? "macOS workers support vLLM-Metal, Ollama, MLX, and llama.cpp with Apple Silicon acceleration"
+                        : "HuggingFace models can use vLLM or SGLang"
+                }
+              >
+                <Select
+                  placeholder={
+                    selectedWorker
+                      ? "Select a backend"
+                      : "Select a worker first"
+                  }
+                  disabled={!selectedModelId || !selectedWorkerId}
+                  value={selectedBackend}
+                  onChange={(value) => setSelectedBackend(value)}
+                  options={availableBackends.map((b) => {
+                    const config = BACKEND_CONFIG[b];
+                    // Show "vLLM-Metal" for vllm on Mac workers
+                    const label =
+                      b === "vllm" && selectedWorker?.os_type === "darwin"
+                        ? "vLLM-Metal"
+                        : config.label;
+                    return {
+                      label: (
+                        <span
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 50,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            {config.icon}
+                          </span>
+                          {label}
+                        </span>
+                      ),
+                      value: b,
+                    };
+                  })}
+                />
+              </Form.Item>
 
-          <Form.Item>
+              {/* macOS Ollama Warning - only show when Ollama backend is selected */}
+              {selectedWorker &&
+                selectedWorker.os_type === "darwin" &&
+                selectedBackend === "ollama" &&
+                !selectedWorker.capabilities?.ollama && (
+                  <Alert
+                    message="Ollama Not Installed"
+                    description={
+                      <div>
+                        <p style={{ margin: "4px 0" }}>
+                          This Mac worker does not have Ollama installed. Please
+                          install it first:
+                        </p>
+                        <pre
+                          style={{
+                            background: "#f5f5f5",
+                            padding: 8,
+                            borderRadius: 4,
+                            fontSize: 12,
+                            margin: "8px 0",
+                          }}
+                        >
+                          brew install ollama{"\n"}
+                          brew services start ollama
+                        </pre>
+                        <p
+                          style={{
+                            margin: "4px 0",
+                            fontSize: 12,
+                            color: "#666",
+                          }}
+                        >
+                          After installation, the worker will detect Ollama on
+                          the next heartbeat.
+                        </p>
+                      </div>
+                    }
+                    type="error"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+
+              {/* macOS Ollama Not Running Warning - only show when Ollama backend is selected */}
+              {selectedWorker &&
+                selectedWorker.os_type === "darwin" &&
+                selectedBackend === "ollama" &&
+                selectedWorker.capabilities?.ollama &&
+                !selectedWorker.capabilities?.ollama_running && (
+                  <Alert
+                    message="Ollama Not Running"
+                    description={
+                      <div>
+                        <p style={{ margin: "4px 0" }}>
+                          Ollama is installed but not running. Please start it:
+                        </p>
+                        <pre
+                          style={{
+                            background: "#f5f5f5",
+                            padding: 8,
+                            borderRadius: 4,
+                            fontSize: 12,
+                            margin: "8px 0",
+                          }}
+                        >
+                          brew services start ollama
+                        </pre>
+                      </div>
+                    }
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+
+              {/* macOS Backend Info - show auto-install message */}
+              {selectedWorker &&
+                selectedWorker.os_type === "darwin" &&
+                selectedBackend === "vllm" && (
+                  <Alert
+                    message="vLLM-Metal"
+                    description={
+                      <span style={{ fontSize: 12 }}>
+                        Uses Apple Silicon GPU acceleration. Will be
+                        automatically installed on first deployment.
+                      </span>
+                    }
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+              {selectedWorker &&
+                selectedWorker.os_type === "darwin" &&
+                selectedBackend === "mlx" && (
+                  <Alert
+                    message="MLX-LM"
+                    description={
+                      <span style={{ fontSize: 12 }}>
+                        Native Apple Silicon ML framework. Will be automatically
+                        installed on first deployment.
+                      </span>
+                    }
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+              {selectedWorker &&
+                selectedWorker.os_type === "darwin" &&
+                selectedBackend === "llama_cpp" && (
+                  <Alert
+                    message="llama.cpp"
+                    description={
+                      <span style={{ fontSize: 12 }}>
+                        High-performance inference with Metal acceleration. Will
+                        be automatically installed via Homebrew on first
+                        deployment.
+                      </span>
+                    }
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+
+              {/* macOS Info */}
+              {selectedWorker &&
+                selectedWorker.os_type === "darwin" &&
+                selectedWorker.capabilities?.ollama_running && (
+                  <Alert
+                    message="macOS Worker with Apple Silicon"
+                    description={
+                      <div>
+                        <p style={{ margin: "4px 0" }}>
+                          This worker supports native Apple Silicon backends:
+                        </p>
+                        <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+                          <li>
+                            <strong>Ollama</strong> - Easiest, pull and run
+                            models directly
+                          </li>
+                          <li>
+                            <strong>MLX</strong> - Apple's ML framework,
+                            optimized for Apple Silicon
+                          </li>
+                          <li>
+                            <strong>llama.cpp</strong> - Cross-platform with
+                            Metal acceleration
+                          </li>
+                        </ul>
+                        <p
+                          style={{
+                            margin: "4px 0",
+                            fontSize: 12,
+                            color: "#666",
+                          }}
+                        >
+                          For MLX/llama.cpp, HuggingFace models will be
+                          automatically converted if needed.
+                        </p>
+                      </div>
+                    }
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+
+              <Form.Item
+                name="gpu_indexes"
+                label="GPU Indexes"
+                extra={
+                  selectedWorkerId
+                    ? workerGpus.length > 0
+                      ? "Leave empty to use GPU 0"
+                      : "No GPUs detected on this worker"
+                    : "Select a worker first"
+                }
+              >
+                <Select
+                  mode="multiple"
+                  placeholder={
+                    selectedWorkerId
+                      ? "Select GPUs (default: 0)"
+                      : "Select a worker first"
+                  }
+                  disabled={!selectedWorkerId}
+                  onChange={(values: number[]) => setSelectedGpuIndexes(values)}
+                  options={
+                    workerGpus.length > 0
+                      ? workerGpus.map((gpu) => ({
+                          label: (
+                            <span
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                              }}
+                            >
+                              <span>
+                                GPU {gpu.index}: {gpu.name}
+                              </span>
+                              <Tag
+                                color={
+                                  gpu.memory_free / gpu.memory_total > 0.5
+                                    ? "green"
+                                    : "orange"
+                                }
+                                style={{ marginLeft: 8, fontSize: 11 }}
+                              >
+                                {Math.round(
+                                  gpu.memory_free / 1024 / 1024 / 1024,
+                                )}
+                                GB free
+                              </Tag>
+                            </span>
+                          ),
+                          value: gpu.index,
+                        }))
+                      : [{ label: <span>GPU 0</span>, value: 0 }]
+                  }
+                />
+              </Form.Item>
+
+              {/* Model Compatibility Check - Show when model is selected for vLLM/SGLang */}
+              {selectedModel &&
+                selectedModel.source !== "ollama" &&
+                !["mlx", "llama_cpp"].includes(selectedBackend) && (
+                  <ModelCompatibilityCheck
+                    modelId={selectedModel.model_id}
+                    backend={selectedBackend}
+                    gpuMemoryGb={selectedGpuMemoryGb}
+                    precision="fp16"
+                  />
+                )}
+
+              {/* Model Format Compatibility - Show for MLX/llama.cpp backends */}
+              {selectedModel &&
+                selectedModel.source !== "ollama" &&
+                ["mlx", "llama_cpp"].includes(selectedBackend) && (
+                  <ModelFormatCompatibility
+                    modelId={selectedModel.model_id}
+                    backend={selectedBackend as "mlx" | "llama_cpp"}
+                    showDetails={true}
+                  />
+                )}
+
+              {/* Version Override - Show when model is selected (not for MLX/llama.cpp) */}
+              {selectedModelId &&
+                !["mlx", "llama_cpp"].includes(selectedBackend) && (
+                  <Form.Item
+                    name={["extra_params", "docker_image"]}
+                    label={`${BACKEND_CONFIG[selectedBackend]?.label || "Backend"} Version`}
+                    extra="Override the model's default backend version for this deployment"
+                  >
+                    <Select
+                      placeholder="Use model default"
+                      allowClear
+                      showSearch
+                      options={(
+                        (
+                          backendVersionsData as Record<
+                            string,
+                            {
+                              versions: Array<{
+                                version: string;
+                                image: string;
+                                recommended?: boolean;
+                              }>;
+                            }
+                          >
+                        )[selectedBackend]?.versions || []
+                      ).map((v) => ({
+                        label: (
+                          <span>
+                            {v.version}
+                            {v.recommended && (
+                              <Tag
+                                color="green"
+                                style={{ marginLeft: 8, fontSize: 10 }}
+                              >
+                                Recommended
+                              </Tag>
+                            )}
+                          </span>
+                        ),
+                        value: v.image,
+                      }))}
+                    />
+                  </Form.Item>
+                )}
+
+              {/* Advanced Parameters - Show when model is selected (not for MLX/llama.cpp) */}
+              {selectedModelId &&
+                !["mlx", "llama_cpp"].includes(selectedBackend) && (
+                  <DeploymentAdvancedForm
+                    backend={selectedBackend}
+                    form={form}
+                  />
+                )}
+            </div>
+
+            {/* Right side: YAML Editor (desktop only, Docker backends only) */}
+            {showYamlPanel &&
+              !isMobile &&
+              isDockerBackend(selectedBackend, selectedWorker) && (
+                <div style={{ flex: "1 1 500px", minWidth: 400 }}>
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <Text strong>Docker Compose</Text>
+                    {yamlError && (
+                      <Tag color="error" style={{ fontSize: 11 }}>
+                        {yamlError}
+                      </Tag>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      border: `1px solid ${isDark ? "#424242" : "#d9d9d9"}`,
+                      borderRadius: 6,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Editor
+                      height="450px"
+                      language="yaml"
+                      theme={isDark ? "vs-dark" : "light"}
+                      value={yamlContent}
+                      onChange={(value) => handleYamlChange(value || "")}
+                      onMount={() => setIsYamlUserEditing(false)}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: "on",
+                        scrollBeyondLastLine: false,
+                        wordWrap: "on",
+                        tabSize: 2,
+                        automaticLayout: true,
+                        padding: { top: 8, bottom: 8 },
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 11, color: "#888" }}>
+                    Form ↔ YAML auto-sync. Edit either side.
+                  </div>
+                </div>
+              )}
+          </div>
+
+          <Form.Item style={{ marginTop: 16 }}>
             <Space>
               <Button type="primary" htmlType="submit">
                 Deploy

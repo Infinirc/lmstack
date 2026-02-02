@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Worker settings
     worker_heartbeat_interval: int = 10  # seconds between status checks
     worker_timeout: int = 30  # seconds to consider worker offline
+    worker_image: str = "infinirc/lmstack-worker:latest"  # Docker image for local worker
 
     # vLLM defaults
     vllm_default_image: str = "vllm/vllm-openai:latest"

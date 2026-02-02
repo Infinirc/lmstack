@@ -122,6 +122,69 @@ class DeploymentSyncService:
 
         return stats
 
+    def _is_native_deployment(self, deployment: Deployment) -> bool:
+        """Check if this is a native Mac deployment (not Docker)."""
+        # Native deployments have container_id like "native-123"
+        if deployment.container_id and deployment.container_id.startswith("native-"):
+            return True
+
+        # Mac-only backends are always native
+        native_only_backends = {"mlx", "llama_cpp"}
+        if deployment.backend in native_only_backends:
+            return True
+
+        # For Ollama, check if worker is Mac
+        if deployment.backend == BackendType.OLLAMA.value:
+            if deployment.worker and deployment.worker.is_mac:
+                return True
+
+        return False
+
+    async def _check_native_deployment(self, deployment: Deployment) -> str:
+        """Check a native Mac deployment's API health.
+
+        Native deployments run as processes, not Docker containers.
+        We can only check if the API endpoint is responding.
+        """
+        try:
+            # For native deployments, if worker is offline, keep current status
+            # and let the health check loop retry later (worker may be reconnecting)
+            if deployment.worker.status != "online":
+                logger.info(
+                    f"Native deployment {deployment.name}: worker offline, "
+                    "keeping current status (may be reconnecting)"
+                )
+                # Don't change status - worker might be in the process of reconnecting
+                return "skipped"
+
+            # Check API health via worker
+            api_healthy = await self._check_api_health(
+                deployment.worker.address,
+                deployment.port,
+                deployment.backend,
+                None,  # No container_name for native
+            )
+
+            if api_healthy:
+                if deployment.status != DeploymentStatus.RUNNING.value:
+                    deployment.status = DeploymentStatus.RUNNING.value
+                    deployment.status_message = "Model ready (native process verified)"
+                logger.info(f"Native deployment {deployment.name}: healthy")
+                return "running_verified"
+            else:
+                # Process might have died or not started yet
+                # Mark as STARTING instead of ERROR to allow retry
+                deployment.status = DeploymentStatus.STARTING.value
+                deployment.status_message = "Native process not responding. Waiting for recovery..."
+                logger.info(f"Native deployment {deployment.name}: API not responding, waiting...")
+                return "api_not_ready"
+
+        except Exception as e:
+            logger.error(f"Error checking native deployment {deployment.name}: {e}")
+            deployment.status = DeploymentStatus.STARTING.value
+            deployment.status_message = f"Checking status: {e}"
+            return "api_not_ready"
+
     async def _check_and_update_deployment(self, deployment: Deployment, db) -> str:
         """Check a single deployment and update its status.
 
@@ -133,6 +196,10 @@ class DeploymentSyncService:
         if not deployment.worker:
             logger.warning(f"Deployment {deployment.id} has no worker, skipping")
             return "skipped"
+
+        # Check if this is a native deployment (Mac without Docker)
+        if self._is_native_deployment(deployment):
+            return await self._check_native_deployment(deployment)
 
         if not deployment.container_id:
             # If deployment is still starting, skip it

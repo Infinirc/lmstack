@@ -531,6 +531,9 @@ def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
 
     Command is single-line for cross-platform compatibility (Linux/Mac/Windows).
     """
+    from app.config import get_settings
+
+    settings = get_settings()
     return (
         f"docker run -d --name lmstack-worker --restart unless-stopped "
         f"--network host --gpus all --privileged "
@@ -540,7 +543,7 @@ def _generate_docker_command(token: str, name: str, backend_url: str) -> str:
         f"-e BACKEND_URL={backend_url} "
         f"-e WORKER_NAME={name} "
         f"-e REGISTRATION_TOKEN={token} "
-        f"infinirc/lmstack-worker:latest"
+        f"{settings.worker_image}"
     )
 
 
