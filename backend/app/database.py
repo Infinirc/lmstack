@@ -125,6 +125,10 @@ async def _run_migrations(conn):
 
 async def init_db():
     """Initialize database tables and run migrations"""
+    # Import all models to register them with Base.metadata
+    # This ensures all tables are created by create_all()
+    import app.models  # noqa: F401
+
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
