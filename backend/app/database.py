@@ -113,6 +113,28 @@ async def _run_migrations(conn):
         await conn.execute(text("ALTER TABLE tuning_jobs ADD COLUMN conversation_id INTEGER"))
         logger.info("'conversation_id' column added!")
 
+    # Migration: Add os_type to workers (for Mac native deployment support)
+    if not await column_exists("workers", "os_type"):
+        logger.info("Adding 'os_type' column to workers table...")
+        await conn.execute(
+            text("ALTER TABLE workers ADD COLUMN os_type VARCHAR(50) DEFAULT 'linux'")
+        )
+        logger.info("'os_type' column added!")
+
+    # Migration: Add gpu_type to workers (for Mac Apple Silicon detection)
+    if not await column_exists("workers", "gpu_type"):
+        logger.info("Adding 'gpu_type' column to workers table...")
+        await conn.execute(
+            text("ALTER TABLE workers ADD COLUMN gpu_type VARCHAR(50) DEFAULT 'nvidia'")
+        )
+        logger.info("'gpu_type' column added!")
+
+    # Migration: Add capabilities to workers (for backend availability tracking)
+    if not await column_exists("workers", "capabilities"):
+        logger.info("Adding 'capabilities' column to workers table...")
+        await conn.execute(text("ALTER TABLE workers ADD COLUMN capabilities JSON"))
+        logger.info("'capabilities' column added!")
+
 
 async def init_db():
     """Initialize database tables and run migrations"""
