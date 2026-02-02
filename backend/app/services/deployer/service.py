@@ -77,11 +77,18 @@ class DeployerService:
                 worker = deployment.worker
                 backend = deployment.backend
 
-                # Mac with Ollama should always use native deployment (use local Ollama)
+                # Mac with Ollama, MLX, llama_cpp, or vLLM should use native deployment
+                # vLLM on Mac uses vLLM-Metal (native Apple Silicon acceleration)
                 # Mac without Docker should also use native deployment
                 is_mac = worker.os_type == OSType.DARWIN.value
+                native_backends = (
+                    BackendType.OLLAMA.value,
+                    BackendType.MLX.value,
+                    BackendType.LLAMA_CPP.value,
+                    BackendType.VLLM.value,  # vLLM-Metal on Mac
+                )
                 is_mac_native = is_mac and (
-                    backend == BackendType.OLLAMA.value or not worker.supports_docker
+                    backend in native_backends or not worker.supports_docker
                 )
 
                 # Use native deployment for Mac
@@ -315,7 +322,7 @@ class DeployerService:
     async def get_logs(self, deployment: Deployment, tail: int = 100) -> str:
         """Get logs from a deployment"""
         if not deployment.container_id or not deployment.worker:
-            return "No container running"
+            return "No deployment process running"
 
         try:
             worker = deployment.worker

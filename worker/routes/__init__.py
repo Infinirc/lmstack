@@ -6,9 +6,11 @@ This package contains the FastAPI route handlers organized by domain:
 - containers.py: Docker container management endpoints
 - storage.py: Storage and volume management endpoints
 - native.py: Native deployment endpoints (Mac without Docker)
+- converter.py: Model format conversion endpoints (MLX/GGUF)
 """
 
 from .containers import router as containers_router
+from .converter import router as converter_router
 from .deployment import router as deployment_router
 from .images import router as images_router
 from .native import router as native_router
@@ -20,4 +22,5 @@ __all__ = [
     "containers_router",
     "storage_router",
     "native_router",
+    "converter_router",
 ]

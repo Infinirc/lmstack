@@ -616,3 +616,189 @@ async def get_model_readme(
 
     except httpx.RequestError as e:
         return {"content": None, "message": f"Failed to fetch README: {str(e)}"}
+
+
+class ModelFormatInfo(BaseModel):
+    """Model format compatibility information"""
+
+    model_id: str
+    is_mlx_ready: bool = False  # True if from mlx-community
+    is_gguf_ready: bool = False  # True if has .gguf files
+    mlx_variants: list[str] = []  # Available MLX variants
+    gguf_files: list[str] = []  # Available GGUF files
+
+
+def _is_mlx_ready(model_id: str) -> bool:
+    """Check if model is from mlx-community."""
+    return model_id.startswith("mlx-community/")
+
+
+def _is_gguf_ready(files: list[str]) -> bool:
+    """Check if model has GGUF files."""
+    return any(f.endswith(".gguf") for f in files)
+
+
+@router.get("/format-info/{model_id:path}", response_model=ModelFormatInfo)
+async def get_model_format_info(
+    model_id: str,
+    token: str | None = Query(None, description="HuggingFace API token"),
+):
+    """
+    Get model format compatibility information.
+
+    Returns whether the model is MLX-ready, GGUF-ready, and lists available variants.
+    """
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    result = ModelFormatInfo(
+        model_id=model_id,
+        is_mlx_ready=_is_mlx_ready(model_id),
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Get model files to check for GGUF
+            response = await client.get(
+                f"{HF_API_URL}/models/{model_id}",
+                headers=headers,
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                siblings = data.get("siblings", [])
+                files = [s.get("rfilename", "") for s in siblings]
+
+                # Check for GGUF files
+                gguf_files = [f for f in files if f.endswith(".gguf")]
+                result.gguf_files = gguf_files
+                result.is_gguf_ready = len(gguf_files) > 0
+
+            # Search for MLX variants if not already MLX
+            if not result.is_mlx_ready:
+                model_name = model_id.split("/")[-1]
+                # Search mlx-community for this model
+                search_response = await client.get(
+                    f"{HF_API_URL}/models",
+                    params={
+                        "search": model_name,
+                        "author": "mlx-community",
+                        "limit": 5,
+                    },
+                )
+                if search_response.status_code == 200:
+                    mlx_models = search_response.json()
+                    result.mlx_variants = [m.get("modelId", m.get("id", "")) for m in mlx_models]
+
+    except httpx.RequestError as e:
+        # Log error but don't fail - return partial info
+        import logging
+
+        logging.getLogger(__name__).warning(f"Failed to fetch format info: {e}")
+
+    return result
+
+
+@router.get("/search-mlx")
+async def search_mlx_models(
+    query: str = Query(..., min_length=2, description="Search query"),
+    limit: int = Query(20, ge=1, le=50, description="Number of results"),
+):
+    """
+    Search for MLX-ready models from mlx-community.
+
+    Returns models that are already converted to MLX format.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            params = {
+                "search": query,
+                "author": "mlx-community",
+                "limit": limit,
+                "sort": "downloads",
+                "direction": -1,
+            }
+
+            response = await client.get(
+                f"{HF_API_URL}/models",
+                params=params,
+            )
+            response.raise_for_status()
+
+            models = response.json()
+            return [
+                {
+                    "id": m.get("modelId", m.get("id")),
+                    "author": m.get("author"),
+                    "downloads": m.get("downloads", 0),
+                    "likes": m.get("likes", 0),
+                    "pipeline_tag": m.get("pipeline_tag"),
+                    "tags": m.get("tags", [])[:5],
+                    "is_mlx_ready": True,
+                }
+                for m in models
+            ]
+
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Failed to search HuggingFace: {str(e)}")
+
+
+@router.get("/search-gguf")
+async def search_gguf_models(
+    query: str = Query(..., min_length=2, description="Search query"),
+    limit: int = Query(20, ge=1, le=50, description="Number of results"),
+):
+    """
+    Search for models with GGUF files available.
+
+    Returns models that have pre-converted GGUF files.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Search with GGUF tag
+            params = {
+                "search": query,
+                "limit": limit * 2,  # Get more to filter
+                "sort": "downloads",
+                "direction": -1,
+                "filter": "gguf",
+            }
+
+            response = await client.get(
+                f"{HF_API_URL}/models",
+                params=params,
+            )
+            response.raise_for_status()
+
+            models = response.json()
+
+            # Filter to only include models with GGUF in name or tags
+            gguf_models = []
+            for m in models:
+                model_id = m.get("modelId", m.get("id", ""))
+                tags = m.get("tags", [])
+
+                # Check if model has GGUF indicator
+                is_gguf = "gguf" in model_id.lower() or any("gguf" in t.lower() for t in tags)
+
+                if is_gguf:
+                    gguf_models.append(
+                        {
+                            "id": model_id,
+                            "author": m.get("author"),
+                            "downloads": m.get("downloads", 0),
+                            "likes": m.get("likes", 0),
+                            "pipeline_tag": m.get("pipeline_tag"),
+                            "tags": tags[:5],
+                            "is_gguf_ready": True,
+                        }
+                    )
+
+                if len(gguf_models) >= limit:
+                    break
+
+            return gguf_models
+
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Failed to search HuggingFace: {str(e)}")

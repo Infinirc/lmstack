@@ -25,12 +25,14 @@ try:
     from docker_ops import ContainerManager, DockerRunner, GPUDetector, ImageManager, SystemDetector
     from routes import (
         containers_router,
+        converter_router,
         deployment_router,
         images_router,
         native_router,
         storage_router,
     )
     from routes.containers import set_agent as set_containers_agent
+    from routes.converter import set_agent as set_converter_agent
     from routes.deployment import set_agent as set_deployment_agent
     from routes.images import set_agent as set_images_agent
     from routes.native import set_agent as set_native_agent
@@ -46,12 +48,14 @@ except ImportError:
     )
     from worker.routes import (
         containers_router,
+        converter_router,
         deployment_router,
         images_router,
         native_router,
         storage_router,
     )
     from worker.routes.containers import set_agent as set_containers_agent
+    from worker.routes.converter import set_agent as set_converter_agent
     from worker.routes.deployment import set_agent as set_deployment_agent
     from worker.routes.images import set_agent as set_images_agent
     from worker.routes.native import set_agent as set_native_agent
@@ -127,6 +131,12 @@ class WorkerAgent:
     async def register(self) -> bool:
         """Register this worker with the server."""
         try:
+            # For Mac workers, ensure Ollama is running with external access
+            if self.os_type == "darwin" and self.native_manager:
+                if self.capabilities.get("ollama"):
+                    logger.info("Ensuring Ollama service is running with external access...")
+                    await self.native_manager.ensure_ollama_running()
+
             gpu_info = self.gpu_detector.detect()
             system_info = self.system_detector.detect()
 
@@ -296,6 +306,7 @@ def _set_agent_references(worker_agent: WorkerAgent):
     set_containers_agent(worker_agent)
     set_storage_agent(worker_agent)
     set_native_agent(worker_agent)
+    set_converter_agent(worker_agent)
 
 
 @asynccontextmanager
@@ -330,6 +341,7 @@ app.include_router(images_router)
 app.include_router(containers_router)
 app.include_router(storage_router)
 app.include_router(native_router)
+app.include_router(converter_router)
 
 
 @app.get("/health")

@@ -120,14 +120,17 @@ class Worker(Base):
                 backends.extend(["vllm", "sglang", "ollama"])
             else:
                 backends.append("ollama")
-        else:
-            # Native backends (Mac)
-            if caps.get("ollama"):
+
+        # Mac native backends - always available (can be installed if missing)
+        if self.is_mac:
+            # vLLM-Metal, MLX, llama.cpp are all installable on Mac
+            mac_backends = ["vllm", "mlx", "llama_cpp"]
+            for b in mac_backends:
+                if b not in backends:
+                    backends.append(b)
+            # Ollama on Mac (if installed)
+            if caps.get("ollama") and "ollama" not in backends:
                 backends.append("ollama")
-            if caps.get("mlx"):
-                backends.append("mlx")
-            if caps.get("llama_cpp"):
-                backends.append("llama_cpp")
 
         return backends
 

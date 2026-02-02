@@ -21,7 +21,7 @@ import type { FormInstance } from "antd";
 const { Text } = Typography;
 
 interface DeploymentAdvancedFormProps {
-  backend: "vllm" | "sglang" | "ollama";
+  backend: "vllm" | "sglang" | "ollama" | "mlx" | "llama_cpp";
   form: FormInstance;
 }
 
@@ -304,6 +304,7 @@ export default function DeploymentAdvancedForm({
   backend,
 }: DeploymentAdvancedFormProps) {
   const renderBackendParams = () => {
+    // Native Mac backends
     if (backend === "ollama") {
       return (
         <div style={{ padding: "16px 0" }}>
@@ -313,6 +314,12 @@ export default function DeploymentAdvancedForm({
       );
     }
 
+    // MLX and llama.cpp - no advanced settings for now
+    if (backend === "mlx" || backend === "llama_cpp") {
+      return null;
+    }
+
+    // vLLM and SGLang (Docker-based)
     const isVllm = backend === "vllm";
     const tabItems = [
       {

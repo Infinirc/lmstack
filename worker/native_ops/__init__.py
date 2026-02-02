@@ -1,7 +1,8 @@
 """Native process operations for Mac workers without Docker."""
 
+from .converter import ModelConverter
 from .mlx import MLXManager
 from .ollama import OllamaManager
 from .process_manager import NativeProcessManager
 
-__all__ = ["NativeProcessManager", "OllamaManager", "MLXManager"]
+__all__ = ["NativeProcessManager", "OllamaManager", "MLXManager", "ModelConverter"]

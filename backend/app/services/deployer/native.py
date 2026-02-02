@@ -1,7 +1,9 @@
 """Native Mac deployment operations.
 
 This module handles native deployment operations for macOS,
-including Ollama, MLX, and llama.cpp backends.
+including Ollama, MLX, llama.cpp, and vLLM-Metal backends.
+
+Supports automatic model conversion from HuggingFace to MLX/GGUF formats.
 """
 
 import asyncio
@@ -15,10 +17,21 @@ from app.models.llm_model import BackendType
 logger = logging.getLogger(__name__)
 
 
+def _is_mlx_ready(model_id: str) -> bool:
+    """Check if model is already in MLX format."""
+    return model_id.startswith("mlx-community/")
+
+
+def _is_gguf_file(model_id: str) -> bool:
+    """Check if model_id is a GGUF file path."""
+    return model_id.endswith(".gguf")
+
+
 async def deploy_native(deployment: Deployment, db) -> dict:
     """Deploy using native backend (Mac without Docker).
 
-    Supports Ollama, MLX, and llama.cpp backends on macOS.
+    Supports Ollama, MLX, llama.cpp, and vLLM-Metal backends on macOS.
+    Handles automatic conversion of HuggingFace models to MLX/GGUF formats.
     """
     # Import here to avoid circular imports
     from app.services.deployer.health import wait_for_native_api_ready
@@ -26,6 +39,7 @@ async def deploy_native(deployment: Deployment, db) -> dict:
     worker = deployment.worker
     model = deployment.model
     backend = deployment.backend
+    model_id = model.model_id
 
     # Validate backend is supported
     available_backends = worker.available_backends
@@ -35,19 +49,37 @@ async def deploy_native(deployment: Deployment, db) -> dict:
             f"Available backends: {', '.join(available_backends)}"
         }
 
+    # Check if model needs conversion and update status
+    needs_conversion = False
+    if backend == "mlx" and not _is_mlx_ready(model_id):
+        needs_conversion = True
+        deployment.status_message = "Model may need conversion to MLX format..."
+        await db.commit()
+    elif backend == "llama_cpp" and not _is_gguf_file(model_id):
+        needs_conversion = True
+        deployment.status_message = "Model may need conversion to GGUF format..."
+        await db.commit()
+
     try:
         worker_url = f"http://{worker.effective_address}/native/deploy"
 
         deploy_request = {
             "deployment_id": deployment.id,
             "deployment_name": deployment.name,
-            "model_id": model.model_id,
+            "model_id": model_id,
             "backend": backend,
             "port": 0,  # Auto-assign
             "extra_params": deployment.extra_params,
         }
 
-        deployment.status_message = f"Starting {backend} deployment..."
+        # Set container_id early so logs can be fetched during deployment
+        expected_process_id = f"native-{deployment.id}"
+        deployment.container_id = expected_process_id
+
+        if needs_conversion:
+            deployment.status_message = f"Converting model and starting {backend} deployment..."
+        else:
+            deployment.status_message = f"Starting {backend} deployment..."
         await db.commit()
 
         async with httpx.AsyncClient(timeout=600.0) as client:
@@ -59,8 +91,10 @@ async def deploy_native(deployment: Deployment, db) -> dict:
 
             result = response.json()
             deployment.port = result.get("port")
-            # Use process_id as container_id for native deployments
-            deployment.container_id = result.get("process_id")
+            # Verify process_id matches expected
+            actual_process_id = result.get("process_id")
+            if actual_process_id and actual_process_id != expected_process_id:
+                deployment.container_id = actual_process_id
 
         # Wait for API to be ready
         deployment.status_message = "Waiting for model to be ready..."

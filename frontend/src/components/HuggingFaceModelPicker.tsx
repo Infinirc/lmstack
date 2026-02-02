@@ -18,6 +18,7 @@ import {
   Empty,
   Pagination,
   Divider,
+  Segmented,
 } from "antd";
 import Loading from "./Loading";
 import {
@@ -40,15 +41,18 @@ import {
   type HFModelInfo,
   type VRAMEstimate,
   type HFSearchResult,
+  type ModelFormatInfo,
 } from "../services/api";
 import { useAppTheme } from "../hooks/useTheme";
+
+type FormatFilter = "all" | "mlx_ready" | "gguf_ready";
 
 interface HuggingFaceModelPickerProps {
   open: boolean;
   onClose: () => void;
   onSelect: (modelId: string, modelInfo?: HFModelInfo) => void;
   gpuMemoryGb?: number; // For compatibility check
-  backend?: "vllm" | "sglang" | "ollama"; // Reserved for future use
+  backend?: "vllm" | "sglang" | "ollama" | "mlx" | "llama_cpp"; // Backend type affects filtering
 }
 
 const { Text, Title } = Typography;
@@ -82,9 +86,8 @@ export default function HuggingFaceModelPicker({
   onClose,
   onSelect,
   gpuMemoryGb,
-  backend: _backend = "vllm",
+  backend = "vllm",
 }: HuggingFaceModelPickerProps) {
-  void _backend; // Reserved for future use
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<HFSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -92,21 +95,45 @@ export default function HuggingFaceModelPicker({
   const [modelInfo, setModelInfo] = useState<HFModelInfo | null>(null);
   const [vramEstimate, setVramEstimate] = useState<VRAMEstimate | null>(null);
   const [readme, setReadme] = useState<string | null>(null);
+  const [formatInfo, setFormatInfo] = useState<ModelFormatInfo | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
   const [showDetails, setShowDetails] = useState(false); // Mobile: toggle between list and details
+  const [formatFilter, setFormatFilter] = useState<FormatFilter>("all");
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isDark, colors } = useAppTheme();
   const { isMobile } = useResponsive();
 
   const pageSize = 20;
 
-  // Load popular models
+  // Set default filter based on backend
+  useEffect(() => {
+    if (backend === "mlx") {
+      setFormatFilter("mlx_ready");
+    } else if (backend === "llama_cpp") {
+      setFormatFilter("gguf_ready");
+    } else {
+      setFormatFilter("all");
+    }
+  }, [backend]);
+
+  // Load popular models based on format filter
   const loadPopularModels = useCallback(async () => {
     setSearching(true);
     try {
-      const results = await huggingfaceApi.getPopular(pageSize);
+      let results: HFSearchResult[];
+
+      if (formatFilter === "mlx_ready") {
+        // Search for popular MLX models
+        results = await huggingfaceApi.searchMLX("llama", pageSize);
+      } else if (formatFilter === "gguf_ready") {
+        // Search for popular GGUF models
+        results = await huggingfaceApi.searchGGUF("llama", pageSize);
+      } else {
+        results = await huggingfaceApi.getPopular(pageSize);
+      }
+
       setSearchResults(results);
       setTotalResults(results.length);
     } catch (error) {
@@ -115,9 +142,9 @@ export default function HuggingFaceModelPicker({
     } finally {
       setSearching(false);
     }
-  }, []);
+  }, [formatFilter]);
 
-  // Search models
+  // Search models with format filter
   const searchModels = useCallback(
     async (query: string) => {
       if (!query.trim()) {
@@ -128,10 +155,19 @@ export default function HuggingFaceModelPicker({
 
       setSearching(true);
       try {
-        const results = await huggingfaceApi.search(query, {
-          limit: pageSize,
-          filter_task: "text-generation",
-        });
+        let results: HFSearchResult[];
+
+        if (formatFilter === "mlx_ready") {
+          results = await huggingfaceApi.searchMLX(query, pageSize);
+        } else if (formatFilter === "gguf_ready") {
+          results = await huggingfaceApi.searchGGUF(query, pageSize);
+        } else {
+          results = await huggingfaceApi.search(query, {
+            limit: pageSize,
+            filter_task: "text-generation",
+          });
+        }
+
         setSearchResults(results);
         // Estimate total (HF API doesn't return total count)
         setTotalResults(
@@ -144,8 +180,19 @@ export default function HuggingFaceModelPicker({
         setSearching(false);
       }
     },
-    [loadPopularModels],
+    [loadPopularModels, formatFilter],
   );
+
+  // Re-search when format filter changes
+  useEffect(() => {
+    if (open) {
+      if (searchQuery.trim()) {
+        searchModels(searchQuery);
+      } else {
+        loadPopularModels();
+      }
+    }
+  }, [formatFilter, open]);
 
   // Debounced search
   const handleSearchChange = (value: string) => {
@@ -169,10 +216,11 @@ export default function HuggingFaceModelPicker({
       setModelInfo(null);
       setVramEstimate(null);
       setReadme(null);
+      setFormatInfo(null);
       if (isMobile) setShowDetails(true);
 
       try {
-        const [info, estimate, readmeResult] = await Promise.all([
+        const [info, estimate, readmeResult, format] = await Promise.all([
           huggingfaceApi.getModelInfo(modelId).catch((err) => {
             console.error("Failed to get model info:", err);
             return null;
@@ -190,10 +238,15 @@ export default function HuggingFaceModelPicker({
             console.error("Failed to get README:", err);
             return { content: null };
           }),
+          huggingfaceApi.getFormatInfo(modelId).catch((err) => {
+            console.error("Failed to get format info:", err);
+            return null;
+          }),
         ]);
 
         setModelInfo(info);
         setVramEstimate(estimate);
+        setFormatInfo(format);
 
         // Process README content
         if (readmeResult?.content) {
@@ -225,6 +278,7 @@ export default function HuggingFaceModelPicker({
       setModelInfo(null);
       setVramEstimate(null);
       setReadme(null);
+      setFormatInfo(null);
       setShowDetails(false);
     }
   }, [open]);
@@ -345,7 +399,7 @@ export default function HuggingFaceModelPicker({
           }}
         >
           {/* Search Input */}
-          <div style={{ padding: 16 }}>
+          <div style={{ padding: 16, paddingBottom: 8 }}>
             <div
               style={{
                 display: "flex",
@@ -369,6 +423,21 @@ export default function HuggingFaceModelPicker({
                 style={{ padding: 0 }}
               />
             </div>
+          </div>
+
+          {/* Format Filter */}
+          <div style={{ padding: "0 16px 12px" }}>
+            <Segmented
+              value={formatFilter}
+              onChange={(value) => setFormatFilter(value as FormatFilter)}
+              block
+              size="small"
+              options={[
+                { label: "All", value: "all" },
+                { label: "MLX Ready", value: "mlx_ready" },
+                { label: "GGUF Ready", value: "gguf_ready" },
+              ]}
+            />
           </div>
 
           {/* Results List */}
@@ -671,6 +740,102 @@ export default function HuggingFaceModelPicker({
                             {msg}
                           </Text>
                         ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Format Compatibility */}
+                {formatInfo && (
+                  <div
+                    style={{
+                      padding: 16,
+                      background: isDark ? "#1a1a1a" : "#fafafa",
+                      borderRadius: 8,
+                      border: `1px solid ${colors.border}`,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 12,
+                      }}
+                    >
+                      <Text strong>Format Compatibility</Text>
+                    </div>
+
+                    <Space wrap>
+                      <Tag
+                        color={formatInfo.is_mlx_ready ? "green" : "default"}
+                      >
+                        {formatInfo.is_mlx_ready ? (
+                          <CheckCircleOutlined />
+                        ) : null}{" "}
+                        MLX{" "}
+                        {formatInfo.is_mlx_ready ? "Ready" : "Needs Conversion"}
+                      </Tag>
+                      <Tag
+                        color={formatInfo.is_gguf_ready ? "green" : "default"}
+                      >
+                        {formatInfo.is_gguf_ready ? (
+                          <CheckCircleOutlined />
+                        ) : null}{" "}
+                        GGUF{" "}
+                        {formatInfo.is_gguf_ready
+                          ? "Ready"
+                          : "Needs Conversion"}
+                      </Tag>
+                    </Space>
+
+                    {formatInfo.mlx_variants.length > 0 &&
+                      !formatInfo.is_mlx_ready && (
+                        <div style={{ marginTop: 12 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            MLX variants available:
+                          </Text>
+                          <div style={{ marginTop: 4 }}>
+                            {formatInfo.mlx_variants
+                              .slice(0, 3)
+                              .map((variant) => (
+                                <Tag
+                                  key={variant}
+                                  style={{ cursor: "pointer", marginBottom: 4 }}
+                                  onClick={() => handleSelectModel(variant)}
+                                >
+                                  {variant}
+                                </Tag>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                    {formatInfo.gguf_files.length > 0 && (
+                      <div style={{ marginTop: 12 }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          GGUF files ({formatInfo.gguf_files.length}):
+                        </Text>
+                        <div style={{ marginTop: 4 }}>
+                          {formatInfo.gguf_files.slice(0, 3).map((file) => (
+                            <Tag key={file} style={{ marginBottom: 4 }}>
+                              {file}
+                            </Tag>
+                          ))}
+                          {formatInfo.gguf_files.length > 3 && (
+                            <Tag>+{formatInfo.gguf_files.length - 3} more</Tag>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {!formatInfo.is_mlx_ready && !formatInfo.is_gguf_ready && (
+                      <div style={{ marginTop: 8 }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          This model will be automatically converted when
+                          deployed with MLX or llama.cpp backend.
+                        </Text>
                       </div>
                     )}
                   </div>
