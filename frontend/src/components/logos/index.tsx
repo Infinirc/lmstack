@@ -13,6 +13,8 @@ import ollamaLogoDark from "../../assets/ollama-dark.png";
 import ollamaLogoLight from "../../assets/ollama-light.png";
 import sglangLogo from "../../assets/sglang.png";
 import huggingfaceLogo from "../../assets/huggingface-2.svg";
+import mlxLogo from "../../assets/mlx-logo.png";
+import mlxLogoDark from "../../assets/mlx-logo-dark.png";
 
 // =============================================================================
 // Props Types
@@ -74,54 +76,47 @@ export function HuggingFaceLogo({
 /**
  * MLX Logo - Apple's ML framework for Apple Silicon
  */
-export function MLXLogo({ height = 16, style }: Omit<LogoProps, "isDark">) {
-  // Use Apple-style gradient colors
-  const gradientId = `mlx-gradient-${Math.random().toString(36).substr(2, 9)}`;
+export function MLXLogo({ height = 16, isDark = false, style }: LogoProps) {
   return (
-    <svg width={height * 1.5} height={height} viewBox="0 0 36 24" style={style}>
-      <defs>
-        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FF6B6B" />
-          <stop offset="50%" stopColor="#9B59B6" />
-          <stop offset="100%" stopColor="#3498DB" />
-        </linearGradient>
-      </defs>
-      <text
-        x="18"
-        y="17"
-        fontSize="14"
-        fontWeight="700"
-        fontFamily="SF Pro Display, -apple-system, BlinkMacSystemFont, sans-serif"
-        textAnchor="middle"
-        fill={`url(#${gradientId})`}
-      >
-        MLX
-      </text>
-    </svg>
+    <img
+      src={isDark ? mlxLogoDark : mlxLogo}
+      alt="MLX"
+      style={{ height, width: "auto", objectFit: "contain", ...style }}
+    />
   );
 }
 
 /**
- * Llama.cpp Logo
+ * Llama.cpp Logo - High-performance LLM inference
+ * Uses official branding colors: white text with orange C++
  */
 export function LlamaCppLogo({
   height = 16,
   isDark = false,
   style,
 }: LogoProps) {
-  const textColor = isDark ? "#ffffff" : "#333333";
+  const textColor = isDark ? "#ffffff" : "#1b1f20";
   return (
-    <svg width={height * 3} height={height} viewBox="0 0 72 24" style={style}>
+    <svg width={height * 4.5} height={height} viewBox="0 0 90 20" style={style}>
       <text
-        x="36"
-        y="17"
-        fontSize="12"
-        fontWeight="600"
-        fontFamily="Menlo, Monaco, monospace"
-        textAnchor="middle"
+        x="0"
+        y="15"
+        fontSize="14"
+        fontWeight="700"
+        fontFamily="system-ui, -apple-system, sans-serif"
         fill={textColor}
       >
-        llama.cpp
+        llama
+      </text>
+      <text
+        x="44"
+        y="15"
+        fontSize="14"
+        fontWeight="700"
+        fontFamily="system-ui, -apple-system, sans-serif"
+        fill="#ff8236"
+      >
+        .cpp
       </text>
     </svg>
   );
@@ -188,7 +183,7 @@ export function getBackendConfig(
     mlx: {
       label: "MLX",
       color: tagColor,
-      icon: <MLXLogo height={16} />,
+      icon: <MLXLogo height={16} isDark={isDark} />,
     },
     llama_cpp: {
       label: "llama.cpp",

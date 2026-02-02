@@ -834,8 +834,26 @@ export default function Deployments() {
                     <span
                       style={{ display: "flex", alignItems: "center", gap: 6 }}
                     >
-                      <Tag style={{ ...getTagStyle("small"), margin: 0 }}>
-                        {sourceIcon}
+                      <Tag
+                        style={{
+                          ...getTagStyle("small"),
+                          margin: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          width: 90,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 16,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {sourceIcon}
+                        </span>
                         {sourceLabel}
                       </Tag>
                       {m.name}
@@ -958,7 +976,16 @@ export default function Deployments() {
                     <span
                       style={{ display: "flex", alignItems: "center", gap: 8 }}
                     >
-                      {config.icon}
+                      <span
+                        style={{
+                          width: 50,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {config.icon}
+                      </span>
                       {label}
                     </span>
                   ),

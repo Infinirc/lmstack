@@ -72,6 +72,10 @@ async def deploy_native(deployment: Deployment, db) -> dict:
             "extra_params": deployment.extra_params,
         }
 
+        # Set container_id early so logs can be fetched during deployment
+        expected_process_id = f"native-{deployment.id}"
+        deployment.container_id = expected_process_id
+
         if needs_conversion:
             deployment.status_message = f"Converting model and starting {backend} deployment..."
         else:
@@ -87,8 +91,10 @@ async def deploy_native(deployment: Deployment, db) -> dict:
 
             result = response.json()
             deployment.port = result.get("port")
-            # Use process_id as container_id for native deployments
-            deployment.container_id = result.get("process_id")
+            # Verify process_id matches expected
+            actual_process_id = result.get("process_id")
+            if actual_process_id and actual_process_id != expected_process_id:
+                deployment.container_id = actual_process_id
 
         # Wait for API to be ready
         deployment.status_message = "Waiting for model to be ready..."

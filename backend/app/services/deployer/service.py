@@ -322,7 +322,7 @@ class DeployerService:
     async def get_logs(self, deployment: Deployment, tail: int = 100) -> str:
         """Get logs from a deployment"""
         if not deployment.container_id or not deployment.worker:
-            return "No container running"
+            return "No deployment process running"
 
         try:
             worker = deployment.worker
