@@ -37,111 +37,90 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
+def _get_column_type_sql(column) -> str:
+    """Convert SQLAlchemy column type to SQLite type string."""
+    from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
+
+    col_type = type(column.type)
+
+    if col_type == Integer or "Integer" in str(col_type):
+        return "INTEGER"
+    elif col_type == String or "String" in str(col_type):
+        length = getattr(column.type, "length", None)
+        return f"VARCHAR({length})" if length else "VARCHAR(255)"
+    elif col_type == Text or "Text" in str(col_type):
+        return "TEXT"
+    elif col_type == Boolean or "Boolean" in str(col_type):
+        return "BOOLEAN"
+    elif col_type == Float or "Float" in str(col_type):
+        return "FLOAT"
+    elif col_type == DateTime or "DateTime" in str(col_type):
+        return "DATETIME"
+    elif col_type == JSON or "JSON" in str(col_type):
+        return "JSON"
+    else:
+        # Default fallback
+        return "TEXT"
+
+
 async def _run_migrations(conn):
-    """Run schema migrations for new columns (SQLite compatible)."""
+    """Auto-detect and add missing columns by comparing models with database schema."""
     from sqlalchemy import text
 
-    async def column_exists(table_name: str, column_name: str) -> bool:
-        """Check if a column exists in a table."""
-        result = await conn.execute(text(f"PRAGMA table_info({table_name})"))
-        columns = [row[1] for row in result.fetchall()]
-        return column_name in columns
+    async def get_table_columns(table_name: str) -> set[str]:
+        """Get all column names from a database table."""
+        try:
+            result = await conn.execute(text(f"PRAGMA table_info({table_name})"))
+            return {row[1] for row in result.fetchall()}
+        except Exception:
+            return set()
 
-    # Migration: Add container_name to deployments (for Windows Docker compatibility)
-    if not await column_exists("deployments", "container_name"):
-        logger.info("Adding 'container_name' column to deployments table...")
-        await conn.execute(text("ALTER TABLE deployments ADD COLUMN container_name VARCHAR(255)"))
-        logger.info("'container_name' column added!")
-
-    # Migration: Add is_local to registration_tokens (for local worker detection)
-    if not await column_exists("registration_tokens", "is_local"):
-        logger.info("Adding 'is_local' column to registration_tokens table...")
-        await conn.execute(
-            text("ALTER TABLE registration_tokens ADD COLUMN is_local BOOLEAN DEFAULT 0")
+    async def table_exists(table_name: str) -> bool:
+        """Check if a table exists in the database."""
+        result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"),
+            {"name": table_name},
         )
-        logger.info("'is_local' column added!")
+        return result.fetchone() is not None
 
-    # Migration: Add conversation_type to conversations (for Agent chat support)
-    if not await column_exists("conversations", "conversation_type"):
-        logger.info("Adding 'conversation_type' column to conversations table...")
-        await conn.execute(
-            text(
-                "ALTER TABLE conversations ADD COLUMN conversation_type VARCHAR(20) DEFAULT 'chat' NOT NULL"
-            )
-        )
-        logger.info("'conversation_type' column added!")
+    # Iterate through all tables defined in models
+    for table_name, table in Base.metadata.tables.items():
+        # Skip if table doesn't exist yet (will be created by create_all)
+        if not await table_exists(table_name):
+            continue
 
-    # Migration: Add agent_config to conversations (for Agent configuration)
-    if not await column_exists("conversations", "agent_config"):
-        logger.info("Adding 'agent_config' column to conversations table...")
-        await conn.execute(text("ALTER TABLE conversations ADD COLUMN agent_config JSON"))
-        logger.info("'agent_config' column added!")
+        # Get existing columns in database
+        existing_columns = await get_table_columns(table_name)
 
-    # Migration: Add tool_calls to messages (for Agent tool calls)
-    if not await column_exists("messages", "tool_calls"):
-        logger.info("Adding 'tool_calls' column to messages table...")
-        await conn.execute(text("ALTER TABLE messages ADD COLUMN tool_calls JSON"))
-        logger.info("'tool_calls' column added!")
+        # Check each column in the model
+        for column in table.columns:
+            if column.name not in existing_columns:
+                # Build ALTER TABLE statement
+                col_type = _get_column_type_sql(column)
 
-    # Migration: Add tool_call_id to messages (for Agent tool results)
-    if not await column_exists("messages", "tool_call_id"):
-        logger.info("Adding 'tool_call_id' column to messages table...")
-        await conn.execute(text("ALTER TABLE messages ADD COLUMN tool_call_id VARCHAR(100)"))
-        logger.info("'tool_call_id' column added!")
+                # Handle default values
+                default_clause = ""
+                if column.default is not None:
+                    default_val = column.default.arg
+                    if callable(default_val):
+                        default_val = default_val(None)
+                    if isinstance(default_val, str):
+                        default_clause = f" DEFAULT '{default_val}'"
+                    elif isinstance(default_val, bool):
+                        default_clause = f" DEFAULT {1 if default_val else 0}"
+                    elif default_val is not None:
+                        default_clause = f" DEFAULT {default_val}"
 
-    # Migration: Add step_type to messages (for Agent execution steps)
-    if not await column_exists("messages", "step_type"):
-        logger.info("Adding 'step_type' column to messages table...")
-        await conn.execute(text("ALTER TABLE messages ADD COLUMN step_type VARCHAR(50)"))
-        logger.info("'step_type' column added!")
+                sql = (
+                    f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type}{default_clause}"
+                )
 
-    # Migration: Add execution_time_ms to messages (for tool execution timing)
-    if not await column_exists("messages", "execution_time_ms"):
-        logger.info("Adding 'execution_time_ms' column to messages table...")
-        await conn.execute(text("ALTER TABLE messages ADD COLUMN execution_time_ms FLOAT"))
-        logger.info("'execution_time_ms' column added!")
-
-    # Migration: Add tuning_config to tuning_jobs (for multi-framework testing)
-    if not await column_exists("tuning_jobs", "tuning_config"):
-        logger.info("Adding 'tuning_config' column to tuning_jobs table...")
-        await conn.execute(text("ALTER TABLE tuning_jobs ADD COLUMN tuning_config JSON"))
-        logger.info("'tuning_config' column added!")
-
-    # Migration: Add conversation_id to tuning_jobs (for Agent Chat integration)
-    if not await column_exists("tuning_jobs", "conversation_id"):
-        logger.info("Adding 'conversation_id' column to tuning_jobs table...")
-        await conn.execute(text("ALTER TABLE tuning_jobs ADD COLUMN conversation_id INTEGER"))
-        logger.info("'conversation_id' column added!")
-
-    # Migration: Add os_type to workers (for Mac native deployment support)
-    if not await column_exists("workers", "os_type"):
-        logger.info("Adding 'os_type' column to workers table...")
-        await conn.execute(
-            text("ALTER TABLE workers ADD COLUMN os_type VARCHAR(50) DEFAULT 'linux'")
-        )
-        logger.info("'os_type' column added!")
-
-    # Migration: Add gpu_type to workers (for Mac Apple Silicon detection)
-    if not await column_exists("workers", "gpu_type"):
-        logger.info("Adding 'gpu_type' column to workers table...")
-        await conn.execute(
-            text("ALTER TABLE workers ADD COLUMN gpu_type VARCHAR(50) DEFAULT 'nvidia'")
-        )
-        logger.info("'gpu_type' column added!")
-
-    # Migration: Add capabilities to workers (for backend availability tracking)
-    if not await column_exists("workers", "capabilities"):
-        logger.info("Adding 'capabilities' column to workers table...")
-        await conn.execute(text("ALTER TABLE workers ADD COLUMN capabilities JSON"))
-        logger.info("'capabilities' column added!")
-
-    # Migration: Add parent_app_id to apps (for monitoring services like Prometheus)
-    if not await column_exists("apps", "parent_app_id"):
-        logger.info("Adding 'parent_app_id' column to apps table...")
-        await conn.execute(
-            text("ALTER TABLE apps ADD COLUMN parent_app_id INTEGER REFERENCES apps(id)")
-        )
-        logger.info("'parent_app_id' column added!")
+                logger.info(f"Auto-migration: Adding '{column.name}' column to {table_name}...")
+                try:
+                    await conn.execute(text(sql))
+                    logger.info(f"Column '{column.name}' added to {table_name}!")
+                except Exception as e:
+                    logger.warning(f"Failed to add column {column.name} to {table_name}: {e}")
 
 
 async def init_db():
