@@ -110,6 +110,62 @@ class ModelConverter:
         # Common patterns for GGUF models
         return any(pattern in model_id.lower() for pattern in ["gguf", "-gguf", "_gguf"])
 
+    async def download_gguf_model(self, hf_model_id: str) -> str:
+        """Download a GGUF model from HuggingFace.
+
+        Uses huggingface_hub to download the .gguf file(s) from a repo.
+
+        Args:
+            hf_model_id: HuggingFace model ID (e.g., "hugging-quants/Llama-3.2-1B-Instruct-Q8_0-GGUF")
+
+        Returns:
+            Path to downloaded GGUF file
+        """
+        try:
+            from huggingface_hub import hf_hub_download, list_repo_files
+        except ImportError:
+            raise RuntimeError(
+                "huggingface_hub is required. Install with: pip install huggingface_hub"
+            )
+
+        # Create cache directory for downloaded models
+        cache_dir = self.cache_dir / "gguf"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # List files in the repo to find .gguf files
+        try:
+            files = list_repo_files(hf_model_id)
+            gguf_files = [f for f in files if f.endswith(".gguf")]
+
+            if not gguf_files:
+                raise RuntimeError(f"No .gguf files found in {hf_model_id}")
+
+            # Pick the best file (prefer Q8_0 or largest quantization)
+            gguf_file = gguf_files[0]
+            for f in gguf_files:
+                # Prefer Q8_0 quantization
+                if "q8_0" in f.lower() or "Q8_0" in f:
+                    gguf_file = f
+                    break
+
+            logger.info(f"Downloading {gguf_file} from {hf_model_id}...")
+
+            # Download the file
+            local_path = hf_hub_download(
+                repo_id=hf_model_id,
+                filename=gguf_file,
+                cache_dir=str(cache_dir),
+                local_dir=str(cache_dir / hf_model_id.replace("/", "--")),
+                local_dir_use_symlinks=False,
+            )
+
+            logger.info(f"Downloaded GGUF model to {local_path}")
+            return local_path
+
+        except Exception as e:
+            logger.error(f"Failed to download GGUF model: {e}")
+            raise RuntimeError(f"Failed to download GGUF model from {hf_model_id}: {e}")
+
     @staticmethod
     def find_mlx_variant(hf_model_id: str) -> Optional[str]:
         """Find MLX variant of a HuggingFace model.

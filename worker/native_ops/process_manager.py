@@ -509,23 +509,36 @@ class NativeProcessManager:
         """Start llama.cpp server with Metal acceleration.
 
         llama.cpp provides OpenAI-compatible API via llama-server.
-        Automatically installs llama.cpp and converts models if needed.
+        Automatically installs llama.cpp and downloads/converts models if needed.
         """
         # Ensure llama.cpp is installed (auto-install if needed)
         llama_server = await self._ensure_llama_cpp_installed()
 
         effective_model_path = model_id
 
-        # Check if model_id is a GGUF file path
-        if not model_id.endswith(".gguf"):
-            # Check for cached GGUF conversion
+        # Check if model_id is already a local GGUF file path
+        if model_id.endswith(".gguf") and Path(model_id).exists():
+            logger.info(f"Using local GGUF file: {model_id}")
+            effective_model_path = model_id
+        else:
+            # Check for cached model
             cached = self._converter.get_cached_model(model_id, "gguf")
             if cached:
                 logger.info(f"Using cached GGUF model: {cached}")
                 effective_model_path = cached
+            elif ModelConverter.is_gguf_ready(model_id):
+                # Model is already GGUF on HuggingFace, download it directly
+                logger.info(f"Downloading GGUF model from HuggingFace: {model_id}")
+                try:
+                    effective_model_path = await self._converter.download_gguf_model(model_id)
+                except Exception as e:
+                    logger.error(f"GGUF download failed: {e}")
+                    raise RuntimeError(
+                        f"Failed to download GGUF model: {e}. "
+                        "Check if the model exists and has .gguf files."
+                    )
             else:
-                # Check if model has GGUF files on HuggingFace
-                # For now, attempt conversion
+                # Need to convert from HuggingFace format
                 logger.info(f"Converting {model_id} to GGUF format...")
                 try:
                     quant_type = kwargs.pop("gguf_quant", "q8_0")
