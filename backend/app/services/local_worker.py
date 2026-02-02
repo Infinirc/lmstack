@@ -205,12 +205,24 @@ def spawn_docker_worker(
     backend_url: str,
     registration_token: str,
     container_name: str = "lmstack-worker",
+    worker_image: str | None = None,
 ) -> dict:
     """Spawn a Docker worker container on the local machine.
+
+    Args:
+        worker_name: Name for the worker
+        backend_url: URL of the backend server
+        registration_token: Token for worker registration
+        container_name: Name for the Docker container
+        worker_image: Docker image to use (defaults to settings.worker_image)
 
     Returns:
         dict with keys: success, message, container_id (if success)
     """
+    from app.config import get_settings
+
+    settings = get_settings()
+    image = worker_image or settings.worker_image
     # On Mac, ensure Ollama is running with external access before starting Docker
     if platform.system() == "Darwin":
         logger.info("Mac detected, ensuring Ollama is running with external access...")
@@ -270,11 +282,11 @@ def spawn_docker_worker(
         f"WORKER_NAME={worker_name}",
         "-e",
         f"REGISTRATION_TOKEN={registration_token}",
-        "infinirc/lmstack-worker:latest",
+        image,
     ]
 
     try:
-        logger.info(f"Spawning Docker worker: {worker_name}")
+        logger.info(f"Spawning Docker worker: {worker_name} with image {image}")
         result = subprocess.run(
             cmd,
             capture_output=True,
