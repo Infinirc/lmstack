@@ -206,10 +206,81 @@ class GPUDetector:
             logger.debug(f"pynvml GPU detection failed: {e}")
             return []
 
+    def _parse_nvidia_smi_value(self, value: str) -> float | None:
+        """Parse a value from nvidia-smi output, returning None for [N/A] or invalid."""
+        value = value.strip()
+        if not value or value.startswith("[N/A]") or value == "N/A" or value == "Not Supported":
+            return None
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return None
+
+    def _get_unified_memory_info(self) -> tuple[int, int, int]:
+        """Get system memory info for unified memory platforms (Tegra/DGX Spark).
+
+        Returns (total, used, free) in bytes.
+        """
+        try:
+            import psutil
+
+            mem = psutil.virtual_memory()
+            return mem.total, mem.used, mem.available
+        except ImportError:
+            pass
+
+        # Fallback: read from /proc/meminfo
+        try:
+            with open("/proc/meminfo", "r") as f:
+                meminfo = {}
+                for line in f:
+                    parts = line.split(":")
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        val = parts[1].strip().split()[0]
+                        meminfo[key] = int(val) * 1024  # Convert kB to bytes
+
+                total = meminfo.get("MemTotal", 0)
+                free = meminfo.get("MemAvailable", meminfo.get("MemFree", 0))
+                used = total - free
+                return total, used, free
+        except Exception:
+            return 0, 0, 0
+
+    def _get_gpu_process_memory(self, gpu_index: int = 0) -> int:
+        """Get total GPU memory used by processes from nvidia-smi."""
+        try:
+            result = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-compute-apps=gpu_bus_id,used_gpu_memory",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return 0
+
+            total_mem = 0
+            for line in result.stdout.strip().split("\n"):
+                if not line.strip():
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) >= 2:
+                    val = self._parse_nvidia_smi_value(parts[-1])
+                    if val is not None:
+                        total_mem += int(val) * 1024 * 1024  # MiB to bytes
+            return total_mem
+        except Exception:
+            return 0
+
     def _detect_nvidia_smi(self) -> list[dict]:
         """Detect NVIDIA GPUs using nvidia-smi command.
 
         This is a fallback for Tegra/Jetson/DGX Spark where pynvml may not work.
+        Handles [N/A] memory values by using unified system memory info.
         """
         try:
             # Query GPU info using nvidia-smi
@@ -239,36 +310,52 @@ class GPUDetector:
 
                 try:
                     idx = int(parts[0])
-                    name = parts[1]
-                    # nvidia-smi returns memory in MiB, convert to bytes
-                    memory_total = int(float(parts[2])) * 1024 * 1024
-                    memory_used = int(float(parts[3])) * 1024 * 1024
-                    memory_free = int(float(parts[4])) * 1024 * 1024
-                    # Utilization may be [N/A] on some platforms
-                    try:
-                        utilization = int(float(parts[5]))
-                    except (ValueError, TypeError):
-                        utilization = 0
-                    # Temperature may be [N/A] on some platforms
-                    try:
-                        temperature = int(float(parts[6]))
-                    except (ValueError, TypeError):
-                        temperature = 0
-
-                    gpus.append(
-                        {
-                            "index": idx,
-                            "name": name,
-                            "memory_total": memory_total,
-                            "memory_used": memory_used,
-                            "memory_free": memory_free,
-                            "utilization": utilization,
-                            "temperature": temperature,
-                        }
-                    )
-                except (ValueError, IndexError) as e:
-                    logger.debug(f"Failed to parse nvidia-smi output line: {line}, error: {e}")
+                except (ValueError, TypeError):
                     continue
+
+                name = parts[1].strip()
+                if not name:
+                    continue
+
+                # Parse memory values (may be [N/A] on unified memory platforms)
+                mem_total = self._parse_nvidia_smi_value(parts[2])
+                mem_used = self._parse_nvidia_smi_value(parts[3])
+                mem_free = self._parse_nvidia_smi_value(parts[4])
+
+                if mem_total is not None:
+                    # nvidia-smi returns memory in MiB, convert to bytes
+                    memory_total = int(mem_total) * 1024 * 1024
+                    memory_used = int(mem_used or 0) * 1024 * 1024
+                    memory_free = int(mem_free or 0) * 1024 * 1024
+                else:
+                    # Unified memory platform (Tegra/DGX Spark) - use system memory
+                    logger.info(
+                        f"GPU {idx} ({name}) reports [N/A] memory, using unified system memory"
+                    )
+                    memory_total, memory_used, memory_free = self._get_unified_memory_info()
+                    # Try to get actual GPU process memory usage
+                    gpu_proc_mem = self._get_gpu_process_memory(idx)
+                    if gpu_proc_mem > 0:
+                        memory_used = gpu_proc_mem
+                        memory_free = max(0, memory_total - memory_used)
+
+                utilization_val = self._parse_nvidia_smi_value(parts[5])
+                utilization = int(utilization_val) if utilization_val is not None else 0
+
+                temperature_val = self._parse_nvidia_smi_value(parts[6])
+                temperature = int(temperature_val) if temperature_val is not None else 0
+
+                gpus.append(
+                    {
+                        "index": idx,
+                        "name": name,
+                        "memory_total": memory_total,
+                        "memory_used": memory_used,
+                        "memory_free": memory_free,
+                        "utilization": utilization,
+                        "temperature": temperature,
+                    }
+                )
 
             if gpus:
                 logger.info(f"Detected {len(gpus)} GPU(s) via nvidia-smi")
