@@ -91,3 +91,41 @@ class DeploymentLogsResponse(BaseModel):
 
     deployment_id: int
     logs: str
+
+
+# =============================================================================
+# Container Discovery & Adoption
+# =============================================================================
+
+
+class DiscoveredContainer(BaseModel):
+    """A container discovered on a worker that can be adopted"""
+
+    container_id: str
+    container_name: str
+    image: str
+    backend: str
+    model_id: str | None = None
+    port: int | None = None
+    gpu_ids: list[str] | None = None
+    worker_id: int
+    worker_name: str
+
+
+class DiscoverResponse(BaseModel):
+    """Response for container discovery"""
+
+    items: list[DiscoveredContainer]
+
+
+class AdoptRequest(BaseModel):
+    """Request to adopt a discovered container"""
+
+    worker_id: int
+    container_id: str
+    container_name: str
+    backend: str
+    model_id: str
+    port: int | None = None
+    gpu_indexes: list[int] | None = None
+    name: str | None = None

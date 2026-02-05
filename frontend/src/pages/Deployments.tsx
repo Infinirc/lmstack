@@ -29,6 +29,8 @@ import {
   ExclamationCircleOutlined,
   SettingOutlined,
   CodeOutlined,
+  RadarChartOutlined,
+  ImportOutlined,
 } from "@ant-design/icons";
 import { useAppTheme } from "../hooks/useTheme";
 import {
@@ -40,6 +42,7 @@ import {
 } from "../components/logos";
 import { getDeploymentStatusColor } from "../utils";
 import { deploymentsApi, workersApi, modelsApi } from "../services/api";
+import type { DiscoveredContainer } from "../api/deployments";
 import type { Deployment, DeploymentCreate, Worker, LLMModel } from "../types";
 import { useResponsive } from "../hooks";
 import { useAuth } from "../contexts/AuthContext";
@@ -101,6 +104,16 @@ export default function Deployments() {
   const [editingDeployment, setEditingDeployment] = useState<Deployment | null>(
     null,
   );
+  // Discover state
+  const [discoverModalOpen, setDiscoverModalOpen] = useState(false);
+  const [discoveredContainers, setDiscoveredContainers] = useState<
+    DiscoveredContainer[]
+  >([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [adoptingId, setAdoptingId] = useState<string | null>(null);
+  const [adoptName, setAdoptName] = useState<string>("");
+  const [adoptNameModalContainer, setAdoptNameModalContainer] =
+    useState<DiscoveredContainer | null>(null);
   // YAML editor state
   const [showYamlPanel, setShowYamlPanel] = useState(true); // Show YAML panel on desktop
   const [yamlContent, setYamlContent] = useState<string>("");
@@ -461,6 +474,64 @@ export default function Deployments() {
       message.error(
         err.response?.data?.detail || "Failed to update deployment",
       );
+    }
+  };
+
+  const handleDiscover = async () => {
+    setDiscoverLoading(true);
+    setDiscoverModalOpen(true);
+    try {
+      const response = await deploymentsApi.discover();
+      setDiscoveredContainers(response.items);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(
+        err.response?.data?.detail || "Failed to discover containers",
+      );
+    } finally {
+      setDiscoverLoading(false);
+    }
+  };
+
+  const handleAdopt = async (container: DiscoveredContainer) => {
+    if (!container.model_id) {
+      message.error("Cannot adopt: no model detected for this container");
+      return;
+    }
+
+    setAdoptingId(container.container_id);
+    try {
+      const gpuIndexes = container.gpu_ids
+        ? container.gpu_ids
+            .map((id) => parseInt(id, 10))
+            .filter((n) => !isNaN(n))
+        : undefined;
+
+      await deploymentsApi.adopt({
+        worker_id: container.worker_id,
+        container_id: container.container_id,
+        container_name: container.container_name,
+        backend: container.backend,
+        model_id: container.model_id,
+        port: container.port,
+        gpu_indexes: gpuIndexes,
+        name: adoptName || undefined,
+      });
+      message.success(
+        `Adopted container "${container.container_name}" as deployment`,
+      );
+      // Remove adopted container from the list
+      setDiscoveredContainers((prev) =>
+        prev.filter((c) => c.container_id !== container.container_id),
+      );
+      setAdoptNameModalContainer(null);
+      setAdoptName("");
+      fetchDeployments();
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail || "Failed to adopt container");
+    } finally {
+      setAdoptingId(null);
     }
   };
 
@@ -919,6 +990,15 @@ export default function Deployments() {
             >
               {!isMobile && "Refresh"}
             </Button>
+            {canEdit && (
+              <Button
+                icon={<RadarChartOutlined />}
+                onClick={handleDiscover}
+                size={isMobile ? "small" : "middle"}
+              >
+                {isMobile ? "Discover" : "Discover"}
+              </Button>
+            )}
             {canEdit && (
               <Button
                 type="primary"
@@ -1816,6 +1896,188 @@ export default function Deployments() {
             </Form.Item>
           </Form>
         )}
+      </Modal>
+
+      {/* Discover Containers Modal */}
+      <Modal
+        title={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <RadarChartOutlined />
+            <span>Discover Containers</span>
+            {discoveredContainers.length > 0 && (
+              <Tag color="processing" style={{ borderRadius: 6 }}>
+                {discoveredContainers.length} found
+              </Tag>
+            )}
+          </div>
+        }
+        open={discoverModalOpen}
+        onCancel={() => {
+          setDiscoverModalOpen(false);
+          setDiscoveredContainers([]);
+        }}
+        footer={
+          <Space>
+            <Button
+              icon={<ReloadOutlined spin={discoverLoading} />}
+              onClick={handleDiscover}
+              loading={discoverLoading}
+            >
+              Rescan
+            </Button>
+            <Button onClick={() => setDiscoverModalOpen(false)}>Close</Button>
+          </Space>
+        }
+        width={isMobile ? "100%" : 900}
+        style={
+          isMobile ? { top: 20, maxWidth: "100%", margin: "0 8px" } : undefined
+        }
+      >
+        {discoverLoading && discoveredContainers.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <ReloadOutlined spin style={{ fontSize: 24, marginBottom: 12 }} />
+            <div>Scanning workers for unmanaged containers...</div>
+          </div>
+        ) : discoveredContainers.length === 0 ? (
+          <Alert
+            message="No Containers Found"
+            description="No unmanaged vLLM, SGLang, or Ollama containers were found running on any online worker."
+            type="info"
+            showIcon
+          />
+        ) : (
+          <Table
+            dataSource={discoveredContainers}
+            rowKey="container_id"
+            size="small"
+            pagination={false}
+            scroll={isMobile ? undefined : { x: 700 }}
+            columns={[
+              {
+                title: "Container",
+                key: "container",
+                render: (_: unknown, record: DiscoveredContainer) => (
+                  <div>
+                    <div style={{ fontWeight: 500 }}>
+                      {record.container_name}
+                    </div>
+                    <Text
+                      type="secondary"
+                      style={{ fontSize: 11 }}
+                      copyable={{ text: record.image }}
+                    >
+                      {record.image.length > 40
+                        ? `...${record.image.slice(-37)}`
+                        : record.image}
+                    </Text>
+                  </div>
+                ),
+              },
+              {
+                title: "Backend",
+                dataIndex: "backend",
+                key: "backend",
+                width: 100,
+                render: (backend: string) => {
+                  const config = BACKEND_CONFIG[backend] || BACKEND_CONFIG.vllm;
+                  return (
+                    <Tag style={getTagStyle("small")}>
+                      {config.icon}
+                      <span>{config.label}</span>
+                    </Tag>
+                  );
+                },
+              },
+              {
+                title: "Model",
+                dataIndex: "model_id",
+                key: "model_id",
+                render: (modelId: string | null) =>
+                  modelId ? (
+                    <Text style={{ fontSize: 12 }} copyable={{ text: modelId }}>
+                      {modelId.length > 30
+                        ? `...${modelId.slice(-27)}`
+                        : modelId}
+                    </Text>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Unknown
+                    </Text>
+                  ),
+              },
+              {
+                title: "Port",
+                dataIndex: "port",
+                key: "port",
+                width: 70,
+                render: (port: number | null) => (port ? String(port) : "-"),
+              },
+              {
+                title: "Worker",
+                dataIndex: "worker_name",
+                key: "worker_name",
+                width: 120,
+              },
+              {
+                title: "Action",
+                key: "action",
+                width: 90,
+                render: (_: unknown, record: DiscoveredContainer) => (
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<ImportOutlined />}
+                    loading={adoptingId === record.container_id}
+                    disabled={!record.model_id}
+                    onClick={() => {
+                      setAdoptNameModalContainer(record);
+                      setAdoptName(`adopted-${record.container_name}`);
+                    }}
+                  >
+                    Adopt
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Modal>
+
+      {/* Adopt Name Input Modal */}
+      <Modal
+        title="Adopt Container"
+        open={!!adoptNameModalContainer}
+        onCancel={() => {
+          setAdoptNameModalContainer(null);
+          setAdoptName("");
+        }}
+        onOk={() => {
+          if (adoptNameModalContainer) {
+            handleAdopt(adoptNameModalContainer);
+          }
+        }}
+        okText="Adopt"
+        okButtonProps={{ loading: adoptingId !== null }}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary">
+            Container:{" "}
+            <Text strong>{adoptNameModalContainer?.container_name}</Text>
+          </Text>
+          <br />
+          <Text type="secondary">
+            Model: <Text strong>{adoptNameModalContainer?.model_id}</Text>
+          </Text>
+        </div>
+        <Form layout="vertical">
+          <Form.Item label="Deployment Name">
+            <Input
+              value={adoptName}
+              onChange={(e) => setAdoptName(e.target.value)}
+              placeholder="e.g., adopted-my-model"
+            />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

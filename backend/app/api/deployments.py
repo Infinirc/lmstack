@@ -18,11 +18,14 @@ from app.models.llm_model import LLMModel
 from app.models.user import User
 from app.models.worker import Worker
 from app.schemas.deployment import (
+    AdoptRequest,
     DeploymentCreate,
     DeploymentListResponse,
     DeploymentLogsResponse,
     DeploymentResponse,
     DeploymentUpdate,
+    DiscoveredContainer,
+    DiscoverResponse,
     ModelSummary,
     WorkerSummary,
 )
@@ -116,6 +119,151 @@ async def list_deployments(
     items = [deployment_to_response(d) for d in deployments]
 
     return DeploymentListResponse(items=items, total=total or 0)
+
+
+@router.get("/discover", response_model=DiscoverResponse)
+async def discover_containers(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_viewer),
+):
+    """Discover unmanaged inference containers across all online workers (requires viewer+).
+
+    Scans each online worker for running vllm/sglang/ollama containers
+    that are not already managed by LMStack.
+    """
+    # Get all online workers
+    result = await db.execute(select(Worker).where(Worker.status == "online"))
+    workers = result.scalars().all()
+
+    discovered: list[DiscoveredContainer] = []
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for worker in workers:
+            try:
+                resp = await client.get(f"http://{worker.effective_address}/discover")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for item in data.get("items", []):
+                        discovered.append(
+                            DiscoveredContainer(
+                                container_id=item["container_id"],
+                                container_name=item["container_name"],
+                                image=item["image"],
+                                backend=item["backend"],
+                                model_id=item.get("model_id"),
+                                port=item.get("port"),
+                                gpu_ids=item.get("gpu_ids"),
+                                worker_id=worker.id,
+                                worker_name=worker.name,
+                            )
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to discover containers on worker {worker.name}: {e}")
+
+    return DiscoverResponse(items=discovered)
+
+
+@router.post("/adopt", response_model=DeploymentResponse, status_code=201)
+async def adopt_container(
+    adopt_in: AdoptRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_operator),
+):
+    """Adopt a discovered container as a managed deployment (requires operator+).
+
+    Creates an LLMModel record if the model_id doesn't exist in the DB,
+    creates a Deployment record with RUNNING status, and notifies the
+    worker to track the container as adopted.
+    """
+    from app.models.llm_model import ModelSource
+
+    # Verify worker exists and is online
+    worker_result = await db.execute(select(Worker).where(Worker.id == adopt_in.worker_id))
+    worker = worker_result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    # Find or create the LLMModel
+    model_result = await db.execute(select(LLMModel).where(LLMModel.model_id == adopt_in.model_id))
+    model = model_result.scalar_one_or_none()
+
+    if not model:
+        # Auto-create model record
+        source = (
+            ModelSource.OLLAMA.value
+            if adopt_in.backend == "ollama"
+            else ModelSource.HUGGINGFACE.value
+        )
+        # Use the model_id as the name, cleaning up slashes for readability
+        model_name = adopt_in.model_id.replace("/", "-")
+        # Ensure unique name
+        existing_name = await db.execute(select(LLMModel).where(LLMModel.name == model_name))
+        if existing_name.scalar_one_or_none():
+            model_name = f"{model_name}-adopted"
+
+        model = LLMModel(
+            name=model_name,
+            model_id=adopt_in.model_id,
+            source=source,
+            description="Auto-created from adopted container",
+        )
+        db.add(model)
+        await db.flush()
+
+    # Generate deployment name
+    deploy_name = adopt_in.name or f"adopted-{adopt_in.container_name}"
+    # Check for name collision
+    existing_deploy = await db.execute(select(Deployment).where(Deployment.name == deploy_name))
+    if existing_deploy.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400, detail=f"Deployment name '{deploy_name}' already exists"
+        )
+
+    # Parse GPU indexes from gpu_ids strings if provided
+    gpu_indexes = None
+    if adopt_in.gpu_indexes:
+        gpu_indexes = adopt_in.gpu_indexes
+
+    # Create deployment record
+    deployment = Deployment(
+        name=deploy_name,
+        model_id=model.id,
+        worker_id=adopt_in.worker_id,
+        backend=adopt_in.backend,
+        status=DeploymentStatus.RUNNING.value,
+        status_message="Adopted from existing container",
+        container_id=adopt_in.container_id,
+        container_name=adopt_in.container_name,
+        port=adopt_in.port,
+        gpu_indexes=gpu_indexes,
+    )
+    db.add(deployment)
+
+    # Notify worker to mark container as adopted
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"http://{worker.effective_address}/adopt",
+                json={"container_id": adopt_in.container_id},
+            )
+    except Exception as e:
+        logger.warning(f"Failed to notify worker about adoption: {e}")
+
+    await db.commit()
+    await db.refresh(deployment)
+
+    # Reload with relationships
+    result = await db.execute(
+        select(Deployment)
+        .where(Deployment.id == deployment.id)
+        .options(
+            selectinload(Deployment.worker),
+            selectinload(Deployment.model),
+        )
+    )
+    deployment = result.scalar_one()
+
+    return deployment_to_response(deployment)
 
 
 @router.post("", response_model=DeploymentResponse, status_code=201)

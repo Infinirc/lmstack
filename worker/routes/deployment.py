@@ -9,9 +9,9 @@ import re
 from fastapi import APIRouter, HTTPException
 
 try:
-    from models import DeployRequest, StopRequest
+    from models import AdoptRequest, DeployRequest, StopRequest
 except ImportError:
-    from worker.models import DeployRequest, StopRequest
+    from worker.models import AdoptRequest, DeployRequest, StopRequest
 
 logger = logging.getLogger(__name__)
 
@@ -145,3 +145,70 @@ async def pull_progress(deployment_id: int):
     except ImportError:
         from worker.docker_ops.runner import get_pull_progress
     return get_pull_progress(deployment_id)
+
+
+@router.get("/discover")
+async def discover():
+    """Discover unmanaged inference containers on this worker.
+
+    Scans running Docker containers for vllm/sglang/ollama images
+    that are not already managed by LMStack. For each discovered
+    container, probes its API to determine the loaded model.
+    """
+    agent = get_agent()
+
+    if agent.container_manager is None:
+        return {"items": []}
+
+    try:
+        discovered = agent.container_manager.discover_unmanaged_containers()
+    except Exception as e:
+        logger.error(f"Discovery failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Probe each container's API for model info
+    import httpx
+
+    for container in discovered:
+        port = container.get("port")
+        if not port:
+            continue
+
+        backend = container.get("backend")
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                if backend in ("vllm", "sglang"):
+                    resp = await client.get(f"http://localhost:{port}/v1/models")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        models = data.get("data", [])
+                        if models:
+                            container["model_id"] = models[0].get("id", container.get("model_id"))
+                elif backend == "ollama":
+                    resp = await client.get(f"http://localhost:{port}/api/tags")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        models = data.get("models", [])
+                        if models:
+                            container["model_id"] = models[0].get("name", container.get("model_id"))
+        except Exception:
+            # Probing failed, keep whatever model_id we parsed from command
+            pass
+
+    return {"items": discovered}
+
+
+@router.post("/adopt")
+async def adopt(request: AdoptRequest):
+    """Mark a container as adopted by LMStack."""
+    agent = get_agent()
+
+    if agent.container_manager is None:
+        raise HTTPException(status_code=400, detail="Docker not available on this worker")
+
+    try:
+        result = agent.container_manager.adopt_container(request.container_id)
+        return result
+    except Exception as e:
+        logger.error(f"Adoption failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -106,3 +106,14 @@ class ContainerExecRequest(BaseModel):
     user: Optional[str] = None
     workdir: Optional[str] = None
     env: Optional[list[str]] = None
+
+
+# =============================================================================
+# Discovery & Adoption Models
+# =============================================================================
+
+
+class AdoptRequest(BaseModel):
+    """Request to adopt an unmanaged container."""
+
+    container_id: str

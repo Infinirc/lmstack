@@ -4,7 +4,9 @@ Provides methods for listing, inspecting, creating, starting,
 stopping, and removing Docker containers on the worker node.
 """
 
+import json
 import logging
+from pathlib import Path
 from typing import Any, Optional
 
 import docker
@@ -556,4 +558,147 @@ class ContainerManager:
             "exit_code": exit_code,
             "stdout": stdout,
             "stderr": stderr,
+        }
+
+    # =========================================================================
+    # Container Discovery & Adoption
+    # =========================================================================
+
+    BACKEND_PATTERNS = {
+        "vllm": ["vllm"],
+        "sglang": ["sglang", "sgl-project"],
+        "ollama": ["ollama"],
+    }
+
+    ADOPTED_FILE = Path.home() / ".lmstack" / "adopted.json"
+
+    def _load_adopted(self) -> dict[str, bool]:
+        """Load adopted container IDs from local tracking file."""
+        try:
+            if self.ADOPTED_FILE.exists():
+                return json.loads(self.ADOPTED_FILE.read_text())
+        except Exception:
+            pass
+        return {}
+
+    def _save_adopted(self, adopted: dict[str, bool]) -> None:
+        """Save adopted container IDs to local tracking file."""
+        self.ADOPTED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        self.ADOPTED_FILE.write_text(json.dumps(adopted))
+
+    def _detect_backend(self, image_name: str) -> Optional[str]:
+        """Detect inference backend from container image name."""
+        image_lower = image_name.lower()
+        for backend, patterns in self.BACKEND_PATTERNS.items():
+            if any(p in image_lower for p in patterns):
+                return backend
+        return None
+
+    def _parse_model_from_command(self, container) -> Optional[str]:
+        """Parse --model argument from container command."""
+        cmd = container.attrs.get("Config", {}).get("Cmd") or []
+        for i, arg in enumerate(cmd):
+            if arg == "--model" and i + 1 < len(cmd):
+                return cmd[i + 1]
+            if arg.startswith("--model="):
+                return arg.split("=", 1)[1]
+            # Also check --served-model-name for vllm
+            if arg == "--served-model-name" and i + 1 < len(cmd):
+                return cmd[i + 1]
+            if arg.startswith("--served-model-name="):
+                return arg.split("=", 1)[1]
+        return None
+
+    def discover_unmanaged_containers(self) -> list[dict[str, Any]]:
+        """Discover running containers that are not managed by LMStack.
+
+        Finds containers running vllm, sglang, or ollama that were started
+        outside of LMStack and could be adopted as managed deployments.
+
+        Returns:
+            List of discovered container dictionaries
+        """
+        adopted = self._load_adopted()
+        discovered = []
+
+        for container in self.client.containers.list(all=False):  # Running only
+            labels = container.labels or {}
+
+            # Skip containers already managed by LMStack
+            if labels.get(self.LMSTACK_LABEL) == "true":
+                continue
+            if container.name.startswith("lmstack-"):
+                continue
+
+            # Skip containers already adopted (tracked in local file)
+            if adopted.get(container.id):
+                continue
+
+            # Get image name
+            image_tags = container.image.tags if container.image else []
+            image_name = (
+                image_tags[0]
+                if image_tags
+                else container.attrs.get("Config", {}).get("Image", "unknown")
+            )
+
+            # Detect backend from image
+            backend = self._detect_backend(image_name)
+            if not backend:
+                continue
+
+            # Parse ports
+            ports = self._parse_ports(container)
+            host_port = None
+            for p in ports:
+                if p.get("host_port"):
+                    host_port = p["host_port"]
+                    break
+
+            # Get GPU info
+            gpu_ids = self._get_gpu_ids(container)
+
+            # Parse model from command
+            model_id = self._parse_model_from_command(container)
+
+            discovered.append(
+                {
+                    "container_id": container.id,
+                    "container_name": container.name,
+                    "image": image_name,
+                    "backend": backend,
+                    "model_id": model_id,
+                    "port": host_port,
+                    "gpu_ids": gpu_ids,
+                }
+            )
+
+        return discovered
+
+    def adopt_container(self, container_id: str) -> dict[str, Any]:
+        """Mark a container as adopted by LMStack.
+
+        Since Docker doesn't support adding labels to running containers,
+        we track adoption in a local file (~/.lmstack/adopted.json).
+
+        Args:
+            container_id: Full container ID
+
+        Returns:
+            Container info dict
+        """
+        # Verify container exists
+        container = self.client.containers.get(container_id)
+
+        # Track in local file
+        adopted = self._load_adopted()
+        adopted[container.id] = True
+        self._save_adopted(adopted)
+
+        logger.info(f"Adopted container {container.name} ({container.short_id})")
+
+        return {
+            "container_id": container.id,
+            "container_name": container.name,
+            "status": "adopted",
         }

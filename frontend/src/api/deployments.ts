@@ -17,6 +17,33 @@ export interface DeploymentLogsResponse {
   logs: string;
 }
 
+export interface DiscoveredContainer {
+  container_id: string;
+  container_name: string;
+  image: string;
+  backend: string;
+  model_id: string | null;
+  port: number | null;
+  gpu_ids: string[] | null;
+  worker_id: number;
+  worker_name: string;
+}
+
+export interface DiscoverResponse {
+  items: DiscoveredContainer[];
+}
+
+export interface AdoptRequest {
+  worker_id: number;
+  container_id: string;
+  container_name: string;
+  backend: string;
+  model_id: string;
+  port?: number | null;
+  gpu_indexes?: number[] | null;
+  name?: string;
+}
+
 export const deploymentsApi = {
   list: async (
     params?: DeploymentListParams,
@@ -69,6 +96,16 @@ export const deploymentsApi = {
     data: Partial<DeploymentCreate>,
   ): Promise<Deployment> => {
     const response = await api.patch<Deployment>(`/deployments/${id}`, data);
+    return response.data;
+  },
+
+  discover: async (): Promise<DiscoverResponse> => {
+    const response = await api.get<DiscoverResponse>("/deployments/discover");
+    return response.data;
+  },
+
+  adopt: async (data: AdoptRequest): Promise<Deployment> => {
+    const response = await api.post<Deployment>("/deployments/adopt", data);
     return response.data;
   },
 };
