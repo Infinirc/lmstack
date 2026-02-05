@@ -65,7 +65,7 @@ class ImageManager:
                         "full_name": tag,
                         "size": image.attrs.get("Size", 0),
                         "created_at": created_at,
-                        "digest": image.attrs.get("RepoDigests", [None])[0],
+                        "digest": (image.attrs.get("RepoDigests") or [None])[0],
                         "labels": image.labels or {},
                     }
                 )
@@ -116,7 +116,7 @@ class ImageManager:
             "full_name": tag,
             "size": image.attrs.get("Size", 0),
             "created_at": image.attrs.get("Created", ""),
-            "digest": image.attrs.get("RepoDigests", [None])[0],
+            "digest": (image.attrs.get("RepoDigests") or [None])[0],
             "labels": image.labels or {},
             "layers": layers,
             "config": {
