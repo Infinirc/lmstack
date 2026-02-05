@@ -1,10 +1,11 @@
 """GPU detection for LMStack Worker.
 
-Provides GPU detection for NVIDIA (using pynvml) and Apple Silicon.
+Provides GPU detection for NVIDIA (using pynvml), Tegra/Jetson, and Apple Silicon.
 """
 
 import json
 import logging
+import os
 import platform
 import subprocess
 
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 class GPUDetector:
     """Detect and report GPU information.
 
-    Supports NVIDIA GPUs (via pynvml) and Apple Silicon (via system_profiler).
+    Supports NVIDIA GPUs (via pynvml), Tegra/Jetson (via nvidia-smi), and Apple Silicon.
     """
 
     def detect(self) -> list[dict]:
@@ -34,7 +35,45 @@ class GPUDetector:
         if platform.system() == "Darwin":
             return self._detect_apple_silicon()
         else:
-            return self._detect_nvidia()
+            # Try pynvml first (works on desktop NVIDIA GPUs)
+            gpus = self._detect_nvidia_pynvml()
+            if gpus:
+                return gpus
+
+            # Fallback to nvidia-smi (works on Tegra/Jetson/DGX Spark)
+            return self._detect_nvidia_smi()
+
+    def _is_tegra_platform(self) -> bool:
+        """Check if this is a Tegra/Jetson platform."""
+        # Check for Tegra release file
+        if os.path.exists("/etc/nv_tegra_release"):
+            return True
+
+        # Check for Jetson model file
+        if os.path.exists("/proc/device-tree/model"):
+            try:
+                with open("/proc/device-tree/model", "r") as f:
+                    model = f.read().lower()
+                    if "jetson" in model or "tegra" in model or "orin" in model:
+                        return True
+            except Exception:
+                pass
+
+        # Check for aarch64 + NVIDIA (DGX Spark, Jetson)
+        if platform.machine() == "aarch64":
+            try:
+                result = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return True
+            except Exception:
+                pass
+
+        return False
 
     def _detect_apple_silicon(self) -> list[dict]:
         """Detect Apple Silicon GPU information."""
@@ -111,7 +150,7 @@ class GPUDetector:
             logger.warning(f"Apple Silicon GPU detection failed: {e}")
             return []
 
-    def _detect_nvidia(self) -> list[dict]:
+    def _detect_nvidia_pynvml(self) -> list[dict]:
         """Detect NVIDIA GPUs using pynvml."""
         try:
             import pynvml
@@ -164,5 +203,80 @@ class GPUDetector:
             logger.debug("pynvml (nvidia-ml-py) not installed")
             return []
         except Exception as e:
-            logger.warning(f"NVIDIA GPU detection failed: {e}")
+            logger.debug(f"pynvml GPU detection failed: {e}")
+            return []
+
+    def _detect_nvidia_smi(self) -> list[dict]:
+        """Detect NVIDIA GPUs using nvidia-smi command.
+
+        This is a fallback for Tegra/Jetson/DGX Spark where pynvml may not work.
+        """
+        try:
+            # Query GPU info using nvidia-smi
+            result = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            if result.returncode != 0:
+                logger.debug(f"nvidia-smi failed: {result.stderr}")
+                return []
+
+            gpus = []
+            for line in result.stdout.strip().split("\n"):
+                if not line.strip():
+                    continue
+
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) < 7:
+                    continue
+
+                try:
+                    idx = int(parts[0])
+                    name = parts[1]
+                    # nvidia-smi returns memory in MiB, convert to bytes
+                    memory_total = int(float(parts[2])) * 1024 * 1024
+                    memory_used = int(float(parts[3])) * 1024 * 1024
+                    memory_free = int(float(parts[4])) * 1024 * 1024
+                    # Utilization may be [N/A] on some platforms
+                    try:
+                        utilization = int(float(parts[5]))
+                    except (ValueError, TypeError):
+                        utilization = 0
+                    # Temperature may be [N/A] on some platforms
+                    try:
+                        temperature = int(float(parts[6]))
+                    except (ValueError, TypeError):
+                        temperature = 0
+
+                    gpus.append(
+                        {
+                            "index": idx,
+                            "name": name,
+                            "memory_total": memory_total,
+                            "memory_used": memory_used,
+                            "memory_free": memory_free,
+                            "utilization": utilization,
+                            "temperature": temperature,
+                        }
+                    )
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"Failed to parse nvidia-smi output line: {line}, error: {e}")
+                    continue
+
+            if gpus:
+                logger.info(f"Detected {len(gpus)} GPU(s) via nvidia-smi")
+            return gpus
+
+        except FileNotFoundError:
+            logger.debug("nvidia-smi not found")
+            return []
+        except Exception as e:
+            logger.warning(f"nvidia-smi GPU detection failed: {e}")
             return []
