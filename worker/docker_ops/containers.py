@@ -40,12 +40,15 @@ class ContainerManager:
             List of container dictionaries
         """
         containers = []
+        adopted = self._load_adopted()
 
         for container in self.client.containers.list(all=all):
             # Check if managed by LMStack
             labels = container.labels or {}
-            is_managed = labels.get(self.LMSTACK_LABEL) == "true" or container.name.startswith(
-                "lmstack-"
+            is_managed = (
+                labels.get(self.LMSTACK_LABEL) == "true"
+                or container.name.startswith("lmstack-")
+                or adopted.get(container.id, False)
             )
 
             if managed_only and not is_managed:
