@@ -329,7 +329,7 @@ class GPUDetector:
                     memory_free = int(mem_free or 0) * 1024 * 1024
                 else:
                     # Unified memory platform (Tegra/DGX Spark) - use system memory
-                    logger.info(
+                    logger.debug(
                         f"GPU {idx} ({name}) reports [N/A] memory, using unified system memory"
                     )
                     memory_total, memory_used, memory_free = self._get_unified_memory_info()
@@ -358,7 +358,7 @@ class GPUDetector:
                 )
 
             if gpus:
-                logger.info(f"Detected {len(gpus)} GPU(s) via nvidia-smi")
+                logger.debug(f"Detected {len(gpus)} GPU(s) via nvidia-smi")
             return gpus
 
         except FileNotFoundError:

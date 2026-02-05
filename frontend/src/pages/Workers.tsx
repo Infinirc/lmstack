@@ -480,14 +480,16 @@ export default function Workers() {
                           <ThunderboltOutlined /> {gpu.utilization || 0}%
                         </Tag>
                       </Tooltip>
-                      <Tooltip title="Temperature">
-                        <Tag
-                          color={getTemperatureColor(gpu.temperature || 0)}
-                          style={{ margin: 0 }}
-                        >
-                          {gpu.temperature || 0}°C
-                        </Tag>
-                      </Tooltip>
+                      {(gpu.temperature ?? 0) > 0 && (
+                        <Tooltip title="Temperature">
+                          <Tag
+                            color={getTemperatureColor(gpu.temperature || 0)}
+                            style={{ margin: 0 }}
+                          >
+                            {gpu.temperature}°C
+                          </Tag>
+                        </Tooltip>
+                      )}
                     </Space>
                   </div>
                   <Tooltip
@@ -1319,19 +1321,21 @@ python agent.py \\
                                 }}
                               />
                             </Col>
-                            <Col span={12}>
-                              <Statistic
-                                title="Temperature"
-                                value={gpu.temperature || 0}
-                                suffix="°C"
-                                valueStyle={{
-                                  color: getTemperatureColor(
-                                    gpu.temperature || 0,
-                                  ),
-                                  fontSize: isMobile ? 18 : 24,
-                                }}
-                              />
-                            </Col>
+                            {(gpu.temperature ?? 0) > 0 && (
+                              <Col span={12}>
+                                <Statistic
+                                  title="Temperature"
+                                  value={gpu.temperature}
+                                  suffix="°C"
+                                  valueStyle={{
+                                    color: getTemperatureColor(
+                                      gpu.temperature || 0,
+                                    ),
+                                    fontSize: isMobile ? 18 : 24,
+                                  }}
+                                />
+                              </Col>
+                            )}
                           </Row>
                           <div style={{ marginTop: 12 }}>
                             <div
